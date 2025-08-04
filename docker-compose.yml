@@ -1,0 +1,12 @@
+  version: '3.8'
+  services:
+    CryptoFlow:
+      build: .
+      container_name: CryptoFlow_collector
+      environment:
+        - SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT
+      ports:
+        - "2112:2112"
+      restart: unless-stopped
+      volumes:
+        - ./data:/app/data

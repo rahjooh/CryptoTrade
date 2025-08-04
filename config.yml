@@ -1,0 +1,21 @@
+spot_orderbook_snapshot:
+  binance:
+    url: https://api.binance.com/api/v3/depth
+    limit: 1000
+    period: 100
+    symbols: [BTCUSDT, ETHUSDT]
+
+#  - exchange: bybit
+#    url: https://api.bybit.com/spot/quote/v1/depth
+#    limit: 50
+#    symbols: [BTCUSDT, ETHUSDT]
+#
+#  - exchange: okx
+#    url: https://www.okx.com/api/v5/market/books
+#    limit: 50
+#    symbols: [BTC-USDT, ETH-USDT]
+#
+#  - exchange: kucoin
+#    url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
+#    limit: 100
+#    symbols: [BTC-USDT, ETH-USDT]
