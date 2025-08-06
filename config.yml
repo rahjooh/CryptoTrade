@@ -1,16 +1,23 @@
+# Application Settings
+app:
+  name: "CryptoFlow"
+  version: "1.0.0"
+  environment: "development"
+
+# Source Configuration
 source:
   binance:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.binance.com/api/v3/depth
           limit: 1000      # Max allowed for spot order book depth
           interval_ms: 1000
           symbols: [ BTCUSDT, ETHUSDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://stream.binance.com:9443/ws
           interval_ms: 100
@@ -21,33 +28,35 @@ source:
           enabled: true
           connection: rest
           url: https://fapi.binance.com/fapi/v1/depth
-          limit: 1000
-          interval_ms: 1000
+          limit: 1000                   # Number of price levels
+          interval_ms: 1000             # Collect every 1000 mili seconds
           symbols: [ BTCUSDT, ETHUSDT ]
+          concurrent_symbols: 5         # Max concurrent API calls
+          batch_size: 10000             #  Records per batch before writing
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://fstream.binance.com/ws
           interval_ms: 100
           symbols: [ BTCUSDT, ETHUSDT ]
       contracts:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://fapi.binance.com/fapi/v1/exchangeInfo
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://fstream.binance.com/ws
         symbols: [ BTCUSDT, ETHUSDT ]
       open_interest:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://fapi.binance.com/fapi/v1/openInterest
         interval_minutes: 5
         symbols: [ BTCUSDT, ETHUSDT ]
       funding_rate:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://fapi.binance.com/fapi/v1/fundingRate
         interval_minutes: 60
@@ -57,14 +66,14 @@ source:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.bybit.com/spot/v3/public/quote/depth
           limit: 1000
           interval_ms: 1000
           symbols: [ BTCUSDT, ETHUSDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://stream.bybit.com/spot/quote/ws/v1
           interval_ms: 100
@@ -72,36 +81,36 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.bybit.com/v5/market/orderbook
           limit: 500
           interval_ms: 1000
           symbols: [ BTCUSDT, ETHUSDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://stream.bybit.com/v5/public/linear
           interval_ms: 100
           symbols: [ BTCUSDT, ETHUSDT ]
       contracts:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://api.bybit.com/v5/market/instruments-info
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
         symbols: [ BTCUSDT, ETHUSDT ]
       open_interest:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://api.bybit.com/v5/market/open-interest
         interval_minutes: 5
         symbols: [ BTCUSDT, ETHUSDT ]
       funding_rate:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://api.bybit.com/v5/market/funding/history
         interval_minutes: 60
@@ -111,14 +120,14 @@ source:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://www.okx.com/api/v5/market/books
           limit: 400
           interval_ms: 1000
           symbols: [ BTC-USDT, ETH-USDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://ws.okx.com:8443/ws/v5/public
           interval_ms: 100
@@ -126,36 +135,36 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://www.okx.com/api/v5/market/books
           limit: 400
           interval_ms: 1000
           symbols: [ BTC-USDT, ETH-USDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://ws.okx.com:8443/ws/v5/public
           interval_ms: 100
           symbols: [ BTC-USDT ]
       contracts:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://www.okx.com/api/v5/public/instruments
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
         symbols: [ BTC-USDT ]
       open_interest:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://www.okx.com/api/v5/public/open-interest
         interval_minutes: 5
         symbols: [ BTC-USDT ]
       funding_rate:
-        enabled: true
+        enabled: false
         connection: rest
         url: https://www.okx.com/api/v5/public/funding-rate
         interval_minutes: 60
@@ -165,14 +174,14 @@ source:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
           limit: 100
           interval_ms: 1000
           symbols: [ BTC-USDT, ETH-USDT ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://ws-api.kucoin.com/endpoint
           interval_ms: 100
@@ -182,14 +191,14 @@ source:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.exchange.coinbase.com/products/BTC-USD/book
           limit: 100
           interval_ms: 1000
           symbols: [ BTC-USD, ETH-USD ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://ws-feed.exchange.coinbase.com
           interval_ms: 100
@@ -199,15 +208,48 @@ source:
     spot:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.kraken.com/0/public/Depth
           limit: 100
           interval_ms: 1000
           symbols: [ XBT/USD, ETH/USD ]
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://ws.kraken.com
           interval_ms: 100
           symbols: [ XBT/USD, ETH/USD ]
+
+
+# S3 Storage Configuration (Delta table compatible)
+s3:
+  enabled: true
+  bucket: "market-data-lake"
+  region: "us-east-1"
+  prefix: "orderbook"
+
+  # Delta table compatible partitioning (hourly)
+  partition_strategy: "hourly"
+  partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+
+  # File organization
+  file_prefix: "orderbook"
+  file_format: "parquet"
+  compression: "snappy"
+
+# Parquet File Settings (optimized for Delta)
+parquet:
+  compression: "snappy"
+  row_group_size: 50000
+  page_size: 8192
+  enable_statistics: true
+  enable_dictionary: true
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file_path: "logs/collector.log"
+  include_caller: true
