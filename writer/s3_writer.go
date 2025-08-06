@@ -1,0 +1,442 @@
+package writer
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"github.com/xitongsys/parquet-go/source"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/xitongsys/parquet-go/parquet"
+	"github.com/xitongsys/parquet-go/writer"
+
+	appconfig "cryptoflow/config"
+	"cryptoflow/logger"
+	"cryptoflow/models"
+)
+
+// ParquetRecord represents the structure of our parquet file
+type ParquetRecord struct {
+	Exchange     string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol       string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Timestamp    int64   `parquet:"name=timestamp, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	LastUpdateID int64   `parquet:"name=last_update_id, type=INT64"`
+	Side         string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Price        float64 `parquet:"name=price, type=DOUBLE"`
+	Quantity     float64 `parquet:"name=quantity, type=DOUBLE"`
+	Level        int32   `parquet:"name=level, type=INT32"`
+}
+
+// memoryFileWriter implements ParquetFile interface for in-memory writing
+type memoryFileWriter struct {
+	buffer *bytes.Buffer
+}
+
+func newMemoryFileWriter() *memoryFileWriter {
+	return &memoryFileWriter{
+		buffer: &bytes.Buffer{},
+	}
+}
+
+func (mfw *memoryFileWriter) Create(name string) (source.ParquetFile, error) {
+	return mfw, nil
+}
+
+func (mfw *memoryFileWriter) Open(name string) (source.ParquetFile, error) {
+	return mfw, nil
+}
+
+func (mfw *memoryFileWriter) Seek(offset int64, whence int) (int64, error) {
+	// For writing, we typically don't need seek functionality
+	// This is a simplified implementation
+	return int64(mfw.buffer.Len()), nil
+}
+
+func (mfw *memoryFileWriter) Read(b []byte) (int, error) {
+	return mfw.buffer.Read(b)
+}
+
+func (mfw *memoryFileWriter) Write(b []byte) (int, error) {
+	return mfw.buffer.Write(b)
+}
+
+func (mfw *memoryFileWriter) Close() error {
+	return nil
+}
+
+func (mfw *memoryFileWriter) Bytes() []byte {
+	return mfw.buffer.Bytes()
+}
+
+type S3Writer struct {
+	config     *appconfig.Config
+	sortedChan <-chan models.SortedOrderbookBatch
+	s3Client   *s3.Client
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Logger
+
+	// Metrics
+	batchesWritten int64
+	filesWritten   int64
+	bytesWritten   int64
+	errorsCount    int64
+}
+
+func NewS3Writer(cfg *appconfig.Config, sortedChan <-chan models.SortedOrderbookBatch) (*S3Writer, error) {
+	log := logger.GetLogger()
+
+	if !cfg.Storage.S3.Enabled {
+		return nil, fmt.Errorf("S3 storage is disabled")
+	}
+
+	// Load AWS configuration
+	awsConfig, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(cfg.Storage.S3.Region),
+	)
+	if err != nil {
+		log.WithComponent("s3_writer").WithError(err).Error("failed to load AWS configuration")
+		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	// Create S3 client
+	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
+		if cfg.Storage.S3.Endpoint != "" {
+			o.BaseEndpoint = aws.String(cfg.Storage.S3.Endpoint)
+		}
+		o.UsePathStyle = cfg.Storage.S3.PathStyle
+	})
+
+	s3Writer := &S3Writer{
+		config:     cfg,
+		sortedChan: sortedChan,
+		s3Client:   s3Client,
+		wg:         &sync.WaitGroup{},
+		log:        log,
+	}
+
+	log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"bucket":     cfg.Storage.S3.Bucket,
+		"region":     cfg.Storage.S3.Region,
+		"endpoint":   cfg.Storage.S3.Endpoint,
+		"path_style": cfg.Storage.S3.PathStyle,
+	}).Info("s3 writer initialized")
+
+	return s3Writer, nil
+}
+
+func (w *S3Writer) Start(ctx context.Context) error {
+	w.mu.Lock()
+	if w.running {
+		w.mu.Unlock()
+		return fmt.Errorf("s3 writer already running")
+	}
+	w.running = true
+	w.ctx = ctx
+	w.mu.Unlock()
+
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
+	log.Info("starting s3 writer")
+
+	// Start multiple workers for parallel processing
+	numWorkers := w.config.Writer.MaxWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting s3 writer workers")
+
+	for i := 0; i < numWorkers; i++ {
+		w.wg.Add(1)
+		go w.worker(i)
+	}
+
+	// Start metrics reporter
+	go w.metricsReporter(ctx)
+
+	log.Info("s3 writer started successfully")
+	return nil
+}
+
+func (w *S3Writer) Stop() {
+	w.mu.Lock()
+	w.running = false
+	w.mu.Unlock()
+
+	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
+	w.wg.Wait()
+	w.log.WithComponent("s3_writer").Info("s3 writer stopped")
+}
+
+func (w *S3Writer) worker(workerID int) {
+	defer w.wg.Done()
+
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"worker_id": workerID,
+		"worker":    "s3_writer",
+	})
+
+	log.Info("starting s3 writer worker")
+
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Info("worker stopped due to context cancellation")
+			return
+		case batch, ok := <-w.sortedChan:
+			if !ok {
+				log.Info("sorted channel closed, worker stopping")
+				return
+			}
+
+			start := time.Now()
+			w.processBatch(batch)
+			duration := time.Since(start)
+
+			logger.LogPerformanceEntry(log, "s3_writer", "process_batch", duration, logger.Fields{
+				"worker_id":    workerID,
+				"batch_id":     batch.BatchID,
+				"record_count": batch.RecordCount,
+			})
+		}
+	}
+}
+
+func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"batch_id":     batch.BatchID,
+		"exchange":     batch.Exchange,
+		"symbol":       batch.Symbol,
+		"record_count": batch.RecordCount,
+		"timestamp":    batch.Timestamp,
+		"operation":    "process_batch",
+	})
+
+	log.Info("processing batch")
+
+	if batch.RecordCount == 0 {
+		log.Warn("batch has no records, skipping")
+		return
+	}
+
+	// Generate S3 key path
+	s3Key := w.generateS3Key(batch)
+	log = log.WithFields(logger.Fields{"s3_key": s3Key})
+
+	// Create parquet file in memory
+	parquetData, fileSize, err := w.createParquetFile(batch.Entries)
+	if err != nil {
+		w.errorsCount++
+		log.WithError(err).Error("failed to create parquet file")
+		return
+	}
+
+	// Upload to S3
+	err = w.uploadToS3(s3Key, parquetData)
+	if err != nil {
+		w.errorsCount++
+		log.WithError(err).Error("failed to upload to S3")
+		return
+	}
+
+	// Update metrics
+	w.batchesWritten++
+	w.filesWritten++
+	w.bytesWritten += fileSize
+
+	log.WithFields(logger.Fields{
+		"file_size": fileSize,
+	}).Info("batch processed and uploaded successfully")
+
+	logger.LogDataFlowEntry(log, "sorted_channel", "s3", batch.RecordCount, "parquet_file")
+	w.log.LogMetric("s3_writer", "file_uploaded", 1, logger.Fields{
+		"exchange":     batch.Exchange,
+		"symbol":       batch.Symbol,
+		"file_size":    fileSize,
+		"record_count": batch.RecordCount,
+	})
+}
+
+func (w *S3Writer) generateS3Key(batch models.SortedOrderbookBatch) string {
+	// Parse time format from config
+	timeFormat := w.config.Writer.Partitioning.TimeFormat
+	timestamp := batch.Timestamp
+
+	// Replace time placeholders
+	key := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	key = strings.ReplaceAll(key, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
+	key = strings.ReplaceAll(key, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	key = strings.ReplaceAll(key, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
+
+	// Add additional keys
+	for _, additionalKey := range w.config.Writer.Partitioning.AdditionalKeys {
+		switch additionalKey {
+		case "exchange":
+			key = filepath.Join(key, fmt.Sprintf("exchange=%s", batch.Exchange))
+		case "symbol":
+			key = filepath.Join(key, fmt.Sprintf("symbol=%s", batch.Symbol))
+		}
+	}
+
+	// Add filename
+	filename := fmt.Sprintf("orderbook_%s_%s_%d.parquet",
+		batch.Exchange,
+		batch.Symbol,
+		timestamp.UnixNano())
+
+	key = filepath.Join(key, filename)
+
+	// Convert to forward slashes for S3
+	key = filepath.ToSlash(key)
+
+	return key
+}
+
+func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"entries_count": len(entries),
+		"operation":     "create_parquet_file",
+	})
+	log.Debug("creating parquet file")
+
+	// Create memory file writer
+	fw := newMemoryFileWriter()
+
+	// Create parquet writer
+	pw, err := writer.NewParquetWriter(fw, new(ParquetRecord), 4)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create parquet writer: %w", err)
+	}
+
+	// Set compression
+	switch w.config.Writer.Formats.Parquet.Compression {
+	case "snappy":
+		pw.CompressionType = parquet.CompressionCodec_SNAPPY
+	case "gzip":
+		pw.CompressionType = parquet.CompressionCodec_GZIP
+	case "lzo":
+		pw.CompressionType = parquet.CompressionCodec_LZO
+	default:
+		pw.CompressionType = parquet.CompressionCodec_UNCOMPRESSED
+	}
+
+	// Convert entries to parquet records and write
+	for _, entry := range entries {
+		record := ParquetRecord{
+			Exchange:     entry.Exchange,
+			Symbol:       entry.Symbol,
+			Timestamp:    entry.Timestamp.UnixMilli(),
+			LastUpdateID: entry.LastUpdateID,
+			Side:         entry.Side,
+			Price:        entry.Price,
+			Quantity:     entry.Quantity,
+			Level:        int32(entry.Level),
+		}
+
+		if err := pw.Write(record); err != nil {
+			pw.WriteStop()
+			return nil, 0, fmt.Errorf("failed to write parquet record: %w", err)
+		}
+	}
+
+	// Finalize writing
+	if err := pw.WriteStop(); err != nil {
+		return nil, 0, fmt.Errorf("failed to finalize parquet writing: %w", err)
+	}
+
+	data := fw.Bytes()
+
+	log.WithFields(logger.Fields{
+		"file_size":     len(data),
+		"entries_count": len(entries),
+		"compression":   w.config.Writer.Formats.Parquet.Compression,
+	}).Debug("parquet file created successfully")
+
+	return data, int64(len(data)), nil
+}
+
+func (w *S3Writer) uploadToS3(key string, data []byte) error {
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"operation": "upload_to_s3",
+		"data_size": len(data),
+	})
+	log.Debug("uploading to S3")
+
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(w.config.Storage.S3.Bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String("application/octet-stream"),
+		Metadata: map[string]string{
+			"content-type":       "parquet",
+			"compression":        w.config.Writer.Formats.Parquet.Compression,
+			"cryptoflow-version": w.config.Cryptoflow.Version,
+		},
+	}
+
+	_, err := w.s3Client.PutObject(w.ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to upload to S3: %w", err)
+	}
+
+	log.Debug("successfully uploaded to S3")
+	return nil
+}
+
+func (w *S3Writer) metricsReporter(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.reportMetrics()
+		}
+	}
+}
+
+func (w *S3Writer) reportMetrics() {
+	w.mu.RLock()
+	batchesWritten := w.batchesWritten
+	filesWritten := w.filesWritten
+	bytesWritten := w.bytesWritten
+	errorsCount := w.errorsCount
+	w.mu.RUnlock()
+
+	errorRate := float64(0)
+	if batchesWritten+errorsCount > 0 {
+		errorRate = float64(errorsCount) / float64(batchesWritten+errorsCount)
+	}
+
+	avgBytesPerFile := float64(0)
+	if filesWritten > 0 {
+		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
+	}
+
+	log := w.log.WithComponent("s3_writer")
+	log.LogMetric("s3_writer", "batches_written", batchesWritten, logger.Fields{})
+	log.LogMetric("s3_writer", "files_written", filesWritten, logger.Fields{})
+	log.LogMetric("s3_writer", "bytes_written", bytesWritten, logger.Fields{})
+	log.LogMetric("s3_writer", "errors_count", errorsCount, logger.Fields{})
+	log.LogMetric("s3_writer", "error_rate", errorRate, logger.Fields{})
+	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, logger.Fields{})
+
+	log.WithFields(logger.Fields{
+		"batches_written":    batchesWritten,
+		"files_written":      filesWritten,
+		"bytes_written":      bytesWritten,
+		"errors_count":       errorsCount,
+		"error_rate":         errorRate,
+		"avg_bytes_per_file": avgBytesPerFile,
+	}).Info("s3 writer metrics")
+}
