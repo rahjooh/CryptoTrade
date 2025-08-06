@@ -16,9 +16,29 @@ processor:
   batch_size: 1
   batch_timeout: "1s"
 
+exchanges:
+  binance:
+    enabled: true
+    base_url: "https://fapi.binance.com"
+    endpoints:
+      - name: "futures_depth"
+        path: "/fapi/v1/depth"
+        limit: 5
+        interval_ms: 1000
+        symbols: ["BTCUSDT"]
+        timeout: "5s"
+    connection_pool:
+      max_idle_conns: 10
+      max_conns_per_host: 10
+      idle_conn_timeout: "90s"
+
 storage:
   s3:
-    enabled: false
+    enabled: true
+    bucket: "cryptoflow-test"
+    region: "us-east-1"
+    endpoint: "http://localhost:9000"
+    path_style: true
 
 writer:
   max_workers: 1
@@ -31,13 +51,13 @@ writer:
     flush_interval: "1s"
     memory_threshold: 0.8
   partitioning:
-    scheme: ""
-    time_format: ""
-    additional_keys: []
+    scheme: "time"
+    time_format: "year={year}/month={month}/day={day}/hour={hour}"
+    additional_keys: ["exchange", "symbol"]
   formats:
     parquet:
-      enabled: false
-      compression: ""
+      enabled: true
+      compression: "snappy"
       page_size: 0
     avro:
       enabled: false
