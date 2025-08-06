@@ -14,7 +14,7 @@ import (
 
 type Sorter struct {
 	config        *config.Config
-	flattenedChan <-chan models.FlattenedOrderbookEntry
+	flattenedChan <-chan models.FlattenedOrderbookBatch
 	sortedChan    chan<- models.SortedOrderbookBatch
 	ctx           context.Context
 	wg            *sync.WaitGroup
@@ -32,7 +32,7 @@ type Sorter struct {
 	bufferFlushes   int64
 }
 
-func NewSorter(cfg *config.Config, flattenedChan <-chan models.FlattenedOrderbookEntry, sortedChan chan<- models.SortedOrderbookBatch) *Sorter {
+func NewSorter(cfg *config.Config, flattenedChan <-chan models.FlattenedOrderbookBatch, sortedChan chan<- models.SortedOrderbookBatch) *Sorter {
 	log := logger.GetLogger()
 
 	sorter := &Sorter{
@@ -102,13 +102,15 @@ func (s *Sorter) entryProcessor() {
 		case <-s.ctx.Done():
 			log.Info("entry processor stopped due to context cancellation")
 			return
-		case entry, ok := <-s.flattenedChan:
+		case batch, ok := <-s.flattenedChan:
 			if !ok {
 				log.Info("flattened channel closed, entry processor stopping")
 				return
 			}
 
-			s.processEntry(entry)
+			for _, entry := range batch.Entries {
+				s.processEntry(entry)
+			}
 		}
 	}
 }

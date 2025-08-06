@@ -213,15 +213,22 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 		}
 	}
 
+	payload, err := json.Marshal(map[string]interface{}{
+		"last_update_id": binanceResp.LastUpdateID,
+		"bids":           binanceResp.Bids,
+		"asks":           binanceResp.Asks,
+	})
+	if err != nil {
+		br.sendError(symbol, fmt.Errorf("failed to marshal orderbook: %w", err))
+		return
+	}
+
 	rawData := models.RawOrderbookMessage{
-		Exchange:     "binance",
-		Symbol:       symbol,
-		Timestamp:    time.Now().UTC(),
-		LastUpdateID: binanceResp.LastUpdateID,
-		Data: map[string]interface{}{
-			"bids": binanceResp.Bids,
-			"asks": binanceResp.Asks,
-		},
+		Exchange:    "binance",
+		Symbol:      symbol,
+		Timestamp:   time.Now().UTC(),
+		Data:        payload,
+		MessageType: "snapshot",
 	}
 
 	select {
@@ -294,10 +301,11 @@ func (br *BinanceReader) sendError(symbol string, err error) {
 	log.Error("error occurred during orderbook fetch")
 
 	rawData := models.RawOrderbookMessage{
-		Exchange:  "binance",
-		Symbol:    symbol,
-		Timestamp: time.Now().UTC(),
-		Error:     err,
+		Exchange:    "binance",
+		Symbol:      symbol,
+		Timestamp:   time.Now().UTC(),
+		MessageType: "error",
+		Data:        []byte(err.Error()),
 	}
 
 	select {

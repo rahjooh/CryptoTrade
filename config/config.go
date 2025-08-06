@@ -13,6 +13,7 @@ type Config struct {
 	Cryptoflow CryptoflowConfig `yaml:"cryptoflow"`
 	Channels   ChannelsConfig   `yaml:"channels"`
 	Reader     ReaderConfig     `yaml:"reader"`
+	Processor  ProcessorConfig  `yaml:"processor"`
 	Writer     WriterConfig     `yaml:"writer"`
 	Exchanges  ExchangesConfig  `yaml:"exchanges"`
 	Storage    StorageConfig    `yaml:"storage"`
@@ -40,6 +41,12 @@ type ReaderConfig struct {
 	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
 	Retry          RetryConfig          `yaml:"retry"`
 	Validation     ValidationConfig     `yaml:"validation"`
+}
+
+type ProcessorConfig struct {
+	MaxWorkers   int           `yaml:"max_workers"`
+	BatchSize    int           `yaml:"batch_size"`
+	BatchTimeout time.Duration `yaml:"batch_timeout"`
 }
 
 type CircuitBreakerConfig struct {
@@ -242,6 +249,16 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.Reader.MaxWorkers <= 0 {
 		return fmt.Errorf("reader.max_workers must be greater than 0")
+	}
+
+	if cfg.Processor.MaxWorkers <= 0 {
+		return fmt.Errorf("processor.max_workers must be greater than 0")
+	}
+	if cfg.Processor.BatchSize <= 0 {
+		return fmt.Errorf("processor.batch_size must be greater than 0")
+	}
+	if cfg.Processor.BatchTimeout <= 0 {
+		return fmt.Errorf("processor.batch_timeout must be greater than 0")
 	}
 
 	if cfg.Storage.S3.Enabled {
