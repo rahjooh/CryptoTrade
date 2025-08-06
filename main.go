@@ -55,9 +55,15 @@ func main() {
 	flattener := processor.NewFlattener(cfg, channels.RawMessageChan, channels.FlattenedChan)
 	sorter := processor.NewSorter(cfg, channels.FlattenedChan, channels.SortedChan)
 
-	s3Writer, err := writer.NewS3Writer(cfg, channels.SortedChan)
-	if err != nil {
-		log.WithError(err).Fatal("failed to create S3 writer")
+	var s3Writer *writer.S3Writer
+	if cfg.Storage.S3.Enabled {
+		var err error
+		s3Writer, err = writer.NewS3Writer(cfg, channels.SortedChan)
+		if err != nil {
+			log.WithError(err).Fatal("failed to create S3 writer")
+		}
+	} else {
+		log.WithComponent("main").Info("S3 storage disabled; skipping S3 writer")
 	}
 
 	var wg sync.WaitGroup
@@ -86,13 +92,15 @@ func main() {
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := s3Writer.Start(ctx); err != nil {
-			log.WithError(err).Error("s3 writer failed to start")
-		}
-	}()
+	if s3Writer != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s3Writer.Start(ctx); err != nil {
+				log.WithError(err).Error("s3 writer failed to start")
+			}
+		}()
+	}
 
 	time.Sleep(2 * time.Second)
 	log.Info("all components started successfully")
@@ -106,8 +114,10 @@ func main() {
 	log.Info("starting graceful shutdown")
 	cancel()
 
-	log.Info("stopping S3 writer")
-	s3Writer.Stop()
+	if s3Writer != nil {
+		log.Info("stopping S3 writer")
+		s3Writer.Stop()
+	}
 
 	log.Info("stopping sorter")
 	sorter.Stop()

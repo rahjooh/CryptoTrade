@@ -1,0 +1,50 @@
+cryptoflow:
+  name: "CryptoFlow"
+  version: "1.0.0"
+
+channels:
+  raw_buffer: 100
+  processed_buffer: 100
+  write_buffer: 100
+
+reader:
+  max_workers: 1
+  timeout: "5s"
+
+processor:
+  max_workers: 1
+  batch_size: 1
+  batch_timeout: "1s"
+
+storage:
+  s3:
+    enabled: false
+
+writer:
+  max_workers: 1
+  batch:
+    size: 10
+    timeout: "1s"
+    max_memory: "1MB"
+  buffer:
+    max_size: 10
+    flush_interval: "1s"
+    memory_threshold: 0.8
+  partitioning:
+    scheme: ""
+    time_format: ""
+    additional_keys: []
+  formats:
+    parquet:
+      enabled: false
+      compression: ""
+      page_size: 0
+    avro:
+      enabled: false
+      compression: ""
+  compression: ""
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"

@@ -215,21 +215,14 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var config Config
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		//log.WithError(err).Error("failed to parse config file")
-		fmt.Print("ffailed to parse config file")
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	// Validate configuration
 	if err := validateConfig(&config); err != nil {
-		//log.WithError(err).Error("configuration validation failed")
-		fmt.Print("configuration validation failed")
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-
-	fmt.Print("failed to read config file")
 
 	return &config, nil
 }
