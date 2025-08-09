@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,6 +157,8 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 		"operation": "fetch_orderbook",
 	})
 
+	market := marketNameFromEndpoint(endpoint.Name)
+
 	br.lastRequestTime = time.Now()
 	br.requestCount++
 
@@ -169,13 +172,13 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 
 	req, err := http.NewRequestWithContext(br.ctx, "GET", url, nil)
 	if err != nil {
-		br.sendError(symbol, fmt.Errorf("failed to create request: %w", err))
+		br.sendError(symbol, market, fmt.Errorf("failed to create request: %w", err))
 		return
 	}
 
 	resp, err := br.client.Do(req)
 	if err != nil {
-		br.sendError(symbol, fmt.Errorf("failed to fetch orderbook: %w", err))
+		br.sendError(symbol, market, fmt.Errorf("failed to fetch orderbook: %w", err))
 		return
 	}
 	defer resp.Body.Close()
@@ -189,13 +192,13 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 	})
 
 	if resp.StatusCode != http.StatusOK {
-		br.sendError(symbol, fmt.Errorf("unexpected status code: %d", resp.StatusCode))
+		br.sendError(symbol, market, fmt.Errorf("unexpected status code: %d", resp.StatusCode))
 		return
 	}
 
 	var binanceResp models.BinanceOrderbookResponse
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
-		br.sendError(symbol, fmt.Errorf("failed to decode response: %w", err))
+		br.sendError(symbol, market, fmt.Errorf("failed to decode response: %w", err))
 		return
 	}
 
@@ -208,7 +211,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 	// Validate data
 	if br.config.Reader.Validation.EnablePriceValidation {
 		if !br.validatePrices(binanceResp, symbol) {
-			br.sendError(symbol, fmt.Errorf("price validation failed"))
+			br.sendError(symbol, market, fmt.Errorf("price validation failed"))
 			return
 		}
 	}
@@ -219,13 +222,14 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 		"asks":           binanceResp.Asks,
 	})
 	if err != nil {
-		br.sendError(symbol, fmt.Errorf("failed to marshal orderbook: %w", err))
+		br.sendError(symbol, market, fmt.Errorf("failed to marshal orderbook: %w", err))
 		return
 	}
 
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "binance",
 		Symbol:      symbol,
+		Market:      marketNameFromEndpoint(endpoint.Name),
 		Timestamp:   time.Now().UTC(),
 		Data:        payload,
 		MessageType: "snapshot",
@@ -238,8 +242,26 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 	case <-br.ctx.Done():
 		return
 	default:
-		br.sendError(symbol, fmt.Errorf("raw channel is full, dropping data"))
+		br.sendError(symbol, market, fmt.Errorf("raw channel is full, dropping data"))
 	}
+}
+
+func marketNameFromEndpoint(name string) string {
+	tokens := strings.Split(name, "_")
+	parts := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		switch t {
+		case "futures":
+			parts = append(parts, "future")
+		case "depth":
+			parts = append(parts, "orderbook-snapshot")
+		case "spot":
+			parts = append(parts, "spot")
+		default:
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, "-")
 }
 
 func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, symbol string) bool {
@@ -294,7 +316,7 @@ func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, sy
 	return true
 }
 
-func (br *BinanceReader) sendError(symbol string, err error) {
+func (br *BinanceReader) sendError(symbol, market string, err error) {
 	br.errorCount++
 
 	log := br.log.WithComponent("binance_reader").WithError(err)
@@ -303,6 +325,7 @@ func (br *BinanceReader) sendError(symbol string, err error) {
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "binance",
 		Symbol:      symbol,
+		Market:      market,
 		Timestamp:   time.Now().UTC(),
 		MessageType: "error",
 		Data:        []byte(err.Error()),

@@ -96,14 +96,14 @@ type S3Writer struct {
 }
 
 func (w *S3Writer) addBatch(batch models.SortedOrderbookBatch) {
-	key := w.bufferKey(batch.Exchange, batch.Symbol)
+	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
 	w.mu.Unlock()
 }
 
-func (w *S3Writer) bufferKey(exchange, symbol string) string {
-	return fmt.Sprintf("%s|%s", exchange, symbol)
+func (w *S3Writer) bufferKey(exchange, market, symbol string) string {
+	return fmt.Sprintf("%s|%s|%s", exchange, market, symbol)
 }
 
 func (w *S3Writer) flushWorker() {
@@ -143,11 +143,12 @@ func (w *S3Writer) flushBuffers(reason string) {
 		if len(entries) == 0 {
 			continue
 		}
-		parts := strings.SplitN(key, "|", 2)
+		parts := strings.SplitN(key, "|", 3)
 		batch := models.SortedOrderbookBatch{
 			BatchID:     uuid.New().String(),
 			Exchange:    parts[0],
-			Symbol:      parts[1],
+			Market:      parts[1],
+			Symbol:      parts[2],
 			Entries:     entries,
 			RecordCount: len(entries),
 			Timestamp:   time.Now(),
@@ -357,8 +358,8 @@ func (w *S3Writer) generateS3Key(batch models.SortedOrderbookBatch) string {
 		case "symbol":
 			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
 		case "market":
-			if m := w.config.Writer.Partitioning.Market; m != "" {
-				parts = append(parts, fmt.Sprintf("market=%s", m))
+			if batch.Market != "" {
+				parts = append(parts, fmt.Sprintf("market=%s", batch.Market))
 			}
 		}
 	}
