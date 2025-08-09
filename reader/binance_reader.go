@@ -118,25 +118,34 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 
 	log.Info("starting orderbook worker")
 
-	ticker := time.NewTicker(time.Duration(snapshotCfg.IntervalMs) * time.Millisecond)
-	defer ticker.Stop()
+	interval := time.Duration(snapshotCfg.IntervalMs) * time.Millisecond
+
+	// Align first fetch to the start of the next interval boundary
+	now := time.Now()
+	nextTick := now.Truncate(interval).Add(interval)
+	timer := time.NewTimer(nextTick.Sub(now))
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-br.ctx.Done():
 			log.Info("worker stopped due to context cancellation")
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			start := time.Now()
 			br.fetchOrderbook(symbol, snapshotCfg)
 			duration := time.Since(start)
 
-			if duration > time.Duration(snapshotCfg.IntervalMs)*time.Millisecond {
+			if duration > interval {
 				log.WithFields(logger.Fields{
 					"duration": duration.Milliseconds(),
 					"interval": snapshotCfg.IntervalMs,
 				}).Warn("fetch took longer than interval")
 			}
+
+			// Schedule next fetch at the subsequent interval boundary
+			nextTick = start.Truncate(interval).Add(interval)
+			timer.Reset(time.Until(nextTick))
 		}
 	}
 }
