@@ -97,7 +97,6 @@ type BufferConfig struct {
 type PartitioningConfig struct {
 	Scheme         string   `yaml:"scheme"`
 	TimeFormat     string   `yaml:"time_format"`
-	Market         string   `yaml:"market"`
 	AdditionalKeys []string `yaml:"additional_keys"`
 }
 

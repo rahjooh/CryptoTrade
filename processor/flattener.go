@@ -213,6 +213,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 		entries = append(entries, models.FlattenedOrderbookEntry{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
+			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
 			Side:         "bid",
@@ -253,6 +254,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 		entries = append(entries, models.FlattenedOrderbookEntry{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
+			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
 			Side:         "ask",
@@ -269,7 +271,7 @@ func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []mode
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	batchKey := fmt.Sprintf("%s_%s", rawMsg.Exchange, rawMsg.Symbol)
+	batchKey := fmt.Sprintf("%s_%s_%s", rawMsg.Exchange, rawMsg.Market, rawMsg.Symbol)
 
 	batch, exists := f.batches[batchKey]
 	if !exists {
@@ -277,6 +279,7 @@ func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []mode
 			BatchID:     uuid.New().String(),
 			Exchange:    rawMsg.Exchange,
 			Symbol:      rawMsg.Symbol,
+			Market:      rawMsg.Market,
 			Entries:     make([]models.FlattenedOrderbookEntry, 0, f.config.Processor.BatchSize),
 			RecordCount: 0,
 			Timestamp:   rawMsg.Timestamp,

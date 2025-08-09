@@ -23,7 +23,7 @@ type Sorter struct {
 	log           *logger.Logger
 
 	// Buffering
-	buffer        map[string][]models.FlattenedOrderbookEntry // key: exchange-symbol
+	buffer        map[string][]models.FlattenedOrderbookEntry // key: exchange-market-symbol
 	lastFlushTime map[string]time.Time
 
 	// Metrics
@@ -116,7 +116,7 @@ func (s *Sorter) entryProcessor() {
 }
 
 func (s *Sorter) processEntry(entry models.FlattenedOrderbookEntry) {
-	key := fmt.Sprintf("%s-%s", entry.Exchange, entry.Symbol)
+	key := fmt.Sprintf("%s-%s-%s", entry.Exchange, entry.Market, entry.Symbol)
 
 	s.mu.Lock()
 
@@ -284,8 +284,9 @@ func (s *Sorter) createBatch(entries []models.FlattenedOrderbookEntry) models.So
 		return models.SortedOrderbookBatch{}
 	}
 
-	batchID := fmt.Sprintf("%s-%s-%d-%d",
+	batchID := fmt.Sprintf("%s-%s-%s-%d-%d",
 		entries[0].Exchange,
+		entries[0].Market,
 		entries[0].Symbol,
 		entries[0].Timestamp.Unix(),
 		time.Now().UnixNano())
@@ -293,6 +294,7 @@ func (s *Sorter) createBatch(entries []models.FlattenedOrderbookEntry) models.So
 	return models.SortedOrderbookBatch{
 		Exchange:    entries[0].Exchange,
 		Symbol:      entries[0].Symbol,
+		Market:      entries[0].Market,
 		Timestamp:   entries[0].Timestamp,
 		BatchID:     batchID,
 		Entries:     entries,
