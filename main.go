@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"cryptoflow/config"
 	"cryptoflow/internal"
 	"cryptoflow/logger"
@@ -19,6 +21,11 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env if present
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Error loading .env file: %v\n", err)
+	}
+
 	configPath := flag.String("config", "config.yml", "Path to configuration file")
 	flag.Parse()
 

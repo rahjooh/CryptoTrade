@@ -7,8 +7,6 @@ import (
 
 	//"cryptoflow/logger"
 	"gopkg.in/yaml.v3"
-
-	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -208,9 +206,6 @@ type LoggingConfig struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	// Load environment variables from .env if present
-	_ = godotenv.Load()
-
 	// Read configuration file
 	data, err := os.ReadFile(path)
 	if err != nil {
