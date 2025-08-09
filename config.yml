@@ -285,7 +285,8 @@ writer:
   partitioning:
     scheme: "time"
     time_format: "year={year}/month={month}/day={day}/hour={hour}"
-    additional_keys: ["exchange", "symbol"]
+    market: "future-orderbook-snapshot"
+    additional_keys: ["exchange", "market", "symbol"]
   formats:
     parquet:
       enabled: true
