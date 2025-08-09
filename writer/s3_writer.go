@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/writer"
 
@@ -76,14 +77,16 @@ func (mfw *memoryFileWriter) Bytes() []byte {
 }
 
 type S3Writer struct {
-	config     *appconfig.Config
-	sortedChan <-chan models.SortedOrderbookBatch
-	s3Client   *s3.Client
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Logger
+	config      *appconfig.Config
+	sortedChan  <-chan models.SortedOrderbookBatch
+	s3Client    *s3.Client
+	ctx         context.Context
+	wg          *sync.WaitGroup
+	mu          sync.RWMutex
+	running     bool
+	log         *logger.Logger
+	buffer      map[string][]models.FlattenedOrderbookEntry
+	flushTicker *time.Ticker
 
 	// Metrics
 	batchesWritten int64
@@ -92,6 +95,66 @@ type S3Writer struct {
 	errorsCount    int64
 }
 
+func (w *S3Writer) addBatch(batch models.SortedOrderbookBatch) {
+	key := w.bufferKey(batch.Exchange, batch.Symbol)
+	w.mu.Lock()
+	w.buffer[key] = append(w.buffer[key], batch.Entries...)
+	w.mu.Unlock()
+}
+
+func (w *S3Writer) bufferKey(exchange, symbol string) string {
+	return fmt.Sprintf("%s|%s", exchange, symbol)
+}
+
+func (w *S3Writer) flushWorker() {
+	defer w.wg.Done()
+
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"worker": "flush"})
+	log.Info("starting flush worker")
+
+	for {
+		select {
+		case <-w.ctx.Done():
+			w.flushBuffers("shutdown")
+			log.Info("flush worker stopped due to context cancellation")
+			return
+		case <-w.flushTicker.C:
+			w.flushBuffers("interval")
+		}
+	}
+}
+
+func (w *S3Writer) flushBuffers(reason string) {
+	w.mu.Lock()
+	buffers := w.buffer
+	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
+	w.mu.Unlock()
+
+	if len(buffers) == 0 {
+		return
+	}
+
+	w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"flushed_buffers": len(buffers),
+		"reason":          reason,
+	}).Debug("flushing buffers")
+
+	for key, entries := range buffers {
+		if len(entries) == 0 {
+			continue
+		}
+		parts := strings.SplitN(key, "|", 2)
+		batch := models.SortedOrderbookBatch{
+			BatchID:     uuid.New().String(),
+			Exchange:    parts[0],
+			Symbol:      parts[1],
+			Entries:     entries,
+			RecordCount: len(entries),
+			Timestamp:   time.Now(),
+		}
+		w.processBatch(batch)
+	}
+}
 func NewS3Writer(cfg *appconfig.Config, sortedChan <-chan models.SortedOrderbookBatch) (*S3Writer, error) {
 	log := logger.GetLogger()
 
@@ -162,6 +225,9 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
 	log.Info("starting s3 writer")
 
+	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
+	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
+
 	// Start multiple workers for parallel processing
 	numWorkers := w.config.Writer.MaxWorkers
 	if numWorkers < 1 {
@@ -175,6 +241,9 @@ func (w *S3Writer) Start(ctx context.Context) error {
 		go w.worker(i)
 	}
 
+	w.wg.Add(1)
+	go w.flushWorker()
+
 	// Start metrics reporter
 	go w.metricsReporter(ctx)
 
@@ -186,6 +255,10 @@ func (w *S3Writer) Stop() {
 	w.mu.Lock()
 	w.running = false
 	w.mu.Unlock()
+
+	if w.flushTicker != nil {
+		w.flushTicker.Stop()
+	}
 
 	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
 	w.wg.Wait()
@@ -212,16 +285,7 @@ func (w *S3Writer) worker(workerID int) {
 				log.Info("sorted channel closed, worker stopping")
 				return
 			}
-
-			start := time.Now()
-			w.processBatch(batch)
-			duration := time.Since(start)
-
-			logger.LogPerformanceEntry(log, "s3_writer", "process_batch", duration, logger.Fields{
-				"worker_id":    workerID,
-				"batch_id":     batch.BatchID,
-				"record_count": batch.RecordCount,
-			})
+			w.addBatch(batch)
 		}
 	}
 }

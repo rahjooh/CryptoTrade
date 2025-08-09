@@ -149,15 +149,16 @@ type StorageConfig struct {
 }
 
 type S3Config struct {
-	Enabled           bool   `yaml:"enabled"`
-	Bucket            string `yaml:"bucket"`
-	Region            string `yaml:"region"`
-	Endpoint          string `yaml:"endpoint"`
-	PathStyle         bool   `yaml:"path_style"`
-	UploadConcurrency int    `yaml:"upload_concurrency"`
-	PartSize          string `yaml:"part_size"`
-	AccessKeyID       string `yaml:"access_key_id"`
-	SecretAccessKey   string `yaml:"secret_access_key"`
+	Enabled           bool          `yaml:"enabled"`
+	Bucket            string        `yaml:"bucket"`
+	Region            string        `yaml:"region"`
+	Endpoint          string        `yaml:"endpoint"`
+	PathStyle         bool          `yaml:"path_style"`
+	UploadConcurrency int           `yaml:"upload_concurrency"`
+	PartSize          string        `yaml:"part_size"`
+	AccessKeyID       string        `yaml:"access_key_id"`
+	SecretAccessKey   string        `yaml:"secret_access_key"`
+	FlushInterval     time.Duration `yaml:"flush_interval"`
 }
 
 type GCSConfig struct {
@@ -265,6 +266,9 @@ func validateConfig(cfg *Config) error {
 		}
 		if cfg.Storage.S3.AccessKeyID == "" || cfg.Storage.S3.SecretAccessKey == "" {
 			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
+		}
+		if cfg.Storage.S3.FlushInterval <= 0 {
+			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
 		}
 	}
 
