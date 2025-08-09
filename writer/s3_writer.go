@@ -27,7 +27,7 @@ import (
 type ParquetRecord struct {
 	Exchange     string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
 	Symbol       string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Timestamp    int64   `parquet:"name=timestamp, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Timestamp    int64   `parquet:"name=timestamp, type=INT64"`
 	LastUpdateID int64   `parquet:"name=last_update_id, type=INT64"`
 	Side         string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
 	Price        float64 `parquet:"name=price, type=DOUBLE"`
@@ -393,7 +393,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 	// an order book level is absent; we ignore those here.
 	validEntries := make([]models.FlattenedOrderbookEntry, 0, len(entries))
 	for _, e := range entries {
-		if e.Timestamp.IsZero() || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
+		if e.Timestamp == 0 || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
 			continue
 		}
 		validEntries = append(validEntries, e)
@@ -431,7 +431,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 		record := ParquetRecord{
 			Exchange:     entry.Exchange,
 			Symbol:       entry.Symbol,
-			Timestamp:    entry.Timestamp.UnixMilli(),
+			Timestamp:    entry.Timestamp,
 			LastUpdateID: entry.LastUpdateID,
 			Side:         entry.Side,
 			Price:        entry.Price,
