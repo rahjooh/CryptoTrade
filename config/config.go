@@ -214,7 +214,6 @@ func LoadConfig(path string) (*Config, error) {
 	// Read configuration file
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Print("failed to read config file")
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
