@@ -216,11 +216,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 		}
 	}
 
-	payload, err := json.Marshal(map[string]interface{}{
-		"last_update_id": binanceResp.LastUpdateID,
-		"bids":           binanceResp.Bids,
-		"asks":           binanceResp.Asks,
-	})
+	payload, err := json.Marshal(binanceResp)
 	if err != nil {
 		br.sendError(symbol, market, fmt.Errorf("failed to marshal orderbook: %w", err))
 		return
