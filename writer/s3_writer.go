@@ -416,6 +416,10 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 
 	// Convert entries to parquet records and write
 	for _, entry := range entries {
+		if entry.Timestamp.IsZero() || entry.Price == 0 || entry.Quantity == 0 {
+			continue
+		}
+
 		record := ParquetRecord{
 			Exchange:     entry.Exchange,
 			Symbol:       entry.Symbol,

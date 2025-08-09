@@ -210,6 +210,10 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 			continue
 		}
 
+		if price == 0 || quantity == 0 {
+			continue
+		}
+
 		entries = append(entries, models.FlattenedOrderbookEntry{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
@@ -248,6 +252,10 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"level":        level + 1,
 				"raw_quantity": ask[1],
 			}).Error("failed to parse ask quantity")
+			continue
+		}
+
+		if price == 0 || quantity == 0 {
 			continue
 		}
 
