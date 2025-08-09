@@ -32,15 +32,15 @@ type OrderbookSnapshot struct {
 
 // FlattenedOrderbookEntry represents a single flattened orderbook entry
 type FlattenedOrderbookEntry struct {
-	Exchange     string    `json:"exchange"`
-	Symbol       string    `json:"symbol"`
-	Market       string    `json:"market"`
-	Timestamp    time.Time `json:"timestamp"`
-	LastUpdateID int64     `json:"last_update_id"`
-	Side         string    `json:"side"` // "bid" or "ask"
-	Price        float64   `json:"price"`
-	Quantity     float64   `json:"quantity"`
-	Level        int       `json:"level"` // 1 = best, 2 = second best, etc.
+	Exchange     string  `json:"exchange"`
+	Symbol       string  `json:"symbol"`
+	Market       string  `json:"market"`
+	Timestamp    int64   `json:"timestamp"`
+	LastUpdateID int64   `json:"last_update_id"`
+	Side         string  `json:"side"` // "bid" or "ask"
+	Price        float64 `json:"price"`
+	Quantity     float64 `json:"quantity"`
+	Level        int     `json:"level"` // 1 = best, 2 = second best, etc.
 }
 
 // FlattenedOrderbookBatch represents a batch of flattened orderbook entries
