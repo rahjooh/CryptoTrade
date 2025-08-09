@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/writer"
@@ -94,17 +95,32 @@ type S3Writer struct {
 func NewS3Writer(cfg *appconfig.Config, sortedChan <-chan models.SortedOrderbookBatch) (*S3Writer, error) {
 	log := logger.GetLogger()
 
-	if !cfg.Storage.S3.Enabled {
-		return nil, fmt.Errorf("S3 storage is disabled")
+	ctx := context.Background()
+
+	// Configure AWS options
+	loadOpts := []func(*config.LoadOptions) error{
+		config.WithRegion(cfg.Storage.S3.Region),
+	}
+	if cfg.Storage.S3.AccessKeyID != "" && cfg.Storage.S3.SecretAccessKey != "" {
+		loadOpts = append(loadOpts, config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				cfg.Storage.S3.AccessKeyID,
+				cfg.Storage.S3.SecretAccessKey,
+				"",
+			),
+		))
 	}
 
-	// Load AWS configuration
-	awsConfig, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(cfg.Storage.S3.Region),
-	)
+	awsConfig, err := config.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
 		log.WithComponent("s3_writer").WithError(err).Error("failed to load AWS configuration")
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	// Validate credentials
+	creds, err := awsConfig.Credentials.Retrieve(ctx)
+	if err != nil || !creds.HasKeys() {
+		return nil, fmt.Errorf("aws credentials not found")
 	}
 
 	// Create S3 client

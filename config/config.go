@@ -156,6 +156,8 @@ type S3Config struct {
 	PathStyle         bool   `yaml:"path_style"`
 	UploadConcurrency int    `yaml:"upload_concurrency"`
 	PartSize          string `yaml:"part_size"`
+	AccessKeyID       string `yaml:"access_key_id"`
+	SecretAccessKey   string `yaml:"secret_access_key"`
 }
 
 type GCSConfig struct {
@@ -260,6 +262,9 @@ func validateConfig(cfg *Config) error {
 		}
 		if cfg.Storage.S3.Region == "" {
 			return fmt.Errorf("storage.s3.region is required when S3 is enabled")
+		}
+		if cfg.Storage.S3.AccessKeyID == "" || cfg.Storage.S3.SecretAccessKey == "" {
+			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
 		}
 	}
 
