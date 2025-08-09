@@ -1,162 +1,145 @@
-# 🍣 CryptoFlow – High-Frequency Binance Orderbook Collector
+# CryptoFlow
 
-**CryptoFlow** is a Go-based high-frequency data collector that captures the BTCUSDT order book snapshot from Binance every second. It splits the snapshot into `bids` and `asks`, stores them in hourly rotated Parquet files, and exposes Prometheus metrics for observability.
-
----
-
-## 📦 Features
-
-- 🧠 **Async, functional, and isolated architecture**
-- 📁 **Hourly Parquet file storage** for `bids` and `asks`
-- 🔁 **Writer pooling** for performance and memory safety
-- 📈 **Prometheus metrics** exposed on port `2112`
-- 📦 **Dockerized and Makefile-driven** for easy build/run
-- ✅ **Graceful shutdown** and clean logging with `zerolog`
+CryptoFlow is a Go service that streams high‑frequency order book snapshots from exchanges and stores them as Parquet files in S3.  The reference implementation ships with a Binance futures reader and is designed to run continuously with minimal operational overhead.
 
 ---
 
-## 📂 Directory Structure
+## Architecture and Data Flow
+
+```
+┌─────────────┐   RawOrderbookMessage    ┌─────────────┐   FlattenedOrderbookBatch   ┌───────────┐
+│ Binance API │ ───────────────────────▶ │   Reader    │ ───────────────────────────▶ │ Flattener │
+└─────────────┘                         └─────────────┘                               └─────┬─────┘
+                                                                                         │
+                                                                                         ▼
+                                                                                ┌────────────┐
+                                                                                │  S3 Writer │
+                                                                                └────────────┘
+```
+
+1. **Reader** – polls the Binance depth endpoint at the configured interval and emits a `RawOrderbookMessage`.
+2. **Flattener** – converts each message into a `FlattenedOrderbookBatch`, expanding bids and asks into individual price levels.
+3. **S3 Writer** – buffers batches per `exchange/market/symbol` and periodically flushes them to S3 as Parquet files.
+4. **Channels** – provide back‑pressure aware communication between stages and expose lightweight metrics.
+
+### Channels
+
+| Channel | Direction | Data Type | Description |
+|---------|-----------|-----------|-------------|
+| `RawMessageChan` | Reader ▶ Flattener | `models.RawOrderbookMessage` | Full order‑book snapshot including timestamp, last update ID, bids and asks. |
+| `FlattenedChan` | Flattener ▶ S3 Writer | `models.FlattenedOrderbookBatch` | Batch of flattened entries (`Exchange`, `Market`, `Symbol`, `Timestamp`, `LastUpdateID`, `Side`, `Price`, `Quantity`, `Level`). |
+
+---
+
+## Repository Layout
 
 ```
 CryptoFlow/
-├── cmd/CryptoFlow/main.go                 # App entrypoint
-├── internal/
-│   ├── config/config.go              # File paths, output dirs, HTTP client
-│   ├── logger/logger.go              # Structured logging with zerolog
-│   ├── metrics/metrics.go            # Prometheus metric registration
-│   ├── model/
-│   │   ├── snapshot.go               # Binance response models
-│   │   └── orderbook_row.go         # Parquet row schema
-│   ├── reader/fetcher.go            # HTTP fetch logic
-│   └── writer/pool.go               # Writer pool, hourly parquet rotation
-├── Dockerfile                        # Build image
-├── docker-compose.yml               # Optional for orchestration
-├── Makefile                          # CLI automation
-├── go.mod / go.sum                   # Dependencies
-└── README.md                         # ← This file
+├── config/                # configuration loading and validation
+├── internal/              # channel definitions and monitoring
+├── logger/                # zerolog wrapper
+├── models/                # order book message and batch structs
+├── processor/             # flattener implementation
+├── reader/                # Binance futures depth reader
+├── writer/                # S3 parquet writer
+├── main.go                # application entrypoint
+├── config.yml             # runtime configuration
+├── .env.example           # sample AWS credentials
+└── ...
 ```
 
 ---
 
-## ⚙️ How It Works
+## Configuration
 
-1. Every second:
-   - Fetch order book snapshot from Binance
-   - Split into `bids` and `asks`
-2. Each entry is converted into a table row:
-   - `timestamp`, `price`, `quantity`
-3. Rows are written into Parquet files:
-   - Stored hourly under `./data/bids/YYYY-MM-DD_HH.parquet`
-   - And `./data/asks/YYYY-MM-DD_HH.parquet`
-4. Prometheus metrics are updated
-5. Logs are written using `zerolog`
+All runtime options live in `config.yml`.  Key sections:
+
+- `cryptoflow`: service name and version.
+- `channels`: buffer sizes for the raw and flattened channels.
+- `reader`: concurrency and retry controls for the exchange client.
+- `processor`: batch size and timeout for the flattener.
+- `source`: exchange endpoints to poll (e.g. `binance: future: orderbook`).
+- `storage.s3`: toggle and tune S3 writes (`flush_interval`, `partition_format`, compression, etc.).
+- `logging`: level, format and output destination.
+
+Sensitive S3 credentials are not stored in YAML.  Provide them through an `.env` file or the environment:
+
+```
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=...
+S3_BUCKET=...
+```
+
+Copy `.env.example` to `.env` and populate with your values before running the application.
 
 ---
 
-## 🚀 Getting Started
-
-### 🧰 Requirements
-
-- Docker
-- `make`
-
-### 🔨 Build the Docker image
+## Running
 
 ```bash
-make docker-build
+# Install dependencies and run tests
+go build ./...
+go test  ./...
+
+# Start the service (uses config.yml by default)
+go run main.go
 ```
 
-### ▶️ Run the container
+On startup CryptoFlow will:
+
+1. Load environment variables from `.env`.
+2. Read `config.yml` and validate required fields.
+3. Start the reader, flattener and (if enabled) the S3 writer.
+4. Begin streaming snapshots until interrupted (`Ctrl+C`).
+
+The S3 writer partitions data as:
+
+```
+exchange=<exchange>/market=<market>/symbol=<symbol>/year=YYYY/month=MM/day=DD/hour=HH/<file>.parquet
+```
+
+and flushes buffers at the configured `flush_interval`.
+
+---
+
+## Development
+
+Useful commands during development:
 
 ```bash
-make docker-run
+# Format and vet code (optional)
+go fmt ./...
+
+# Run unit tests
+go test ./...
+
+# Execute the service with a custom config
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... \
+  go run main.go -config config.yml
 ```
 
-This will:
-
-- Run the collector
-- Write output to `./data` on your host
-- Expose metrics at [http://localhost:2112/metrics](http://localhost:2112/metrics)
+Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.
 
 ---
 
-## 📊 Metrics Exposed
+## Graceful Shutdown
 
-| Metric                             | Description                                 |
-|------------------------------------|---------------------------------------------|
-| `CryptoFlow_snapshot_success_total`     | Number of successful orderbook snapshots    |
-| `CryptoFlow_snapshot_errors_total`      | Number of failed fetch/write attempts       |
-| `go_goroutines` / `go_memstats_*` | Runtime stats (GC, heap, threads, etc.)     |
-| `process_*`                        | CPU, RAM, file descriptor stats             |
+The main process listens for `SIGINT`/`SIGTERM`.  When received it:
 
----
+1. Cancels the root context.
+2. Stops the S3 writer, flattener and reader in order.
+3. Waits up to 30 seconds for all goroutines to exit.
 
-## 📁 Output File Structure
-
-Files are stored under:
-
-```
-./data/
-├── bids/
-│   ├── 2025-07-29_08.parquet
-│   ├── 2025-07-29_09.parquet
-│   └── ...
-└── asks/
-    ├── 2025-07-29_08.parquet
-    ├── 2025-07-29_09.parquet
-    └── ...
-```
-
-Each file includes one hour of 1-second resolution data for the respective side.
+This ensures buffered data is flushed before the process terminates.
 
 ---
 
-## 📘 Code Highlights
+## License
 
-- **Writer Pool**: Prevents memory leaks by managing file handles per hour.
-- **Parquet Format**: Fast, columnar storage ideal for analytics.
-- **Zerolog**: Low overhead structured logging.
-- **Prometheus**: Native Go instrumentation and `/metrics` endpoint.
-- **Graceful Shutdown**: Catches SIGINT and SIGTERM to flush & close writers.
+CryptoFlow is released under the [Apache 2.0 License](LICENSE).
 
 ---
 
-## 🛠 Makefile Commands
+_“Built for speed, clarity, and observability.”_
 
-```bash
-make build          # Build CryptoFlow binary
-make run            # Run locally (without Docker)
-make docker-build   # Build Docker image
-make docker-run     # Run Docker container (with volume + metrics port)
-make clean          # Remove compiled binary
-```
-
----
-
-## 🔐 Notes on Production
-
-- Consider rate limits on Binance API
-- Add exponential backoff for retries
-- Rotate or offload `.parquet` files to cloud/S3
-- Add `/healthz` or `/readyz` endpoints
-- Use Prometheus + Grafana to visualize metrics
-
----
-
-## 🧪 Future Enhancements
-
-- Snapshot duration histogram
-- Retry & backoff logic
-- S3 uploader for parquet files
-- Unit tests with mock HTTP client
-- Alerting on error spike or data gaps
-
----
-
-## 🧠 Credits
-
-Developed with ❤️ using Go, Zerolog, Prometheus, and Parquet.
-
----
-
-> _Built for speed, clarity, and observability._
