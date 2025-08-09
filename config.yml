@@ -291,12 +291,12 @@ exchanges:
 storage:
   s3:
     enabled: true
-    bucket: "cryptoflow-test"
-    region: "us-east-1"
+    bucket: ""
+    region: ""
     endpoint: "http://localhost:9000"
     path_style: true
-    access_key_id: "minio"
-    secret_access_key: "minio123"
+    access_key_id: ""
+    secret_access_key: ""
     flush_interval: "5m"
 
 writer:

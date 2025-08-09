@@ -7,6 +7,8 @@ import (
 
 	//"cryptoflow/logger"
 	"gopkg.in/yaml.v3"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -206,13 +208,12 @@ type LoggingConfig struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	//log := logger.GetLogger().WithComponent("config")
+	// Load environment variables from .env if present
+	_ = godotenv.Load()
 
-	//log.WithFields(logger.Fields{"path": path}).Info("loading configuration file")
-
+	// Read configuration file
 	data, err := os.ReadFile(path)
 	if err != nil {
-		//log.WithError(err).WithFields(logger.Fields{"path": path}).Error("failed to read config file")
 		fmt.Print("failed to read config file")
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -220,6 +221,22 @@ func LoadConfig(path string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Override S3 settings from environment variables if available
+	if config.Storage.S3.Enabled {
+		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
+			config.Storage.S3.AccessKeyID = v
+		}
+		if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
+			config.Storage.S3.SecretAccessKey = v
+		}
+		if v := os.Getenv("AWS_REGION"); v != "" {
+			config.Storage.S3.Region = v
+		}
+		if v := os.Getenv("S3_BUCKET"); v != "" {
+			config.Storage.S3.Bucket = v
+		}
 	}
 
 	// Validate configuration
