@@ -393,7 +393,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 	// an order book level is absent; we ignore those here.
 	validEntries := make([]models.FlattenedOrderbookEntry, 0, len(entries))
 	for _, e := range entries {
-		if e.Timestamp == 0 || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
+		if e.Timestamp.IsZero() || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
 			continue
 		}
 		validEntries = append(validEntries, e)
@@ -431,7 +431,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 		record := ParquetRecord{
 			Exchange:     entry.Exchange,
 			Symbol:       entry.Symbol,
-			Timestamp:    entry.Timestamp,
+			Timestamp:    entry.Timestamp.UnixMilli(),
 			LastUpdateID: entry.LastUpdateID,
 			Side:         entry.Side,
 			Price:        entry.Price,
