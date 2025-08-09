@@ -15,7 +15,7 @@ type Config struct {
 	Reader     ReaderConfig     `yaml:"reader"`
 	Processor  ProcessorConfig  `yaml:"processor"`
 	Writer     WriterConfig     `yaml:"writer"`
-	Exchanges  ExchangesConfig  `yaml:"exchanges"`
+	Source     SourceConfig     `yaml:"source"`
 	Storage    StorageConfig    `yaml:"storage"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
 	Logging    LoggingConfig    `yaml:"logging"`
@@ -29,7 +29,6 @@ type CryptoflowConfig struct {
 type ChannelsConfig struct {
 	RawBuffer       int `yaml:"raw_buffer"`
 	ProcessedBuffer int `yaml:"processed_buffer"`
-	WriteBuffer     int `yaml:"write_buffer"`
 	ErrorBuffer     int `yaml:"error_buffer"`
 	PoolSize        int `yaml:"pool_size"`
 }
@@ -116,31 +115,38 @@ type AvroConfig struct {
 	Compression string `yaml:"compression"`
 }
 
-type ExchangesConfig struct {
-	Binance  ExchangeConfig `yaml:"binance"`
-	Coinbase ExchangeConfig `yaml:"coinbase"`
-}
-
-type ExchangeConfig struct {
-	Enabled        bool                 `yaml:"enabled"`
-	BaseURL        string               `yaml:"base_url"`
-	Endpoints      []EndpointConfig     `yaml:"endpoints"`
-	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
-}
-
-type EndpointConfig struct {
-	Name       string        `yaml:"name"`
-	Path       string        `yaml:"path"`
-	Limit      int           `yaml:"limit"`
-	IntervalMs int           `yaml:"interval_ms"`
-	Symbols    []string      `yaml:"symbols"`
-	Timeout    time.Duration `yaml:"timeout"`
-}
-
 type ConnectionPoolConfig struct {
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	MaxConnsPerHost int           `yaml:"max_conns_per_host"`
 	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout"`
+}
+
+type SourceConfig struct {
+	Binance BinanceSourceConfig `yaml:"binance"`
+}
+
+type BinanceSourceConfig struct {
+	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
+	Future         BinanceFutureConfig  `yaml:"future"`
+}
+
+type BinanceFutureConfig struct {
+	Orderbook BinanceFutureOrderbookConfig `yaml:"orderbook"`
+}
+
+type BinanceFutureOrderbookConfig struct {
+	Snapshots BinanceSnapshotConfig `yaml:"snapshots"`
+}
+
+type BinanceSnapshotConfig struct {
+	Enabled           bool     `yaml:"enabled"`
+	Connection        string   `yaml:"connection"`
+	URL               string   `yaml:"url"`
+	Limit             int      `yaml:"limit"`
+	IntervalMs        int      `yaml:"interval_ms"`
+	Symbols           []string `yaml:"symbols"`
+	ConcurrentSymbols int      `yaml:"concurrent_symbols"`
+	BatchSize         int      `yaml:"batch_size"`
 }
 
 type StorageConfig struct {

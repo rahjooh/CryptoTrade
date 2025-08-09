@@ -77,16 +77,16 @@ func (mfw *memoryFileWriter) Bytes() []byte {
 }
 
 type S3Writer struct {
-	config      *appconfig.Config
-	sortedChan  <-chan models.SortedOrderbookBatch
-	s3Client    *s3.Client
-	ctx         context.Context
-	wg          *sync.WaitGroup
-	mu          sync.RWMutex
-	running     bool
-	log         *logger.Logger
-	buffer      map[string][]models.FlattenedOrderbookEntry
-	flushTicker *time.Ticker
+	config        *appconfig.Config
+	flattenedChan <-chan models.FlattenedOrderbookBatch
+	s3Client      *s3.Client
+	ctx           context.Context
+	wg            *sync.WaitGroup
+	mu            sync.RWMutex
+	running       bool
+	log           *logger.Logger
+	buffer        map[string][]models.FlattenedOrderbookEntry
+	flushTicker   *time.Ticker
 
 	// Metrics
 	batchesWritten int64
@@ -95,7 +95,7 @@ type S3Writer struct {
 	errorsCount    int64
 }
 
-func (w *S3Writer) addBatch(batch models.SortedOrderbookBatch) {
+func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
@@ -144,7 +144,7 @@ func (w *S3Writer) flushBuffers(reason string) {
 			continue
 		}
 		parts := strings.SplitN(key, "|", 3)
-		batch := models.SortedOrderbookBatch{
+		batch := models.FlattenedOrderbookBatch{
 			BatchID:     uuid.New().String(),
 			Exchange:    parts[0],
 			Market:      parts[1],
@@ -156,7 +156,7 @@ func (w *S3Writer) flushBuffers(reason string) {
 		w.processBatch(batch)
 	}
 }
-func NewS3Writer(cfg *appconfig.Config, sortedChan <-chan models.SortedOrderbookBatch) (*S3Writer, error) {
+func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrderbookBatch) (*S3Writer, error) {
 	log := logger.GetLogger()
 
 	ctx := context.Background()
@@ -196,11 +196,11 @@ func NewS3Writer(cfg *appconfig.Config, sortedChan <-chan models.SortedOrderbook
 	})
 
 	s3Writer := &S3Writer{
-		config:     cfg,
-		sortedChan: sortedChan,
-		s3Client:   s3Client,
-		wg:         &sync.WaitGroup{},
-		log:        log,
+		config:        cfg,
+		flattenedChan: flattenedChan,
+		s3Client:      s3Client,
+		wg:            &sync.WaitGroup{},
+		log:           log,
 	}
 
 	log.WithComponent("s3_writer").WithFields(logger.Fields{
@@ -281,17 +281,19 @@ func (w *S3Writer) worker(workerID int) {
 		case <-w.ctx.Done():
 			log.Info("worker stopped due to context cancellation")
 			return
-		case batch, ok := <-w.sortedChan:
+		case batch, ok := <-w.flattenedChan:
 			if !ok {
-				log.Info("sorted channel closed, worker stopping")
+				log.Info("flattened channel closed, worker stopping")
 				return
 			}
 			w.addBatch(batch)
+			w.batchesWritten++
+			logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
 		}
 	}
 }
 
-func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
+func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"batch_id":     batch.BatchID,
 		"exchange":     batch.Exchange,
@@ -329,7 +331,6 @@ func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
 	}
 
 	// Update metrics
-	w.batchesWritten++
 	w.filesWritten++
 	w.bytesWritten += fileSize
 
@@ -337,7 +338,7 @@ func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
 		"file_size": fileSize,
 	}).Info("batch processed and uploaded successfully")
 
-	logger.LogDataFlowEntry(log, "sorted_channel", "s3", batch.RecordCount, "parquet_file")
+	logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
 	w.log.LogMetric("s3_writer", "file_uploaded", 1, logger.Fields{
 		"exchange":     batch.Exchange,
 		"symbol":       batch.Symbol,
@@ -346,7 +347,7 @@ func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
 	})
 }
 
-func (w *S3Writer) generateS3Key(batch models.SortedOrderbookBatch) string {
+func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
 	timestamp := batch.Timestamp
 
 	// Build key parts from additional keys in order
