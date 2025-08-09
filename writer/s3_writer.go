@@ -387,8 +387,20 @@ func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
 }
 
 func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
+	// Filter out any entries that are missing critical fields to avoid
+	// producing placeholder rows in the resulting parquet file. Some
+	// upstream components may pass along entries with zero values when
+	// an order book level is absent; we ignore those here.
+	validEntries := make([]models.FlattenedOrderbookEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.Timestamp.IsZero() || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
+			continue
+		}
+		validEntries = append(validEntries, e)
+	}
+
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"entries_count": len(entries),
+		"entries_count": len(validEntries),
 		"operation":     "create_parquet_file",
 	})
 	log.Debug("creating parquet file")
@@ -415,11 +427,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 	}
 
 	// Convert entries to parquet records and write
-	for _, entry := range entries {
-		if entry.Timestamp.IsZero() || entry.Price == 0 || entry.Quantity == 0 {
-			continue
-		}
-
+	for _, entry := range validEntries {
 		record := ParquetRecord{
 			Exchange:     entry.Exchange,
 			Symbol:       entry.Symbol,
@@ -446,7 +454,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 
 	log.WithFields(logger.Fields{
 		"file_size":     len(data),
-		"entries_count": len(entries),
+		"entries_count": len(validEntries),
 		"compression":   w.config.Writer.Formats.Parquet.Compression,
 	}).Debug("parquet file created successfully")
 
