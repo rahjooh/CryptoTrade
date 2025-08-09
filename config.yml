@@ -267,9 +267,7 @@ exchanges:
 storage:
   s3:
     enabled: true
-    endpoint: "http://localhost:9000"
-    path_style: true
-    flush_interval: "5m"
+    flush_interval: "1m"
 
     # bucket, region, and credentials are loaded from environment variables:
     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and S3_BUCKET
