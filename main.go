@@ -52,7 +52,6 @@ func main() {
 	channels := internal.NewChannels(
 		cfg.Channels.RawBuffer,
 		cfg.Channels.ProcessedBuffer,
-		cfg.Channels.WriteBuffer,
 	)
 	defer channels.Close()
 
@@ -60,12 +59,11 @@ func main() {
 
 	binanceReader := reader.NewBinanceReader(cfg, channels.RawMessageChan)
 	flattener := processor.NewFlattener(cfg, channels.RawMessageChan, channels.FlattenedChan)
-	sorter := processor.NewSorter(cfg, channels.FlattenedChan, channels.SortedChan)
 
 	var s3Writer *writer.S3Writer
 	if cfg.Storage.S3.Enabled {
 		var err error
-		s3Writer, err = writer.NewS3Writer(cfg, channels.SortedChan)
+		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
 		if err != nil {
 			log.WithError(err).Fatal("failed to create S3 writer")
 		}
@@ -88,14 +86,6 @@ func main() {
 		defer wg.Done()
 		if err := flattener.Start(ctx); err != nil {
 			log.WithError(err).Error("flattener failed to start")
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := sorter.Start(ctx); err != nil {
-			log.WithError(err).Error("sorter failed to start")
 		}
 	}()
 
@@ -125,9 +115,6 @@ func main() {
 		log.Info("stopping S3 writer")
 		s3Writer.Stop()
 	}
-
-	log.Info("stopping sorter")
-	sorter.Stop()
 
 	log.Info("stopping flattener")
 	flattener.Stop()

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -36,9 +35,9 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
-		MaxIdleConns:       cfg.Exchanges.Binance.ConnectionPool.MaxIdleConns,
-		MaxConnsPerHost:    cfg.Exchanges.Binance.ConnectionPool.MaxConnsPerHost,
-		IdleConnTimeout:    cfg.Exchanges.Binance.ConnectionPool.IdleConnTimeout,
+		MaxIdleConns:       cfg.Source.Binance.ConnectionPool.MaxIdleConns,
+		MaxConnsPerHost:    cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
+		IdleConnTimeout:    cfg.Source.Binance.ConnectionPool.IdleConnTimeout,
 		DisableCompression: false,
 	}
 
@@ -56,8 +55,8 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 	}
 
 	log.WithComponent("binance_reader").WithFields(logger.Fields{
-		"max_idle_conns":     cfg.Exchanges.Binance.ConnectionPool.MaxIdleConns,
-		"max_conns_per_host": cfg.Exchanges.Binance.ConnectionPool.MaxConnsPerHost,
+		"max_idle_conns":     cfg.Source.Binance.ConnectionPool.MaxIdleConns,
+		"max_conns_per_host": cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
 		"timeout":            cfg.Reader.Timeout,
 	}).Info("binance reader initialized")
 
@@ -76,27 +75,20 @@ func (br *BinanceReader) Start(ctx context.Context) error {
 
 	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{"operation": "start"})
 
-	if !br.config.Exchanges.Binance.Enabled {
-		log.Warn("binance exchange is disabled")
-		return fmt.Errorf("binance exchange is disabled")
+	snapshotCfg := br.config.Source.Binance.Future.Orderbook.Snapshots
+	if !snapshotCfg.Enabled {
+		log.Warn("binance futures orderbook snapshots are disabled")
+		return fmt.Errorf("binance futures orderbook snapshots are disabled")
 	}
 
-	log.Info("starting binance reader")
+	log.WithFields(logger.Fields{
+		"symbols":  snapshotCfg.Symbols,
+		"interval": snapshotCfg.IntervalMs,
+	}).Info("starting binance reader")
 
-	// Start workers for each symbol
-	for _, endpoint := range br.config.Exchanges.Binance.Endpoints {
-		if endpoint.Name == "futures_depth" {
-			log.WithFields(logger.Fields{
-				"endpoint": endpoint.Name,
-				"symbols":  endpoint.Symbols,
-				"interval": endpoint.IntervalMs,
-			}).Info("starting endpoint workers")
-
-			for _, symbol := range endpoint.Symbols {
-				br.wg.Add(1)
-				go br.fetchOrderbookWorker(symbol, endpoint)
-			}
-		}
+	for _, symbol := range snapshotCfg.Symbols {
+		br.wg.Add(1)
+		go br.fetchOrderbookWorker(symbol, snapshotCfg)
 	}
 
 	// Start metrics reporter
@@ -116,18 +108,17 @@ func (br *BinanceReader) Stop() {
 	br.log.WithComponent("binance_reader").Info("binance reader stopped")
 }
 
-func (br *BinanceReader) fetchOrderbookWorker(symbol string, endpoint config.EndpointConfig) {
+func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
 	defer br.wg.Done()
 
 	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{
-		"symbol":   symbol,
-		"endpoint": endpoint.Name,
-		"worker":   "orderbook_fetcher",
+		"symbol": symbol,
+		"worker": "orderbook_fetcher",
 	})
 
 	log.Info("starting orderbook worker")
 
-	ticker := time.NewTicker(time.Duration(endpoint.IntervalMs) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(snapshotCfg.IntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -137,36 +128,34 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, endpoint config.End
 			return
 		case <-ticker.C:
 			start := time.Now()
-			br.fetchOrderbook(symbol, endpoint)
+			br.fetchOrderbook(symbol, snapshotCfg)
 			duration := time.Since(start)
 
-			if duration > time.Duration(endpoint.IntervalMs)*time.Millisecond {
+			if duration > time.Duration(snapshotCfg.IntervalMs)*time.Millisecond {
 				log.WithFields(logger.Fields{
 					"duration": duration.Milliseconds(),
-					"interval": endpoint.IntervalMs,
+					"interval": snapshotCfg.IntervalMs,
 				}).Warn("fetch took longer than interval")
 			}
 		}
 	}
 }
 
-func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointConfig) {
+func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
 	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{
 		"symbol":    symbol,
-		"endpoint":  endpoint.Name,
 		"operation": "fetch_orderbook",
 	})
 
-	market := marketNameFromEndpoint(endpoint.Name)
+	market := "future-orderbook-snapshot"
 
 	br.lastRequestTime = time.Now()
 	br.requestCount++
 
-	url := fmt.Sprintf("%s%s?symbol=%s&limit=%d",
-		br.config.Exchanges.Binance.BaseURL,
-		endpoint.Path,
+	url := fmt.Sprintf("%s?symbol=%s&limit=%d",
+		snapshotCfg.URL,
 		symbol,
-		endpoint.Limit)
+		snapshotCfg.Limit)
 
 	log.WithFields(logger.Fields{"url": url}).Debug("making API request")
 
@@ -225,7 +214,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "binance",
 		Symbol:      symbol,
-		Market:      marketNameFromEndpoint(endpoint.Name),
+		Market:      market,
 		Timestamp:   time.Now().UTC(),
 		Data:        payload,
 		MessageType: "snapshot",
@@ -240,24 +229,6 @@ func (br *BinanceReader) fetchOrderbook(symbol string, endpoint config.EndpointC
 	default:
 		br.sendError(symbol, market, fmt.Errorf("raw channel is full, dropping data"))
 	}
-}
-
-func marketNameFromEndpoint(name string) string {
-	tokens := strings.Split(name, "_")
-	parts := make([]string, 0, len(tokens))
-	for _, t := range tokens {
-		switch t {
-		case "futures":
-			parts = append(parts, "future")
-		case "depth":
-			parts = append(parts, "orderbook-snapshot")
-		case "spot":
-			parts = append(parts, "spot")
-		default:
-			parts = append(parts, t)
-		}
-	}
-	return strings.Join(parts, "-")
 }
 
 func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, symbol string) bool {

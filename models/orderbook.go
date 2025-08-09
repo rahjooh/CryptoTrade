@@ -55,19 +55,6 @@ type FlattenedOrderbookBatch struct {
 	ProcessedAt time.Time                 `json:"processed_at"`
 }
 
-// SortedOrderbookBatch represents a batch of sorted orderbook entries
-type SortedOrderbookBatch struct {
-	BatchID     string                    `json:"batch_id"`
-	Exchange    string                    `json:"exchange"`
-	Symbol      string                    `json:"symbol"`
-	Market      string                    `json:"market"`
-	Entries     []FlattenedOrderbookEntry `json:"entries"`
-	RecordCount int                       `json:"record_count"`
-	Timestamp   time.Time                 `json:"timestamp"`
-	ProcessedAt time.Time                 `json:"processed_at"`
-	SortedAt    time.Time                 `json:"sorted_at"`
-}
-
 // BinanceOrderbookResponse represents the response from Binance API
 type BinanceOrderbookResponse struct {
 	LastUpdateID int64      `json:"lastUpdateId"`

@@ -12,16 +12,13 @@ import (
 type ChannelStats struct {
 	RawMessagesSent         int64
 	FlattenedBatchesSent    int64
-	SortedBatchesSent       int64
 	RawMessagesDropped      int64
 	FlattenedBatchesDropped int64
-	SortedBatchesDropped    int64
 }
 
 type Channels struct {
 	RawMessageChan chan models.RawOrderbookMessage
 	FlattenedChan  chan models.FlattenedOrderbookBatch
-	SortedChan     chan models.SortedOrderbookBatch
 
 	stats               ChannelStats
 	statsMutex          sync.RWMutex
@@ -30,20 +27,18 @@ type Channels struct {
 	metricsReportTicker *time.Ticker
 }
 
-func NewChannels(rawBufferSize, flattenedBufferSize, sortedBufferSize int) *Channels {
+func NewChannels(rawBufferSize, flattenedBufferSize int) *Channels {
 	log := logger.GetLogger()
 
 	c := &Channels{
 		RawMessageChan: make(chan models.RawOrderbookMessage, rawBufferSize),
 		FlattenedChan:  make(chan models.FlattenedOrderbookBatch, flattenedBufferSize),
-		SortedChan:     make(chan models.SortedOrderbookBatch, sortedBufferSize),
 		log:            log,
 	}
 
 	log.WithComponent("channels").WithFields(logger.Fields{
 		"raw_buffer_size":       rawBufferSize,
 		"flattened_buffer_size": flattenedBufferSize,
-		"sorted_buffer_size":    sortedBufferSize,
 	}).Info("channels initialized")
 
 	return c
@@ -74,16 +69,12 @@ func (c *Channels) logChannelStats(log *logger.Logger) {
 	log.WithComponent("channels").WithFields(logger.Fields{
 		"raw_messages_sent":         stats.RawMessagesSent,
 		"flattened_batches_sent":    stats.FlattenedBatchesSent,
-		"sorted_batches_sent":       stats.SortedBatchesSent,
 		"raw_messages_dropped":      stats.RawMessagesDropped,
 		"flattened_batches_dropped": stats.FlattenedBatchesDropped,
-		"sorted_batches_dropped":    stats.SortedBatchesDropped,
 		"raw_channel_len":           len(c.RawMessageChan),
 		"raw_channel_cap":           cap(c.RawMessageChan),
 		"flattened_channel_len":     len(c.FlattenedChan),
 		"flattened_channel_cap":     cap(c.FlattenedChan),
-		"sorted_channel_len":        len(c.SortedChan),
-		"sorted_channel_cap":        cap(c.SortedChan),
 	}).Info("channel statistics")
 }
 
@@ -94,7 +85,6 @@ func (c *Channels) Close() {
 
 	close(c.RawMessageChan)
 	close(c.FlattenedChan)
-	close(c.SortedChan)
 
 	c.log.WithComponent("channels").Info("all channels closed")
 }
@@ -111,12 +101,6 @@ func (c *Channels) IncrementFlattenedBatchesSent() {
 	c.statsMutex.Unlock()
 }
 
-func (c *Channels) IncrementSortedBatchesSent() {
-	c.statsMutex.Lock()
-	c.stats.SortedBatchesSent++
-	c.statsMutex.Unlock()
-}
-
 func (c *Channels) IncrementRawMessagesDropped() {
 	c.statsMutex.Lock()
 	c.stats.RawMessagesDropped++
@@ -126,12 +110,6 @@ func (c *Channels) IncrementRawMessagesDropped() {
 func (c *Channels) IncrementFlattenedBatchesDropped() {
 	c.statsMutex.Lock()
 	c.stats.FlattenedBatchesDropped++
-	c.statsMutex.Unlock()
-}
-
-func (c *Channels) IncrementSortedBatchesDropped() {
-	c.statsMutex.Lock()
-	c.stats.SortedBatchesDropped++
 	c.statsMutex.Unlock()
 }
 
