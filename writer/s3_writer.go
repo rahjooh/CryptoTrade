@@ -346,25 +346,31 @@ func (w *S3Writer) processBatch(batch models.SortedOrderbookBatch) {
 }
 
 func (w *S3Writer) generateS3Key(batch models.SortedOrderbookBatch) string {
-	// Parse time format from config
-	timeFormat := w.config.Writer.Partitioning.TimeFormat
 	timestamp := batch.Timestamp
 
-	// Replace time placeholders
-	key := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
-	key = strings.ReplaceAll(key, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
-	key = strings.ReplaceAll(key, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
-	key = strings.ReplaceAll(key, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
-
-	// Add additional keys
-	for _, additionalKey := range w.config.Writer.Partitioning.AdditionalKeys {
-		switch additionalKey {
+	// Build key parts from additional keys in order
+	var parts []string
+	for _, k := range w.config.Writer.Partitioning.AdditionalKeys {
+		switch k {
 		case "exchange":
-			key = filepath.Join(key, fmt.Sprintf("exchange=%s", batch.Exchange))
+			parts = append(parts, fmt.Sprintf("exchange=%s", batch.Exchange))
 		case "symbol":
-			key = filepath.Join(key, fmt.Sprintf("symbol=%s", batch.Symbol))
+			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
+		case "market":
+			if m := w.config.Writer.Partitioning.Market; m != "" {
+				parts = append(parts, fmt.Sprintf("market=%s", m))
+			}
 		}
 	}
+
+	// Time-based partition path
+	timeFormat := w.config.Writer.Partitioning.TimeFormat
+	timePath := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
+	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
+
+	parts = append(parts, timePath)
 
 	// Add filename
 	filename := fmt.Sprintf("orderbook_%s_%s_%d.parquet",
@@ -372,12 +378,10 @@ func (w *S3Writer) generateS3Key(batch models.SortedOrderbookBatch) string {
 		batch.Symbol,
 		timestamp.UnixNano())
 
-	key = filepath.Join(key, filename)
+	key := filepath.Join(append(parts, filename)...)
 
 	// Convert to forward slashes for S3
-	key = filepath.ToSlash(key)
-
-	return key
+	return filepath.ToSlash(key)
 }
 
 func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
