@@ -233,6 +233,7 @@ logging:
   output: "stdout"
   file_path: "logs/collector.log"
   include_caller: true
+
 # CryptoFlow pipeline configuration
 cryptoflow:
   name: "CryptoFlow"
