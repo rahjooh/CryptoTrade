@@ -1,21 +1,284 @@
-spot_orderbook_snapshot:
-  binance:
-    url: https://api.binance.com/api/v3/depth
-    limit: 1000
-    period: 100
-    symbols: [BTCUSDT, ETHUSDT]
+# Application Settings
+app:
+  name: "CryptoFlow"
+  version: "1.0.0"
+  environment: "development"
 
-#  - exchange: bybit
-#    url: https://api.bybit.com/spot/quote/v1/depth
-#    limit: 50
-#    symbols: [BTCUSDT, ETHUSDT]
-#
-#  - exchange: okx
-#    url: https://www.okx.com/api/v5/market/books
-#    limit: 50
-#    symbols: [BTC-USDT, ETH-USDT]
-#
-#  - exchange: kucoin
-#    url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
-#    limit: 100
-#    symbols: [BTC-USDT, ETH-USDT]
+# Source Configuration
+source:
+  binance:
+    connection_pool:
+      max_idle_conns: 10
+      max_conns_per_host: 10
+      idle_conn_timeout: 90s
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.binance.com/api/v3/depth
+          limit: 1000      # Max allowed for spot order book depth
+          interval_ms: 1000
+          symbols: [ BTCUSDT, ETHUSDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://stream.binance.com:9443/ws
+          interval_ms: 100
+          symbols: [ BTCUSDT, ETHUSDT ]
+    future:
+      orderbook:
+        snapshots:
+          enabled: true
+          connection: rest
+          url: https://fapi.binance.com/fapi/v1/depth
+          limit: 1000                   # Number of price levels
+          interval_ms: 1000             # Collect every 1000 mili seconds
+          symbols: [ BTCUSDT, ETHUSDT ]
+          concurrent_symbols: 5         # Max concurrent API calls
+          batch_size: 10000             #  Records per batch before writing
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://fstream.binance.com/ws
+          interval_ms: 100
+          symbols: [ BTCUSDT, ETHUSDT ]
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/exchangeInfo
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://fstream.binance.com/ws
+        symbols: [ BTCUSDT, ETHUSDT ]
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/openInterest
+        interval_minutes: 5
+        symbols: [ BTCUSDT, ETHUSDT ]
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/fundingRate
+        interval_minutes: 60
+        symbols: [ BTCUSDT, ETHUSDT ]
+
+  bybit:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.bybit.com/spot/v3/public/quote/depth
+          limit: 1000
+          interval_ms: 1000
+          symbols: [ BTCUSDT, ETHUSDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://stream.bybit.com/spot/quote/ws/v1
+          interval_ms: 100
+          symbols: [ BTCUSDT, ETHUSDT ]
+    future:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.bybit.com/v5/market/orderbook
+          limit: 500
+          interval_ms: 1000
+          symbols: [ BTCUSDT, ETHUSDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://stream.bybit.com/v5/public/linear
+          interval_ms: 100
+          symbols: [ BTCUSDT, ETHUSDT ]
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/instruments-info
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://stream.bybit.com/v5/public/linear
+        symbols: [ BTCUSDT, ETHUSDT ]
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/open-interest
+        interval_minutes: 5
+        symbols: [ BTCUSDT, ETHUSDT ]
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/funding/history
+        interval_minutes: 60
+        symbols: [ BTCUSDT, ETHUSDT ]
+
+  okx:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://www.okx.com/api/v5/market/books
+          limit: 400
+          interval_ms: 1000
+          symbols: [ BTC-USDT, ETH-USDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws.okx.com:8443/ws/v5/public
+          interval_ms: 100
+          symbols: [ BTC-USDT, ETH-USDT ]
+    future:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://www.okx.com/api/v5/market/books
+          limit: 400
+          interval_ms: 1000
+          symbols: [ BTC-USDT, ETH-USDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws.okx.com:8443/ws/v5/public
+          interval_ms: 100
+          symbols: [ BTC-USDT ]
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/instruments
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://ws.okx.com:8443/ws/v5/public
+        symbols: [ BTC-USDT ]
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/open-interest
+        interval_minutes: 5
+        symbols: [ BTC-USDT ]
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/funding-rate
+        interval_minutes: 60
+        symbols: [ BTC-USDT ]
+
+  kucoin:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
+          limit: 100
+          interval_ms: 1000
+          symbols: [ BTC-USDT, ETH-USDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws-api.kucoin.com/endpoint
+          interval_ms: 100
+          symbols: [ BTC-USDT, ETH-USDT ]
+
+  coinbase:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.exchange.coinbase.com/products/BTC-USD/book
+          limit: 100
+          interval_ms: 1000
+          symbols: [ BTC-USD, ETH-USD ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws-feed.exchange.coinbase.com
+          interval_ms: 100
+          symbols: [ BTC-USD, ETH-USD ]
+
+  kraken:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.kraken.com/0/public/Depth
+          limit: 100
+          interval_ms: 1000
+          symbols: [ XBT/USD, ETH/USD ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws.kraken.com
+          interval_ms: 100
+          symbols: [ XBT/USD, ETH/USD ]
+
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file_path: "logs/collector.log"
+  include_caller: true
+# CryptoFlow pipeline configuration
+cryptoflow:
+  name: "CryptoFlow"
+  version: "1.0.0"
+
+channels:
+  raw_buffer: 100
+  processed_buffer: 100
+
+reader:
+  max_workers: 1
+  timeout: "5s"
+
+processor:
+  max_workers: 1
+  batch_size: 1
+  batch_timeout: "1s"
+
+storage:
+  s3:
+    enabled: true
+    flush_interval: "1m"
+
+    # bucket, region, and credentials are loaded from environment variables:
+    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and S3_BUCKET
+
+writer:
+  max_workers: 1
+  batch:
+    size: 10
+    timeout: "1s"
+    max_memory: "1MB"
+  buffer:
+    max_size: 10
+    flush_interval: "1s"
+    memory_threshold: 0.8
+  partitioning:
+    scheme: "time"
+    time_format: "year={year}/month={month}/day={day}/hour={hour}"
+    additional_keys: ["exchange", "market", "symbol"]
+  formats:
+    parquet:
+      enabled: true
+      compression: "snappy"
+      page_size: 0
+    avro:
+      enabled: false
+      compression: ""
+  compression: ""
