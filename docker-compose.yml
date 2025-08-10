@@ -1,10 +1,12 @@
-  version: '3.8'
-  services:
-    cryptoflow:
-      build: .
-      container_name: mrhadipinova/cryptoflow:latest
-      ports:
-        - "2112:2112"
-      restart: unless-stopped
-      volumes:
-        - ./data:/app/data
+version: '3.8'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mrhadipinova/cryptoflow:latest 
+    container_name: cryptoflow              
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["./cryptoflow"]
