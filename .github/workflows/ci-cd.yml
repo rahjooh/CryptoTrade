@@ -35,13 +35,14 @@ jobs:
             set -e
             whoami
             hostname
-            uname -a
             echo "ok: ssh works"
 
   deploy-ec2:
     runs-on: ubuntu-latest
     needs: [test-build, smoke-ssh]
     if: github.ref == 'refs/heads/main'
+    env:
+      REPO: ${{ github.repository }}   # e.g. username/cryptoflow
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -49,23 +50,38 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          # pass app secrets if you need them on the remote shell
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET
+          # pass env(s) into the remote session
+          envs: REPO,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET
           script: |
-            set -e
-            cd /home/${{ secrets.EC2_USER }}/cryptoflow
+            set -euo pipefail
+            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
 
             # first-time clone if directory isn't a git repo
             if [ ! -d .git ]; then
-              git clone git@github.com:<owner>/<repo>.git . || git clone https://github.com/<owner>/<repo>.git .
+              echo "Cloning $REPO into $APP_DIR"
+              git clone "git@github.com:${REPO}.git" . || git clone "https://github.com/${REPO}.git" .
             fi
-            git pull --rebase
+
+            # ensure remote points to SSH (works if you added a Deploy Key on EC2; falls back to https if public)
+            git remote set-url origin "git@github.com:${REPO}.git" || true
+
+            # fetch and fast-forward to main
+            git fetch origin main
+            git checkout -B main origin/main
+            git pull --rebase origin main
 
             # run your stack (compose v2 preferred)
-            if command -v docker compose >/dev/null 2>&1; then
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
               docker compose down || true
               docker compose up -d --build
-            else
+            elif command -v docker-compose >/dev/null 2>&1; then
               docker-compose down || true
               docker-compose up -d --build
+            else
+              echo "Docker/Compose not installed. Install them once, then re-run."
+              exit 1
             fi
+
+            echo "✅ Deploy complete"
