@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o CryptoFlow ./cmd/CryptoFlow
+RUN go build -o CryptoFlow .
 
 VOLUME ["/app/data"]
 CMD ["./CryptoFlow"]
