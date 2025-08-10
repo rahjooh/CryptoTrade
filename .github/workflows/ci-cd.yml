@@ -21,7 +21,7 @@ jobs:
       - name: Build binary
         run: go build -o cryptoflow .
 
-  smoke-ssh:
+  test-ssh:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
