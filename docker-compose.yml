@@ -2,7 +2,7 @@
   services:
     CryptoFlow:
       build: .
-      container_name: cryptoflow/cryptoflow:latest
+      container_name: mrhadipinova/cryptoflow:latest
       environment:
         - SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT
       ports:
