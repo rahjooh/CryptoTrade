@@ -1,7 +1,7 @@
 .PHONY: build run stop clean docker-build docker-run
 
 build:
-	go build -o CryptoFlow ./cmd/CryptoFlow
+	go build -o CryptoFlow .
 
 run:
 	SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT ./CryptoFlow
