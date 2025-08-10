@@ -2,7 +2,7 @@
   services:
     CryptoFlow:
       build: .
-      container_name: CryptoFlow_collector
+      container_name: cryptoflow/cryptoflow:latest
       environment:
         - SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT
       ports:
