@@ -1,10 +1,8 @@
   version: '3.8'
   services:
-    CryptoFlow:
+    cryptoflow:
       build: .
       container_name: mrhadipinova/cryptoflow:latest
-      environment:
-        - SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT
       ports:
         - "2112:2112"
       restart: unless-stopped
