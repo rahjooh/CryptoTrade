@@ -326,7 +326,10 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	err = w.uploadToS3(s3Key, parquetData)
 	if err != nil {
 		w.errorsCount++
-		log.WithError(err).Error("failed to upload to S3")
+		log.WithError(err).
+			WithEnv("S3_BUCKET").
+			WithFields(logger.Fields{"bucket": w.config.Storage.S3.Bucket, "s3_key": s3Key}).
+			Error("failed to upload to S3")
 		return
 	}
 
@@ -482,7 +485,7 @@ func (w *S3Writer) uploadToS3(key string, data []byte) error {
 
 	_, err := w.s3Client.PutObject(w.ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
+		return fmt.Errorf("failed to upload to S3 bucket %s: %w", w.config.Storage.S3.Bucket, err)
 	}
 
 	log.Debug("successfully uploaded to S3")

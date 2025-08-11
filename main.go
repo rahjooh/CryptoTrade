@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"sync"
@@ -21,9 +20,11 @@ import (
 )
 
 func main() {
+	log := logger.GetLogger()
+
 	// Load environment variables from .env if present
 	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
-		fmt.Printf("Error loading .env file: %v\n", err)
+		log.WithError(err).Warn("Error loading .env file")
 	}
 
 	configPath := flag.String("config", "config.yml", "Path to configuration file")
@@ -31,14 +32,11 @@ func main() {
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
-		os.Exit(1)
+		log.WithError(err).Fatal("Failed to load configuration")
 	}
 
-	log := logger.GetLogger()
 	if err := log.Configure(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.Output); err != nil {
-		fmt.Printf("Failed to configure logger: %v\n", err)
-		os.Exit(1)
+		log.WithError(err).Fatal("Failed to configure logger")
 	}
 
 	log.WithFields(logger.Fields{
