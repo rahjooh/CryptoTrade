@@ -22,7 +22,7 @@ type Channels struct {
 
 	stats               ChannelStats
 	statsMutex          sync.RWMutex
-	log                 *logger.Logger
+	log                 *logger.Log
 	ctx                 context.Context
 	metricsReportTicker *time.Ticker
 }
@@ -61,7 +61,7 @@ func (c *Channels) StartMetricsReporting(ctx context.Context) {
 	}()
 }
 
-func (c *Channels) logChannelStats(log *logger.Logger) {
+func (c *Channels) logChannelStats(log *logger.Log) {
 	c.statsMutex.RLock()
 	stats := c.stats
 	c.statsMutex.RUnlock()

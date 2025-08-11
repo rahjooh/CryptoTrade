@@ -23,7 +23,7 @@ type Flattener struct {
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
 	running       bool
-	log           *logger.Logger
+	log           *logger.Log
 
 	// Batching
 	batches   map[string]*models.FlattenedOrderbookBatch
@@ -147,14 +147,14 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"operation":    "process_message",
 	})
 
-	log.Debug("processing raw message")
+	log.Info("processing raw message")
 
 	// Parse the raw orderbook data
 	var binanceResp models.BinanceOrderbookResponse
 	err := json.Unmarshal(rawMsg.Data, &binanceResp)
 	if err != nil {
 		f.errorsCount++
-		log.WithError(err).Error("failed to unmarshal orderbook data")
+		log.WithError(err).Warn("failed to unmarshal orderbook data")
 		return 0
 	}
 
@@ -172,7 +172,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"entries_count": len(entries),
 		"bids_count":    len(binanceResp.Bids),
 		"asks_count":    len(binanceResp.Asks),
-	}).Debug("message processed successfully")
+	}).Info("message processed successfully")
 
 	logger.LogDataFlowEntry(log, "raw_channel", "flattened_channel", len(entries), "flattened_entries")
 
@@ -193,7 +193,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "bid",
 				"level":     level + 1,
 				"raw_price": bid[0],
-			}).Error("failed to parse bid price")
+			}).Warn("failed to parse bid price")
 			continue
 		}
 
@@ -206,7 +206,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "bid",
 				"level":        level + 1,
 				"raw_quantity": bid[1],
-			}).Error("failed to parse bid quantity")
+			}).Warn("failed to parse bid quantity")
 			continue
 		}
 
@@ -238,7 +238,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "ask",
 				"level":     level + 1,
 				"raw_price": ask[0],
-			}).Error("failed to parse ask price")
+			}).Warn("failed to parse ask price")
 			continue
 		}
 
@@ -251,7 +251,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "ask",
 				"level":        level + 1,
 				"raw_quantity": ask[1],
-			}).Error("failed to parse ask quantity")
+			}).Warn("failed to parse ask quantity")
 			continue
 		}
 
@@ -355,7 +355,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		"operation":    "flush_batch",
 	})
 
-	log.Debug("flushing batch")
+	log.Info("flushing batch")
 
 	select {
 	case f.flattenedChan <- *batch:
