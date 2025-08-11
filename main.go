@@ -32,11 +32,13 @@ func main() {
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to load configuration")
+		log.WithError(err).Warn("Failed to load configuration")
+		os.Exit(1)
 	}
 
 	if err := log.Configure(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.Output); err != nil {
-		log.WithError(err).Fatal("Failed to configure logger")
+		log.WithError(err).Warn("Failed to configure logger")
+		os.Exit(1)
 	}
 
 	log.WithFields(logger.Fields{
@@ -63,7 +65,8 @@ func main() {
 		var err error
 		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
 		if err != nil {
-			log.WithError(err).Fatal("failed to create S3 writer")
+			log.WithError(err).Warn("failed to create S3 writer")
+			os.Exit(1)
 		}
 	} else {
 		log.WithComponent("main").Info("S3 storage disabled; skipping S3 writer")
@@ -75,7 +78,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := binanceReader.Start(ctx); err != nil {
-			log.WithError(err).Error("binance reader failed to start")
+			log.WithError(err).Warn("binance reader failed to start")
 		}
 	}()
 
@@ -83,7 +86,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := flattener.Start(ctx); err != nil {
-			log.WithError(err).Error("flattener failed to start")
+			log.WithError(err).Warn("flattener failed to start")
 		}
 	}()
 
@@ -92,7 +95,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			if err := s3Writer.Start(ctx); err != nil {
-				log.WithError(err).Error("s3 writer failed to start")
+				log.WithError(err).Warn("s3 writer failed to start")
 			}
 		}()
 	}
