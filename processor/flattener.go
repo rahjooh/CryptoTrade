@@ -421,13 +421,13 @@ func (f *Flattener) reportMetrics() {
 	}
 
 	log := f.log.WithComponent("flattener")
-	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "errors_count", errorsCount, logger.Fields{})
-	f.log.LogMetric("flattener", "error_rate", errorRate, logger.Fields{})
-	f.log.LogMetric("flattener", "active_batches", activeBatches, logger.Fields{})
-	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, logger.Fields{})
+	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "errors_count", errorsCount, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "error_rate", errorRate, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "active_batches", activeBatches, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"messages_processed":      messagesProcessed,

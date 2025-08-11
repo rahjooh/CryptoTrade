@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/xitongsys/parquet-go/source"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,6 +21,7 @@ import (
 	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/metadata"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -87,6 +90,7 @@ type S3Writer struct {
 	log           *logger.Log
 	buffer        map[string][]models.FlattenedOrderbookEntry
 	flushTicker   *time.Ticker
+	metaGen       *metadata.Generator
 
 	// Metrics
 	batchesWritten int64
@@ -195,12 +199,20 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 
+	metaDir, err := os.MkdirTemp("", "iceberg")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metadata directory: %w", err)
+	}
+
+	gen := metadata.NewGenerator(metaDir, fmt.Sprintf("s3://%s", cfg.Storage.S3.Bucket), cfg.Storage.S3.Bucket, "", cfg.Cryptoflow.Name, s3Client)
+
 	s3Writer := &S3Writer{
 		config:        cfg,
 		flattenedChan: flattenedChan,
 		s3Client:      s3Client,
 		wg:            &sync.WaitGroup{},
 		log:           log,
+		metaGen:       gen,
 	}
 
 	log.WithComponent("s3_writer").WithFields(logger.Fields{
@@ -287,7 +299,7 @@ func (w *S3Writer) worker(workerID int) {
 				return
 			}
 			w.addBatch(batch)
-			w.batchesWritten++
+			atomic.AddInt64(&w.batchesWritten, 1)
 			logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
 		}
 	}
@@ -306,7 +318,7 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	log.Info("processing batch")
 
 	if batch.RecordCount == 0 {
-		log.Warn("batch has no records, skipping")
+		log.Debug("batch has no records, skipping")
 		return
 	}
 
@@ -317,15 +329,15 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	// Create parquet file in memory
 	parquetData, fileSize, err := w.createParquetFile(batch.Entries)
 	if err != nil {
-		w.errorsCount++
-		log.WithError(err).Warn("failed to create parquet file")
+		atomic.AddInt64(&w.errorsCount, 1)
+		log.WithError(err).Error("failed to create parquet file")
 		return
 	}
 
 	// Upload to S3
 	err = w.uploadToS3(s3Key, parquetData)
 	if err != nil {
-		w.errorsCount++
+		atomic.AddInt64(&w.errorsCount, 1)
 		log.WithError(err).
 			WithEnv("S3_BUCKET").
 			WithFields(logger.Fields{"bucket": w.config.Storage.S3.Bucket, "s3_key": s3Key}).
@@ -334,20 +346,39 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	}
 
 	// Update metrics
-	w.filesWritten++
-	w.bytesWritten += fileSize
+	atomic.AddInt64(&w.filesWritten, 1)
+	atomic.AddInt64(&w.bytesWritten, fileSize)
 
 	log.WithFields(logger.Fields{
 		"file_size": fileSize,
 	}).Info("batch processed and uploaded successfully")
 
 	logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
-	w.log.LogMetric("s3_writer", "file_uploaded", 1, logger.Fields{
+	w.log.LogMetric("s3_writer", "file_uploaded", 1, "counter", logger.Fields{
 		"exchange":     batch.Exchange,
 		"symbol":       batch.Symbol,
 		"file_size":    fileSize,
 		"record_count": batch.RecordCount,
 	})
+
+	df := metadata.DataFile{
+		Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),
+		FileSize:    fileSize,
+		RecordCount: int64(batch.RecordCount),
+		Partition: map[string]any{
+			"exchange": batch.Exchange,
+			"market":   batch.Market,
+			"symbol":   batch.Symbol,
+			"year":     batch.Timestamp.Year(),
+			"month":    int(batch.Timestamp.Month()),
+			"day":      batch.Timestamp.Day(),
+			"hour":     batch.Timestamp.Hour(),
+		},
+		Timestamp: batch.Timestamp,
+	}
+	if err := w.metaGen.AddFile(df); err != nil {
+		log.WithError(err).Warn("failed to update metadata")
+	}
 }
 
 func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
@@ -507,12 +538,10 @@ func (w *S3Writer) metricsReporter(ctx context.Context) {
 }
 
 func (w *S3Writer) reportMetrics() {
-	w.mu.RLock()
-	batchesWritten := w.batchesWritten
-	filesWritten := w.filesWritten
-	bytesWritten := w.bytesWritten
-	errorsCount := w.errorsCount
-	w.mu.RUnlock()
+	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
+	filesWritten := atomic.LoadInt64(&w.filesWritten)
+	bytesWritten := atomic.LoadInt64(&w.bytesWritten)
+	errorsCount := atomic.LoadInt64(&w.errorsCount)
 
 	errorRate := float64(0)
 	if batchesWritten+errorsCount > 0 {
@@ -525,12 +554,12 @@ func (w *S3Writer) reportMetrics() {
 	}
 
 	log := w.log.WithComponent("s3_writer")
-	log.LogMetric("s3_writer", "batches_written", batchesWritten, logger.Fields{})
-	log.LogMetric("s3_writer", "files_written", filesWritten, logger.Fields{})
-	log.LogMetric("s3_writer", "bytes_written", bytesWritten, logger.Fields{})
-	log.LogMetric("s3_writer", "errors_count", errorsCount, logger.Fields{})
-	log.LogMetric("s3_writer", "error_rate", errorRate, logger.Fields{})
-	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, logger.Fields{})
+	log.LogMetric("s3_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
+	log.LogMetric("s3_writer", "files_written", filesWritten, "counter", logger.Fields{})
+	log.LogMetric("s3_writer", "bytes_written", bytesWritten, "counter", logger.Fields{})
+	log.LogMetric("s3_writer", "errors_count", errorsCount, "counter", logger.Fields{})
+	log.LogMetric("s3_writer", "error_rate", errorRate, "gauge", logger.Fields{})
+	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"batches_written":    batchesWritten,
