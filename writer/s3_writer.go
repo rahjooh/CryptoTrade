@@ -84,7 +84,7 @@ type S3Writer struct {
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
 	running       bool
-	log           *logger.Logger
+	log           *logger.Log
 	buffer        map[string][]models.FlattenedOrderbookEntry
 	flushTicker   *time.Ticker
 
@@ -137,7 +137,7 @@ func (w *S3Writer) flushBuffers(reason string) {
 	w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"flushed_buffers": len(buffers),
 		"reason":          reason,
-	}).Debug("flushing buffers")
+	}).Info("flushing buffers")
 
 	for key, entries := range buffers {
 		if len(entries) == 0 {
@@ -177,7 +177,7 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
-		log.WithComponent("s3_writer").WithError(err).Error("failed to load AWS configuration")
+		log.WithComponent("s3_writer").WithError(err).Warn("failed to load AWS configuration")
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
@@ -318,7 +318,7 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	parquetData, fileSize, err := w.createParquetFile(batch.Entries)
 	if err != nil {
 		w.errorsCount++
-		log.WithError(err).Error("failed to create parquet file")
+		log.WithError(err).Warn("failed to create parquet file")
 		return
 	}
 
@@ -406,7 +406,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 		"entries_count": len(validEntries),
 		"operation":     "create_parquet_file",
 	})
-	log.Debug("creating parquet file")
+	log.Info("creating parquet file")
 
 	// Create memory file writer
 	fw := newMemoryFileWriter()
@@ -459,7 +459,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 		"file_size":     len(data),
 		"entries_count": len(validEntries),
 		"compression":   w.config.Writer.Formats.Parquet.Compression,
-	}).Debug("parquet file created successfully")
+	}).Info("parquet file created successfully")
 
 	return data, int64(len(data)), nil
 }
@@ -469,7 +469,7 @@ func (w *S3Writer) uploadToS3(key string, data []byte) error {
 		"operation": "upload_to_s3",
 		"data_size": len(data),
 	})
-	log.Debug("uploading to S3")
+	log.Info("uploading to S3")
 
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(w.config.Storage.S3.Bucket),
@@ -488,7 +488,7 @@ func (w *S3Writer) uploadToS3(key string, data []byte) error {
 		return fmt.Errorf("failed to upload to S3 bucket %s: %w", w.config.Storage.S3.Bucket, err)
 	}
 
-	log.Debug("successfully uploaded to S3")
+	log.Info("successfully uploaded to S3")
 	return nil
 }
 
