@@ -1,0 +1,57 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "CryptoFlow/Channels", "Size", "Channel", "binance_reader" ],
+          [ ".", "Size", "Channel", "flattener" ],
+          [ ".", "Size", "Channel", "s3_writer" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS_REGION}",
+        "title": "Channel Sizes"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "CryptoFlow/Errors", "Count", "Component", "binance_reader" ],
+          [ ".", "Count", "Component", "flattener" ],
+          [ ".", "Count", "Component", "s3_writer" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS_REGION}",
+        "title": "Error Counts"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "CWAgent", "cpu_usage_active", "InstanceId", "${INSTANCE_ID}" ],
+          [ "CWAgent", "mem_used_percent", "InstanceId", "${INSTANCE_ID}" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${AWS_REGION}",
+        "title": "Resource Utilization"
+      }
+    }
+  ]
+}

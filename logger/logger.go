@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -14,8 +15,8 @@ import (
 // Fields type alias for logrus.Fields to maintain compatibility
 type Fields map[string]interface{}
 
-// Logger wraps logrus.Logger with additional functionality
-type Logger struct {
+// Log wraps logrus.Logger with additional functionality
+type Log struct {
 	*logrus.Logger
 }
 
@@ -24,23 +25,23 @@ type Entry struct {
 	*logrus.Entry
 }
 
-var globalLogger *Logger
+var globalLogger *Log
 
 func init() {
-	globalLogger = NewLogger()
+	globalLogger = Logger()
 }
 
-func NewLogger() *Logger {
+func Logger() *Log {
 	logger := logrus.New()
 	logger.SetReportCaller(true)
 
-	// Determine log level from environment variables
-	levelStr := os.Getenv("GITHUB_LOG_LEVEL")
+	// Determine log level from environment variable
+	levelStr := os.Getenv("LOG_LEVEL")
 	if levelStr == "" {
-		levelStr = os.Getenv("LOG_LEVEL")
+		levelStr = "info"
 	}
-	if level, err := logrus.ParseLevel(levelStr); err == nil {
-		logger.SetLevel(level)
+	if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
+		logger.SetLevel(lvl)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
@@ -61,27 +62,27 @@ func NewLogger() *Logger {
 		CallerPrettyfier: callerPrettyfier,
 	})
 
-	return &Logger{Logger: logger}
+	return &Log{Logger: logger}
 }
 
-func GetLogger() *Logger {
+func GetLogger() *Log {
 	return globalLogger
 }
 
-func (l *Logger) WithComponent(component string) *Entry {
+func (l *Log) WithComponent(component string) *Entry {
 	return &Entry{Entry: l.Logger.WithField("component", component)}
 }
 
-func (l *Logger) WithFields(fields Fields) *Entry {
+func (l *Log) WithFields(fields Fields) *Entry {
 	return &Entry{Entry: l.Logger.WithFields(logrus.Fields(fields))}
 }
 
-func (l *Logger) WithError(err error) *Entry {
+func (l *Log) WithError(err error) *Entry {
 	return &Entry{Entry: l.Logger.WithError(err)}
 }
 
 // WithEnv attaches environment variable values to the log entry
-func (l *Logger) WithEnv(envs ...string) *Entry {
+func (l *Log) WithEnv(envs ...string) *Entry {
 	fields := logrus.Fields{}
 	for _, env := range envs {
 		fields[env] = os.Getenv(env)
@@ -115,52 +116,45 @@ func (e *Entry) Info(args ...interface{}) {
 	e.Entry.Info(args...)
 }
 
-func (e *Entry) Debug(args ...interface{}) {
-	e.Entry.Debug(args...)
-}
-
 func (e *Entry) Warn(args ...interface{}) {
 	e.Entry.Warn(args...)
+}
+
+func (e *Entry) Debug(args ...interface{}) {
+	e.Entry.Debug(args...)
 }
 
 func (e *Entry) Error(args ...interface{}) {
 	e.Entry.Error(args...)
 }
 
-func (e *Entry) Fatal(args ...interface{}) {
-	e.Entry.Fatal(args...)
-}
-
-func (e *Entry) Panic(args ...interface{}) {
-	e.Entry.Panic(args...)
-}
-
 // LogMetric method for Entry
-func (e *Entry) LogMetric(component string, metric string, value interface{}, fields Fields) {
+func (e *Entry) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
 	if fields == nil {
 		fields = make(Fields)
 	}
+	if metricType == "" {
+		metricType = "counter"
+	}
 	fields["metric"] = metric
 	fields["value"] = value
-	fields["metric_type"] = "counter"
+	fields["metric_type"] = metricType
 
 	e.WithComponent(component).WithFields(fields).Info("metric")
 }
 
 // Configure sets up the logger with the provided configuration
-func (l *Logger) Configure(level string, format string, output string) error {
-	if env := os.Getenv("GITHUB_LOG_LEVEL"); env != "" {
-		level = env
-	} else if env := os.Getenv("LOG_LEVEL"); env != "" {
+func (l *Log) Configure(level string, format string, output string) error {
+	if env := os.Getenv("LOG_LEVEL"); env != "" {
 		level = env
 	}
 
-	// Set level
-	logLevel, err := logrus.ParseLevel(level)
-	if err != nil {
-		return fmt.Errorf("invalid log level '%s': %w", level, err)
+	level = strings.ToLower(level)
+	if lvl, err := logrus.ParseLevel(level); err == nil {
+		l.SetLevel(lvl)
+	} else {
+		return fmt.Errorf("invalid log level '%s'", level)
 	}
-	l.SetLevel(logLevel)
 
 	// Ensure caller info is included
 	l.SetReportCaller(true)
@@ -233,28 +227,31 @@ func LogDataFlowEntry(entry *Entry, source string, destination string, recordCou
 }
 
 // Metric logging helper
-func (l *Logger) LogMetric(component string, metric string, value interface{}, fields Fields) {
+func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
 	if fields == nil {
 		fields = make(Fields)
 	}
+	if metricType == "" {
+		metricType = "counter"
+	}
 	fields["metric"] = metric
 	fields["value"] = value
-	fields["metric_type"] = "counter"
+	fields["metric_type"] = metricType
 
 	l.WithComponent(component).WithFields(fields).Info("metric")
 }
 
 // Set output for logger
-func (l *Logger) SetOutput(output io.Writer) {
+func (l *Log) SetOutput(output io.Writer) {
 	l.Logger.SetOutput(output)
 }
 
 // Set level for logger
-func (l *Logger) SetLevel(level logrus.Level) {
+func (l *Log) SetLevel(level logrus.Level) {
 	l.Logger.SetLevel(level)
 }
 
 // Set formatter for logger
-func (l *Logger) SetFormatter(formatter logrus.Formatter) {
+func (l *Log) SetFormatter(formatter logrus.Formatter) {
 	l.Logger.SetFormatter(formatter)
 }

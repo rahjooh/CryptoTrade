@@ -23,7 +23,7 @@ type Flattener struct {
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
 	running       bool
-	log           *logger.Logger
+	log           *logger.Log
 
 	// Batching
 	batches   map[string]*models.FlattenedOrderbookBatch
@@ -147,7 +147,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"operation":    "process_message",
 	})
 
-	log.Debug("processing raw message")
+	log.Info("processing raw message")
 
 	// Parse the raw orderbook data
 	var binanceResp models.BinanceOrderbookResponse
@@ -172,7 +172,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"entries_count": len(entries),
 		"bids_count":    len(binanceResp.Bids),
 		"asks_count":    len(binanceResp.Asks),
-	}).Debug("message processed successfully")
+	}).Info("message processed successfully")
 
 	logger.LogDataFlowEntry(log, "raw_channel", "flattened_channel", len(entries), "flattened_entries")
 
@@ -355,7 +355,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		"operation":    "flush_batch",
 	})
 
-	log.Debug("flushing batch")
+	log.Info("flushing batch")
 
 	select {
 	case f.flattenedChan <- *batch:
@@ -421,13 +421,13 @@ func (f *Flattener) reportMetrics() {
 	}
 
 	log := f.log.WithComponent("flattener")
-	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "errors_count", errorsCount, logger.Fields{})
-	f.log.LogMetric("flattener", "error_rate", errorRate, logger.Fields{})
-	f.log.LogMetric("flattener", "active_batches", activeBatches, logger.Fields{})
-	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, logger.Fields{})
+	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "errors_count", errorsCount, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "error_rate", errorRate, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "active_batches", activeBatches, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"messages_processed":      messagesProcessed,

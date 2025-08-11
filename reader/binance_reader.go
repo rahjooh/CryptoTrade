@@ -22,7 +22,7 @@ type BinanceReader struct {
 	wg         *sync.WaitGroup
 	mu         sync.RWMutex
 	running    bool
-	log        *logger.Logger
+	log        *logger.Log
 
 	// Metrics
 	requestCount     int64
@@ -166,7 +166,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		symbol,
 		snapshotCfg.Limit)
 
-	log.WithFields(logger.Fields{"url": url}).Debug("making API request")
+	log.WithFields(logger.Fields{"url": url}).Info("making API request")
 
 	req, err := http.NewRequestWithContext(br.ctx, "GET", url, nil)
 	if err != nil {
@@ -204,7 +204,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		"bids_count":     len(binanceResp.Bids),
 		"asks_count":     len(binanceResp.Asks),
 		"last_update_id": binanceResp.LastUpdateID,
-	}).Debug("received orderbook data")
+	}).Info("received orderbook data")
 
 	// Validate data
 	if br.config.Reader.Validation.EnablePriceValidation {
@@ -231,7 +231,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 
 	select {
 	case br.rawChannel <- rawData:
-		log.Debug("orderbook data sent to raw channel")
+		log.Info("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "binance_api", "raw_channel", len(binanceResp.Bids)+len(binanceResp.Asks), "orderbook_entries")
 	case <-br.ctx.Done():
 		return
@@ -258,7 +258,7 @@ func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, sy
 				"best_bid_str": resp.Bids[0][0],
 				"best_ask_str": resp.Asks[0][0],
 				"parse_error":  fmt.Sprintf("bid_err: %v, ask_err: %v", err1, err2),
-			}).Error("failed to parse best bid/ask prices")
+			}).Warn("failed to parse best bid/ask prices")
 			return false
 		}
 
@@ -266,7 +266,7 @@ func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, sy
 			log.WithFields(logger.Fields{
 				"best_bid": bestBid,
 				"best_ask": bestAsk,
-			}).Error("best bid is greater than or equal to best ask")
+			}).Warn("best bid is greater than or equal to best ask")
 			return false
 		}
 
@@ -286,7 +286,7 @@ func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, sy
 			"best_bid": bestBid,
 			"best_ask": bestAsk,
 			"spread":   spread,
-		}).Debug("price validation passed")
+		}).Info("price validation passed")
 	}
 
 	return true
@@ -309,9 +309,9 @@ func (br *BinanceReader) sendError(symbol, market string, err error) {
 
 	select {
 	case br.rawChannel <- rawData:
-		log.Debug("error sent to raw channel")
+		log.Info("error sent to raw channel")
 	default:
-		log.Error("raw channel full, dropping error message")
+		log.Warn("raw channel full, dropping error message")
 	}
 }
 
@@ -341,9 +341,9 @@ func (br *BinanceReader) reportMetrics() {
 	}
 
 	log := br.log.WithComponent("binance_reader")
-	log.LogMetric("binance_reader", "request_count", requestCount, logger.Fields{})
-	log.LogMetric("binance_reader", "error_count", errorCount, logger.Fields{})
-	log.LogMetric("binance_reader", "error_rate", errorRate, logger.Fields{})
+	log.LogMetric("binance_reader", "request_count", requestCount, "counter", logger.Fields{})
+	log.LogMetric("binance_reader", "error_count", errorCount, "counter", logger.Fields{})
+	log.LogMetric("binance_reader", "error_rate", errorRate, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"request_count": requestCount,
