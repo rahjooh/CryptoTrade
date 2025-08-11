@@ -11,4 +11,5 @@ COPY . .
 RUN go build -o cryptoflow .
 
 VOLUME ["/app/data"]
+ENV LOG_LEVEL=INFO
 CMD ["./CryptoFlow"]
