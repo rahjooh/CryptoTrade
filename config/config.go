@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	//"cryptoflow/logger"
@@ -226,20 +228,22 @@ func LoadConfig(path string) (*Config, error) {
 	// Override S3 settings from environment variables if available
 	if config.Storage.S3.Enabled {
 		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
-			config.Storage.S3.AccessKeyID = v
+			config.Storage.S3.AccessKeyID = strings.TrimSpace(v)
 		}
 		if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
-			config.Storage.S3.SecretAccessKey = v
+			config.Storage.S3.SecretAccessKey = strings.TrimSpace(v)
 		}
 		if v := os.Getenv("AWS_REGION"); v != "" {
-			config.Storage.S3.Region = v
+			config.Storage.S3.Region = strings.TrimSpace(v)
 		}
 		if v := os.Getenv("S3_BUCKET"); v != "" {
-			config.Storage.S3.Bucket = v
+			config.Storage.S3.Bucket = strings.TrimSpace(v)
 		}
 	}
 
 	// Validate configuration
+	config.Storage.S3.Bucket = strings.TrimSpace(config.Storage.S3.Bucket)
+
 	if err := validateConfig(&config); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
@@ -284,10 +288,25 @@ func validateConfig(cfg *Config) error {
 		if cfg.Storage.S3.AccessKeyID == "" || cfg.Storage.S3.SecretAccessKey == "" {
 			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
 		}
+		if !isValidS3Bucket(cfg.Storage.S3.Bucket) {
+			return fmt.Errorf("storage.s3.bucket '%s' is invalid", cfg.Storage.S3.Bucket)
+		}
 		if cfg.Storage.S3.FlushInterval <= 0 {
 			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
 		}
 	}
 
 	return nil
+}
+
+var s3BucketRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
+
+func isValidS3Bucket(name string) bool {
+	if len(name) < 3 || len(name) > 63 {
+		return false
+	}
+	if strings.Contains(name, "..") || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return false
+	}
+	return s3BucketRegexp.MatchString(name)
 }
