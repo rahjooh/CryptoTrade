@@ -181,7 +181,7 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
-		log.WithComponent("s3_writer").WithError(err).Error("failed to load AWS configuration")
+		log.WithComponent("s3_writer").WithError(err).Warn("failed to load AWS configuration")
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 

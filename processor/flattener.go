@@ -154,7 +154,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 	err := json.Unmarshal(rawMsg.Data, &binanceResp)
 	if err != nil {
 		f.errorsCount++
-		log.WithError(err).Error("failed to unmarshal orderbook data")
+		log.WithError(err).Warn("failed to unmarshal orderbook data")
 		return 0
 	}
 
@@ -193,7 +193,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "bid",
 				"level":     level + 1,
 				"raw_price": bid[0],
-			}).Error("failed to parse bid price")
+			}).Warn("failed to parse bid price")
 			continue
 		}
 
@@ -206,7 +206,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "bid",
 				"level":        level + 1,
 				"raw_quantity": bid[1],
-			}).Error("failed to parse bid quantity")
+			}).Warn("failed to parse bid quantity")
 			continue
 		}
 
@@ -238,7 +238,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "ask",
 				"level":     level + 1,
 				"raw_price": ask[0],
-			}).Error("failed to parse ask price")
+			}).Warn("failed to parse ask price")
 			continue
 		}
 
@@ -251,7 +251,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "ask",
 				"level":        level + 1,
 				"raw_quantity": ask[1],
-			}).Error("failed to parse ask quantity")
+			}).Warn("failed to parse ask quantity")
 			continue
 		}
 

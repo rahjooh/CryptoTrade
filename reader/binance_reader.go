@@ -296,7 +296,7 @@ func (br *BinanceReader) sendError(symbol, market string, err error) {
 	br.errorCount++
 
 	log := br.log.WithComponent("binance_reader").WithError(err)
-	log.Error("error occurred during orderbook fetch")
+	log.Warn("error occurred during orderbook fetch")
 
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "binance",
