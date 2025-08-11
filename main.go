@@ -78,7 +78,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := binanceReader.Start(ctx); err != nil {
-			log.WithError(err).Error("binance reader failed to start")
+			log.WithError(err).Warn("binance reader failed to start")
 		}
 	}()
 
@@ -86,7 +86,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := flattener.Start(ctx); err != nil {
-			log.WithError(err).Error("flattener failed to start")
+			log.WithError(err).Warn("flattener failed to start")
 		}
 	}()
 
@@ -95,7 +95,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			if err := s3Writer.Start(ctx); err != nil {
-				log.WithError(err).Error("s3 writer failed to start")
+				log.WithError(err).Warn("s3 writer failed to start")
 			}
 		}()
 	}
