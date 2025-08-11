@@ -341,9 +341,9 @@ func (br *BinanceReader) reportMetrics() {
 	}
 
 	log := br.log.WithComponent("binance_reader")
-	log.LogMetric("binance_reader", "request_count", requestCount, logger.Fields{})
-	log.LogMetric("binance_reader", "error_count", errorCount, logger.Fields{})
-	log.LogMetric("binance_reader", "error_rate", errorRate, logger.Fields{})
+	log.LogMetric("binance_reader", "request_count", requestCount, "counter", logger.Fields{})
+	log.LogMetric("binance_reader", "error_count", errorCount, "counter", logger.Fields{})
+	log.LogMetric("binance_reader", "error_rate", errorRate, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"request_count": requestCount,

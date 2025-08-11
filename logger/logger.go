@@ -36,11 +36,13 @@ func Logger() *Log {
 	logger.SetReportCaller(true)
 
 	// Determine log level from environment variable
-	levelStr := strings.ToUpper(os.Getenv("LOG_LEVEL"))
-	switch levelStr {
-	case "WARN":
-		logger.SetLevel(logrus.WarnLevel)
-	default:
+	levelStr := os.Getenv("LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = "info"
+	}
+	if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
+		logger.SetLevel(lvl)
+	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
 
@@ -118,14 +120,25 @@ func (e *Entry) Warn(args ...interface{}) {
 	e.Entry.Warn(args...)
 }
 
+func (e *Entry) Debug(args ...interface{}) {
+	e.Entry.Debug(args...)
+}
+
+func (e *Entry) Error(args ...interface{}) {
+	e.Entry.Error(args...)
+}
+
 // LogMetric method for Entry
-func (e *Entry) LogMetric(component string, metric string, value interface{}, fields Fields) {
+func (e *Entry) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
 	if fields == nil {
 		fields = make(Fields)
 	}
+	if metricType == "" {
+		metricType = "counter"
+	}
 	fields["metric"] = metric
 	fields["value"] = value
-	fields["metric_type"] = "counter"
+	fields["metric_type"] = metricType
 
 	e.WithComponent(component).WithFields(fields).Info("metric")
 }
@@ -136,13 +149,10 @@ func (l *Log) Configure(level string, format string, output string) error {
 		level = env
 	}
 
-	level = strings.ToUpper(level)
-	switch level {
-	case "WARN":
-		l.SetLevel(logrus.WarnLevel)
-	case "INFO", "":
-		l.SetLevel(logrus.InfoLevel)
-	default:
+	level = strings.ToLower(level)
+	if lvl, err := logrus.ParseLevel(level); err == nil {
+		l.SetLevel(lvl)
+	} else {
 		return fmt.Errorf("invalid log level '%s'", level)
 	}
 
@@ -217,13 +227,16 @@ func LogDataFlowEntry(entry *Entry, source string, destination string, recordCou
 }
 
 // Metric logging helper
-func (l *Log) LogMetric(component string, metric string, value interface{}, fields Fields) {
+func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
 	if fields == nil {
 		fields = make(Fields)
 	}
+	if metricType == "" {
+		metricType = "counter"
+	}
 	fields["metric"] = metric
 	fields["value"] = value
-	fields["metric_type"] = "counter"
+	fields["metric_type"] = metricType
 
 	l.WithComponent(component).WithFields(fields).Info("metric")
 }

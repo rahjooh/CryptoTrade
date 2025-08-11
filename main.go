@@ -32,12 +32,12 @@ func main() {
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.WithError(err).Warn("Failed to load configuration")
+		log.WithError(err).Error("Failed to load configuration")
 		os.Exit(1)
 	}
 
 	if err := log.Configure(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.Output); err != nil {
-		log.WithError(err).Warn("Failed to configure logger")
+		log.WithError(err).Error("Failed to configure logger")
 		os.Exit(1)
 	}
 
@@ -65,7 +65,7 @@ func main() {
 		var err error
 		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
 		if err != nil {
-			log.WithError(err).Warn("failed to create S3 writer")
+			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
 		}
 	} else {
