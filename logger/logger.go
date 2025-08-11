@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -30,6 +32,23 @@ func init() {
 
 func NewLogger() *Logger {
 	logger := logrus.New()
+	logger.SetReportCaller(true)
+
+	// Determine log level from environment variables
+	levelStr := os.Getenv("GITHUB_LOG_LEVEL")
+	if levelStr == "" {
+		levelStr = os.Getenv("LOG_LEVEL")
+	}
+	if level, err := logrus.ParseLevel(levelStr); err == nil {
+		logger.SetLevel(level)
+	} else {
+		logger.SetLevel(logrus.InfoLevel)
+	}
+
+	callerPrettyfier := func(f *runtime.Frame) (string, string) {
+		file := filepath.Base(f.File)
+		return "", fmt.Sprintf("%s:%d", file, f.Line)
+	}
 
 	// Set default formatter
 	logger.SetFormatter(&logrus.JSONFormatter{
@@ -39,10 +58,8 @@ func NewLogger() *Logger {
 			logrus.FieldKeyLevel: "level",
 			logrus.FieldKeyMsg:   "message",
 		},
+		CallerPrettyfier: callerPrettyfier,
 	})
-
-	// Set default level
-	logger.SetLevel(logrus.InfoLevel)
 
 	return &Logger{Logger: logger}
 }
@@ -63,6 +80,15 @@ func (l *Logger) WithError(err error) *Entry {
 	return &Entry{Entry: l.Logger.WithError(err)}
 }
 
+// WithEnv attaches environment variable values to the log entry
+func (l *Logger) WithEnv(envs ...string) *Entry {
+	fields := logrus.Fields{}
+	for _, env := range envs {
+		fields[env] = os.Getenv(env)
+	}
+	return &Entry{Entry: l.Logger.WithFields(fields)}
+}
+
 func (e *Entry) WithComponent(component string) *Entry {
 	return &Entry{Entry: e.Entry.WithField("component", component)}
 }
@@ -73,6 +99,15 @@ func (e *Entry) WithFields(fields Fields) *Entry {
 
 func (e *Entry) WithError(err error) *Entry {
 	return &Entry{Entry: e.Entry.WithError(err)}
+}
+
+// WithEnv attaches environment variable values to the log entry
+func (e *Entry) WithEnv(envs ...string) *Entry {
+	fields := logrus.Fields{}
+	for _, env := range envs {
+		fields[env] = os.Getenv(env)
+	}
+	return &Entry{Entry: e.Entry.WithFields(fields)}
 }
 
 // Convert Entry methods to return our Entry type
@@ -114,12 +149,26 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, fi
 
 // Configure sets up the logger with the provided configuration
 func (l *Logger) Configure(level string, format string, output string) error {
+	if env := os.Getenv("GITHUB_LOG_LEVEL"); env != "" {
+		level = env
+	} else if env := os.Getenv("LOG_LEVEL"); env != "" {
+		level = env
+	}
+
 	// Set level
 	logLevel, err := logrus.ParseLevel(level)
 	if err != nil {
 		return fmt.Errorf("invalid log level '%s': %w", level, err)
 	}
 	l.SetLevel(logLevel)
+
+	// Ensure caller info is included
+	l.SetReportCaller(true)
+
+	callerPrettyfier := func(f *runtime.Frame) (string, string) {
+		file := filepath.Base(f.File)
+		return "", fmt.Sprintf("%s:%d", file, f.Line)
+	}
 
 	// Set formatter
 	switch format {
@@ -131,11 +180,13 @@ func (l *Logger) Configure(level string, format string, output string) error {
 				logrus.FieldKeyLevel: "level",
 				logrus.FieldKeyMsg:   "message",
 			},
+			CallerPrettyfier: callerPrettyfier,
 		})
 	case "text":
 		l.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp:   true,
-			TimestampFormat: time.RFC3339,
+			FullTimestamp:    true,
+			TimestampFormat:  time.RFC3339,
+			CallerPrettyfier: callerPrettyfier,
 		})
 	default:
 		return fmt.Errorf("invalid log format '%s'", format)
