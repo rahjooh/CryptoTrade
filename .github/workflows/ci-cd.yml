@@ -92,6 +92,7 @@ jobs:
             echo "✅ Deploy complete"
 
   deploy-s3-table:
+    needs: [test-build, test-ssh]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/s3-table'
     runs-on: ubuntu-latest
     env:
