@@ -19,7 +19,7 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 
 1. **Reader** – polls the Binance depth endpoint at the configured interval and emits a `RawOrderbookMessage`.
 2. **Flattener** – converts each message into a `FlattenedOrderbookBatch`, expanding bids and asks into individual price levels.
-3. **S3 Writer** – buffers batches per `exchange/market/symbol` and periodically flushes them to S3 as Parquet files.
+3. **S3 Writer** – buffers batches per `exchange/market/symbol` and periodically flushes them to an Amazon S3 Table as Parquet files.
 4. **Channels** – provide back‑pressure aware communication between stages and expose lightweight metrics.
 
 ### Channels
@@ -59,7 +59,7 @@ All runtime options live in `config.yml`.  Key sections:
 - `reader`: concurrency and retry controls for the exchange client.
 - `processor`: batch size and timeout for the flattener.
 - `source`: exchange endpoints to poll (e.g. `binance: future: orderbook`).
-- `storage.s3`: toggle and tune S3 writes (`flush_interval`, `partition_format`, compression, etc.).
+- `storage.s3`: toggle and tune S3 table writes (`flush_interval`, `partition_format`, compression, etc.).
 - `logging`: level, format and output destination.
 
 Sensitive S3 credentials are not stored in YAML.  Provide them through an `.env` file or the environment:
@@ -69,7 +69,10 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=...
 S3_BUCKET=...
+S3_TABLE_ARN=...
 ```
+
+`S3_TABLE_ARN` must reference the Amazon S3 table you created (for example `arn:aws:s3tables:REGION:ACCOUNT:tablebucket/BUCKET/table/default/s3-table`). Ensure your IAM user has `s3tables:*` permissions to update the table metadata.
 
 Copy `.env.example` to `.env` and populate with your values before running the application.
 
@@ -115,7 +118,7 @@ go fmt ./...
 go test ./...
 
 # Execute the service with a custom config
-AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... \
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... S3_TABLE_ARN=... \
   go run main.go -config config.yml
 ```
 

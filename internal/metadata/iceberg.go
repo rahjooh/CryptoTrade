@@ -3,15 +3,17 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"cryptoflow/logger"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"time"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3tables"
 	"github.com/google/uuid"
-	"cryptoflow/logger"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // DataFile describes a single parquet file written by the pipeline.
@@ -55,10 +57,12 @@ type Generator struct {
 	tableUUID string
 	snapshots []Snapshot
 	s3Client  *s3.Client
+	s3Table   *s3tables.Client
+	tableARN  string
 }
 
 // NewGenerator returns a metadata generator rooted at baseDir and targeting S3 location.
-func NewGenerator(baseDir, location, bucket, prefix, tableName string, s3c *s3.Client) *Generator {
+func NewGenerator(baseDir, location, bucket, prefix, tableName, tableARN string, s3c *s3.Client, s3t *s3tables.Client) *Generator {
 	gen := &Generator{
 		baseDir:   baseDir,
 		location:  location,
@@ -67,6 +71,8 @@ func NewGenerator(baseDir, location, bucket, prefix, tableName string, s3c *s3.C
 		tableName: tableName,
 		tableUUID: uuid.NewString(),
 		s3Client:  s3c,
+		s3Table:   s3t,
+		tableARN:  tableARN,
 	}
 	logger.GetLogger().WithComponent("metadata").WithFields(logger.Fields{
 		"base_dir":   baseDir,
@@ -136,9 +142,11 @@ func (g *Generator) writeTableMetadata() error {
 		logger.GetLogger().WithComponent("metadata").WithError(err).Error("failed to write table metadata")
 		return err
 	}
-	if err := g.uploadFile(metaPath, g.s3Key("metadata.json")); err != nil {
+	key := g.s3Key("metadata.json")
+	if err := g.uploadFile(metaPath, key); err != nil {
 		logger.GetLogger().WithComponent("metadata").WithError(err).Warn("failed to upload table metadata to S3")
 	}
+	g.updateTableMetadata(context.Background())
 	logger.GetLogger().WithComponent("metadata").WithFields(logger.Fields{
 		"snapshot_count": len(g.snapshots),
 		"metadata_path":  metaPath,
@@ -171,6 +179,33 @@ func (g *Generator) WriteCatalogEntry(catalogDir string) error {
 		"catalog_path": path,
 	}).Info("catalog entry written")
 	return nil
+}
+
+func (g *Generator) updateTableMetadata(ctx context.Context) {
+	if g.s3Table == nil || g.tableARN == "" {
+		return
+	}
+	log := logger.GetLogger().WithComponent("metadata")
+	tbl, err := g.s3Table.GetTable(ctx, &s3tables.GetTableInput{TableArn: aws.String(g.tableARN)})
+	if err != nil {
+		log.WithError(err).Warn("failed to get table metadata")
+		return
+	}
+	bucketArn := strings.Split(g.tableARN, "/table/")[0]
+	ns := strings.Join(tbl.Namespace, "/")
+	metaLoc := fmt.Sprintf("s3://%s/%s", g.bucket, g.s3Key("metadata.json"))
+	_, err = g.s3Table.UpdateTableMetadataLocation(ctx, &s3tables.UpdateTableMetadataLocationInput{
+		TableBucketARN:   aws.String(bucketArn),
+		Namespace:        aws.String(ns),
+		Name:             tbl.Name,
+		MetadataLocation: aws.String(metaLoc),
+		VersionToken:     tbl.VersionToken,
+	})
+	if err != nil {
+		log.WithError(err).Warn("failed to update table metadata location")
+	} else {
+		log.WithFields(logger.Fields{"metadata_location": metaLoc}).Debug("updated table metadata location")
+	}
 }
 
 func (g *Generator) s3Key(name string) string {

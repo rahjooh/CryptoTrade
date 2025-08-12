@@ -9,7 +9,7 @@ import (
 
 func TestGeneratorCreatesMetadata(t *testing.T) {
 	dir := t.TempDir()
-	gen := NewGenerator(dir, "s3://bucket", "bucket", "", "orderbook", nil)
+	gen := NewGenerator(dir, "s3://bucket", "bucket", "", "orderbook", "", nil, nil)
 	df := DataFile{
 		Path:        "s3://bucket/exchange=binance/symbol=BTCUSDT/year=2025/month=08/day=11/hour=06/file.parquet",
 		FileSize:    100,
