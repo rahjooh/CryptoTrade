@@ -93,7 +93,7 @@ jobs:
 
   deploy-s3table:
     needs: [test-build, test-ssh]
-    if: github.ref == 'refs/heads/s3-table'
+    if: github.ref_name == 's3-table'
     runs-on: ubuntu-latest
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
