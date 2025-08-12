@@ -166,6 +166,7 @@ type S3Config struct {
 	PartSize          string        `yaml:"part_size"`
 	AccessKeyID       string        `yaml:"access_key_id"`
 	SecretAccessKey   string        `yaml:"secret_access_key"`
+	TableARN          string        `yaml:"table_arn"`
 	FlushInterval     time.Duration `yaml:"flush_interval"`
 }
 
@@ -238,6 +239,9 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		if v := os.Getenv("S3_BUCKET"); v != "" {
 			config.Storage.S3.Bucket = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_TABLE_ARN"); v != "" {
+			config.Storage.S3.TableARN = strings.TrimSpace(v)
 		}
 	}
 

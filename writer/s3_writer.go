@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3tables"
 	"github.com/google/uuid"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/writer"
@@ -191,20 +192,37 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 		return nil, fmt.Errorf("aws credentials not found")
 	}
 
-	// Create S3 client
+	// Create S3 and S3 Tables clients
 	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
 		if cfg.Storage.S3.Endpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.Storage.S3.Endpoint)
 		}
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
+	s3TableClient := s3tables.NewFromConfig(awsConfig)
+
+	warehouse := fmt.Sprintf("s3://%s", cfg.Storage.S3.Bucket)
+	if cfg.Storage.S3.TableARN != "" {
+		tbl, err := s3TableClient.GetTable(ctx, &s3tables.GetTableInput{TableArn: aws.String(cfg.Storage.S3.TableARN)})
+		if err == nil && tbl.WarehouseLocation != nil {
+			warehouse = *tbl.WarehouseLocation
+			if strings.HasPrefix(warehouse, "s3://") {
+				parts := strings.Split(strings.TrimPrefix(warehouse, "s3://"), "/")
+				if len(parts) > 0 {
+					cfg.Storage.S3.Bucket = parts[0]
+				}
+			}
+		} else if err != nil {
+			log.WithComponent("s3_writer").WithError(err).Warn("failed to get table info")
+		}
+	}
 
 	metaDir, err := os.MkdirTemp("", "iceberg")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metadata directory: %w", err)
 	}
 
-	gen := metadata.NewGenerator(metaDir, fmt.Sprintf("s3://%s", cfg.Storage.S3.Bucket), cfg.Storage.S3.Bucket, "", cfg.Cryptoflow.Name, s3Client)
+	gen := metadata.NewGenerator(metaDir, warehouse, cfg.Storage.S3.Bucket, "", cfg.Cryptoflow.Name, cfg.Storage.S3.TableARN, s3Client, s3TableClient)
 
 	s3Writer := &S3Writer{
 		config:        cfg,
@@ -220,6 +238,7 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 		"region":     cfg.Storage.S3.Region,
 		"endpoint":   cfg.Storage.S3.Endpoint,
 		"path_style": cfg.Storage.S3.PathStyle,
+		"table_arn":  cfg.Storage.S3.TableARN,
 	}).Info("s3 writer initialized")
 
 	return s3Writer, nil
