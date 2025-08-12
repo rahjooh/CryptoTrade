@@ -255,7 +255,7 @@ processor:
 storage:
   s3:
     enabled: true
-    flush_interval: "15m"
+    flush_interval: "1m"
     table_arn: "" # ARN of the S3 table, e.g. arn:aws:s3tables:region:account:tablebucket/bucket/table/namespace/s3-table
 
     # bucket, region, and credentials are loaded from environment variables:

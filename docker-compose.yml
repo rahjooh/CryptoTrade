@@ -12,5 +12,6 @@ services:
       - AWS_SECRET_ACCESS_KEY
       - AWS_REGION
       - S3_BUCKET
+      - S3_TABLE_ARN
       - LOG_LEVEL
     command: ["./cryptoflow"]
