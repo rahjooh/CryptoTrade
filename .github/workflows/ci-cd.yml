@@ -97,6 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      S3_TABLE_ARN: ${{ vars.S3_TABLE_ARN }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
