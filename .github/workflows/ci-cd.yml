@@ -91,7 +91,7 @@ jobs:
 
             echo "✅ Deploy complete"
 
-  deploy-s3-table:
+  deploy-s3table:
     needs: [test-build, test-ssh]
     if: github.ref == 'refs/heads/s3-table'
     runs-on: ubuntu-latest
