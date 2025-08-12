@@ -125,6 +125,16 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... S3_
 Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.
 
 ---
+## CI/CD
+
+GitHub Actions automatically runs `test-build` and `ssh-test` on every push to `main` or `s3-table`. Deployments and special builds are manual:
+
+- **main-deploy** – deploy the `main` branch to the EC2 host.
+- **s3-table-build** – build the latest `s3-table` branch.
+
+Trigger these from the **Actions** tab using **Run workflow** on the desired branch.
+
+---
 
 ## Graceful Shutdown
 
