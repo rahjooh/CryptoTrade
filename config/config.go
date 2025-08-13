@@ -157,7 +157,6 @@ type StorageConfig struct {
 
 type S3Config struct {
 	Enabled           bool          `yaml:"enabled"`
-	Bucket            string        `yaml:"bucket"`
 	Region            string        `yaml:"region"`
 	Endpoint          string        `yaml:"endpoint"`
 	PathStyle         bool          `yaml:"path_style"`
@@ -236,17 +235,12 @@ func LoadConfig(path string) (*Config, error) {
 		if v := os.Getenv("AWS_REGION"); v != "" {
 			config.Storage.S3.Region = strings.TrimSpace(v)
 		}
-		if v := os.Getenv("S3_BUCKET"); v != "" {
-			config.Storage.S3.Bucket = strings.TrimSpace(v)
-		}
 		if v := os.Getenv("S3_TABLE_ARN"); v != "" {
 			config.Storage.S3.TableARN = strings.TrimSpace(v)
 		}
 	}
 
 	// Validate configuration
-	config.Storage.S3.Bucket = strings.TrimSpace(config.Storage.S3.Bucket)
-
 	if err := validateConfig(&config); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
@@ -289,7 +283,7 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
 		}
 		if cfg.Storage.S3.TableARN == "" {
-			return fmt.Errorf("storage.s3.table_arn is required when S3 is enabled")
+			return fmt.Errorf("storage.s3.table_arn is required when S3 is enabled (set storage.s3.table_arn or S3_TABLE_ARN env var)")
 		}
 		if cfg.Storage.S3.FlushInterval <= 0 {
 			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")

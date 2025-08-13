@@ -228,6 +228,7 @@ func (w *S3Writer) flushWorker() {
 	}
 }
 
+
 // flushBuffers swaps the current buffer with a new one and processes each
 // batch group sequentially.
 func (w *S3Writer) flushBuffers(reason string) {
@@ -281,7 +282,6 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		return
 	}
 
-
 	if err := w.writeRowsToS3Table(batch); err != nil {
 		atomic.AddInt64(&w.errorsCount, 1)
 		log.WithError(err).Error("failed to write rows to S3 table")
@@ -334,7 +334,6 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 	_, err := client.WriteRows(w.ctx, &writeRowsInput{
 		TableArn: aws.String(w.config.Storage.S3.TableARN),
 		Rows:     rows,
-
 	})
 	if err != nil {
 		return fmt.Errorf("write rows failed: %w", err)

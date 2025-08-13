@@ -258,8 +258,8 @@ storage:
     flush_interval: "1m"
     table_arn: "" # ARN of the S3 table, e.g. arn:aws:s3tables:region:account:tablebucket/bucket/table/namespace/s3-table
 
-    # bucket, region, and credentials are loaded from environment variables:
-    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET and S3_TABLE_ARN
+    # Region and credentials are loaded from environment variables:
+    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and S3_TABLE_ARN
 
 writer:
   max_workers: 1
