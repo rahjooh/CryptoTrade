@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -283,17 +282,14 @@ func validateConfig(cfg *Config) error {
 	}
 
 	if cfg.Storage.S3.Enabled {
-		if cfg.Storage.S3.Bucket == "" {
-			return fmt.Errorf("storage.s3.bucket is required when S3 is enabled")
-		}
 		if cfg.Storage.S3.Region == "" {
 			return fmt.Errorf("storage.s3.region is required when S3 is enabled")
 		}
 		if cfg.Storage.S3.AccessKeyID == "" || cfg.Storage.S3.SecretAccessKey == "" {
 			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
 		}
-		if !isValidS3Bucket(cfg.Storage.S3.Bucket) {
-			return fmt.Errorf("storage.s3.bucket '%s' is invalid", cfg.Storage.S3.Bucket)
+		if cfg.Storage.S3.TableARN == "" {
+			return fmt.Errorf("storage.s3.table_arn is required when S3 is enabled")
 		}
 		if cfg.Storage.S3.FlushInterval <= 0 {
 			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
@@ -301,16 +297,4 @@ func validateConfig(cfg *Config) error {
 	}
 
 	return nil
-}
-
-var s3BucketRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
-
-func isValidS3Bucket(name string) bool {
-	if len(name) < 3 || len(name) > 63 {
-		return false
-	}
-	if strings.Contains(name, "..") || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
-		return false
-	}
-	return s3BucketRegexp.MatchString(name)
 }

@@ -1,12 +1,8 @@
 package writer
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"github.com/xitongsys/parquet-go/source"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,89 +11,32 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3tables"
 	"github.com/google/uuid"
-	"github.com/xitongsys/parquet-go/parquet"
-	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
-	"cryptoflow/internal/metadata"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
 
-// ParquetRecord represents the structure of our parquet file
-type ParquetRecord struct {
-	Exchange     string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Symbol       string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Timestamp    int64   `parquet:"name=timestamp, type=INT64"`
-	LastUpdateID int64   `parquet:"name=last_update_id, type=INT64"`
-	Side         string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Price        float64 `parquet:"name=price, type=DOUBLE"`
-	Quantity     float64 `parquet:"name=quantity, type=DOUBLE"`
-	Level        int32   `parquet:"name=level, type=INT32"`
-}
-
-// memoryFileWriter implements ParquetFile interface for in-memory writing
-type memoryFileWriter struct {
-	buffer *bytes.Buffer
-}
-
-func newMemoryFileWriter() *memoryFileWriter {
-	return &memoryFileWriter{
-		buffer: &bytes.Buffer{},
-	}
-}
-
-func (mfw *memoryFileWriter) Create(name string) (source.ParquetFile, error) {
-	return mfw, nil
-}
-
-func (mfw *memoryFileWriter) Open(name string) (source.ParquetFile, error) {
-	return mfw, nil
-}
-
-func (mfw *memoryFileWriter) Seek(offset int64, whence int) (int64, error) {
-	// For writing, we typically don't need seek functionality
-	// This is a simplified implementation
-	return int64(mfw.buffer.Len()), nil
-}
-
-func (mfw *memoryFileWriter) Read(b []byte) (int, error) {
-	return mfw.buffer.Read(b)
-}
-
-func (mfw *memoryFileWriter) Write(b []byte) (int, error) {
-	return mfw.buffer.Write(b)
-}
-
-func (mfw *memoryFileWriter) Close() error {
-	return nil
-}
-
-func (mfw *memoryFileWriter) Bytes() []byte {
-	return mfw.buffer.Bytes()
-}
-
+// S3Writer writes order book batches into an S3 table using the
+// AWS S3Tables WriteRows API. Batches are buffered and flushed based
+// on the configured flush interval to minimize API calls.
 type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
-	s3Client      *s3.Client
 	s3Table       *s3tables.Client
-	ctx           context.Context
-	wg            *sync.WaitGroup
-	mu            sync.RWMutex
-	running       bool
-	log           *logger.Log
-	buffer        map[string][]models.FlattenedOrderbookEntry
-	flushTicker   *time.Ticker
-	metaGen       *metadata.Generator
+	ctx         context.Context
+	wg          *sync.WaitGroup
+	mu          sync.RWMutex
+	running     bool
+	log         *logger.Log
+	buffer      map[string][]models.FlattenedOrderbookEntry
+	flushTicker *time.Ticker
 
 	// Metrics
 	batchesWritten int64
-	filesWritten   int64
-	bytesWritten   int64
+	rowsWritten    int64
 	errorsCount    int64
 }
 
@@ -109,17 +48,155 @@ type datum struct {
 	TimestampValue *time.Time `json:"timestampValue,omitempty"`
 }
 
+// writeRowsRequestEntry models the structure expected by the WriteRows API.
 type writeRowsRequestEntry struct {
 	Record map[string]datum `json:"record"`
 }
 
+// writeRowsInput is a minimal version of the input for the WriteRows API.
 type writeRowsInput struct {
 	TableArn *string                 `json:"tableArn"`
 	Rows     []writeRowsRequestEntry `json:"rows"`
 }
 
+// writeRowsOutput represents the WriteRows API response.
 type writeRowsOutput struct{}
 
+// NewS3Writer creates a new S3Writer instance. It configures the AWS SDK
+// and initializes the S3Tables client used for writing rows.
+func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrderbookBatch) (*S3Writer, error) {
+	log := logger.GetLogger()
+	ctx := context.Background()
+
+	// Configure AWS options
+	loadOpts := []func(*config.LoadOptions) error{config.WithRegion(cfg.Storage.S3.Region)}
+	if cfg.Storage.S3.AccessKeyID != "" && cfg.Storage.S3.SecretAccessKey != "" {
+		loadOpts = append(loadOpts, config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				cfg.Storage.S3.AccessKeyID,
+				cfg.Storage.S3.SecretAccessKey,
+				"",
+			),
+		))
+	}
+
+	awsConfig, err := config.LoadDefaultConfig(ctx, loadOpts...)
+	if err != nil {
+		log.WithComponent("s3_writer").WithError(err).Warn("failed to load AWS configuration")
+		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	// Validate credentials
+	creds, err := awsConfig.Credentials.Retrieve(ctx)
+	if err != nil || !creds.HasKeys() {
+		return nil, fmt.Errorf("aws credentials not found")
+	}
+
+	s3TableClient := s3tables.NewFromConfig(awsConfig)
+
+	writer := &S3Writer{
+		config:        cfg,
+		flattenedChan: flattenedChan,
+		s3Table:       s3TableClient,
+		wg:            &sync.WaitGroup{},
+		log:           log,
+	}
+
+	log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"region":    cfg.Storage.S3.Region,
+		"table_arn": cfg.Storage.S3.TableARN,
+	}).Info("s3 writer initialized")
+
+	return writer, nil
+}
+
+// Start launches the worker and flush goroutines. Batches are buffered and
+// flushed at the interval specified in the configuration.
+func (w *S3Writer) Start(ctx context.Context) error {
+	w.mu.Lock()
+	if w.running {
+		w.mu.Unlock()
+		return fmt.Errorf("s3 writer already running")
+	}
+	w.running = true
+	w.ctx = ctx
+	w.mu.Unlock()
+
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
+	log.Info("starting s3 writer")
+
+	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
+	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
+
+	// Launch worker goroutines to receive batches concurrently.
+	numWorkers := w.config.Writer.MaxWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting s3 writer workers")
+
+	for i := 0; i < numWorkers; i++ {
+		w.wg.Add(1)
+		go w.worker(i)
+	}
+
+	// Launch flush worker to periodically write buffered rows.
+	w.wg.Add(1)
+	go w.flushWorker()
+
+	// Emit metrics periodically.
+	go w.metricsReporter(ctx)
+
+	log.Info("s3 writer started successfully")
+	return nil
+}
+
+// Stop waits for all workers to finish and stops the flush ticker.
+func (w *S3Writer) Stop() {
+	w.mu.Lock()
+	w.running = false
+	w.mu.Unlock()
+
+	if w.flushTicker != nil {
+		w.flushTicker.Stop()
+	}
+
+	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
+	w.wg.Wait()
+	w.log.WithComponent("s3_writer").Info("s3 writer stopped")
+}
+
+// worker consumes batches from the flattened channel and buffers their
+// entries for later flushing.
+func (w *S3Writer) worker(workerID int) {
+	defer w.wg.Done()
+
+	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
+		"worker_id": workerID,
+		"worker":    "s3_writer",
+	})
+
+	log.Info("starting s3 writer worker")
+
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Info("worker stopped due to context cancellation")
+			return
+		case batch, ok := <-w.flattenedChan:
+			if !ok {
+				log.Info("flattened channel closed, worker stopping")
+				return
+			}
+			w.addBatch(batch)
+			atomic.AddInt64(&w.batchesWritten, 1)
+			logger.LogDataFlowEntry(log, "flattened_channel", "s3_table_buffer", batch.RecordCount, "rows")
+		}
+	}
+}
+
+// addBatch appends the entries of a batch into a per-symbol buffer so that
+// multiple batches for the same symbol can be flushed together.
 func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
@@ -127,10 +204,12 @@ func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
 	w.mu.Unlock()
 }
 
+// bufferKey generates the map key used for buffering entries by symbol.
 func (w *S3Writer) bufferKey(exchange, market, symbol string) string {
 	return fmt.Sprintf("%s|%s|%s", exchange, market, symbol)
 }
 
+// flushWorker periodically flushes all buffered entries to the S3 table.
 func (w *S3Writer) flushWorker() {
 	defer w.wg.Done()
 
@@ -149,6 +228,8 @@ func (w *S3Writer) flushWorker() {
 	}
 }
 
+// flushBuffers swaps the current buffer with a new one and processes each
+// batch group sequentially.
 func (w *S3Writer) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
@@ -181,170 +262,8 @@ func (w *S3Writer) flushBuffers(reason string) {
 		w.processBatch(batch)
 	}
 }
-func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrderbookBatch) (*S3Writer, error) {
-	log := logger.GetLogger()
 
-	ctx := context.Background()
-
-	// Configure AWS options
-	loadOpts := []func(*config.LoadOptions) error{
-		config.WithRegion(cfg.Storage.S3.Region),
-	}
-	if cfg.Storage.S3.AccessKeyID != "" && cfg.Storage.S3.SecretAccessKey != "" {
-		loadOpts = append(loadOpts, config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(
-				cfg.Storage.S3.AccessKeyID,
-				cfg.Storage.S3.SecretAccessKey,
-				"",
-			),
-		))
-	}
-
-	awsConfig, err := config.LoadDefaultConfig(ctx, loadOpts...)
-	if err != nil {
-		log.WithComponent("s3_writer").WithError(err).Warn("failed to load AWS configuration")
-		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
-	}
-
-	// Validate credentials
-	creds, err := awsConfig.Credentials.Retrieve(ctx)
-	if err != nil || !creds.HasKeys() {
-		return nil, fmt.Errorf("aws credentials not found")
-	}
-
-	// Create S3 and S3 Tables clients
-	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
-		if cfg.Storage.S3.Endpoint != "" {
-			o.BaseEndpoint = aws.String(cfg.Storage.S3.Endpoint)
-		}
-		o.UsePathStyle = cfg.Storage.S3.PathStyle
-	})
-	s3TableClient := s3tables.NewFromConfig(awsConfig)
-
-	warehouse := fmt.Sprintf("s3://%s", cfg.Storage.S3.Bucket)
-	if cfg.Storage.S3.TableARN != "" {
-		tbl, err := s3TableClient.GetTable(ctx, &s3tables.GetTableInput{TableArn: aws.String(cfg.Storage.S3.TableARN)})
-		if err == nil && tbl.WarehouseLocation != nil {
-			warehouse = *tbl.WarehouseLocation
-			if strings.HasPrefix(warehouse, "s3://") {
-				parts := strings.Split(strings.TrimPrefix(warehouse, "s3://"), "/")
-				if len(parts) > 0 {
-					cfg.Storage.S3.Bucket = parts[0]
-				}
-			}
-		} else if err != nil {
-			log.WithComponent("s3_writer").WithError(err).Warn("failed to get table info")
-		}
-	}
-
-	metaDir, err := os.MkdirTemp("", "iceberg")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metadata directory: %w", err)
-	}
-
-	gen := metadata.NewGenerator(metaDir, warehouse, cfg.Storage.S3.Bucket, "", cfg.Cryptoflow.Name, cfg.Storage.S3.TableARN, s3Client, s3TableClient)
-
-	s3Writer := &S3Writer{
-		config:        cfg,
-		flattenedChan: flattenedChan,
-		s3Client:      s3Client,
-		s3Table:       s3TableClient,
-		wg:            &sync.WaitGroup{},
-		log:           log,
-		metaGen:       gen,
-	}
-
-	log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"bucket":     cfg.Storage.S3.Bucket,
-		"region":     cfg.Storage.S3.Region,
-		"endpoint":   cfg.Storage.S3.Endpoint,
-		"path_style": cfg.Storage.S3.PathStyle,
-		"table_arn":  cfg.Storage.S3.TableARN,
-	}).Info("s3 writer initialized")
-
-	return s3Writer, nil
-}
-
-func (w *S3Writer) Start(ctx context.Context) error {
-	w.mu.Lock()
-	if w.running {
-		w.mu.Unlock()
-		return fmt.Errorf("s3 writer already running")
-	}
-	w.running = true
-	w.ctx = ctx
-	w.mu.Unlock()
-
-	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting s3 writer")
-
-	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
-	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
-
-	// Start multiple workers for parallel processing
-	numWorkers := w.config.Writer.MaxWorkers
-	if numWorkers < 1 {
-		numWorkers = 1
-	}
-
-	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting s3 writer workers")
-
-	for i := 0; i < numWorkers; i++ {
-		w.wg.Add(1)
-		go w.worker(i)
-	}
-
-	w.wg.Add(1)
-	go w.flushWorker()
-
-	// Start metrics reporter
-	go w.metricsReporter(ctx)
-
-	log.Info("s3 writer started successfully")
-	return nil
-}
-
-func (w *S3Writer) Stop() {
-	w.mu.Lock()
-	w.running = false
-	w.mu.Unlock()
-
-	if w.flushTicker != nil {
-		w.flushTicker.Stop()
-	}
-
-	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
-	w.wg.Wait()
-	w.log.WithComponent("s3_writer").Info("s3 writer stopped")
-}
-
-func (w *S3Writer) worker(workerID int) {
-	defer w.wg.Done()
-
-	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"worker_id": workerID,
-		"worker":    "s3_writer",
-	})
-
-	log.Info("starting s3 writer worker")
-
-	for {
-		select {
-		case <-w.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
-			return
-		case batch, ok := <-w.flattenedChan:
-			if !ok {
-				log.Info("flattened channel closed, worker stopping")
-				return
-			}
-			w.addBatch(batch)
-			atomic.AddInt64(&w.batchesWritten, 1)
-			logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
-		}
-	}
-}
-
+// processBatch writes a single batch of entries to the S3 table.
 func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"batch_id":     batch.BatchID,
@@ -362,199 +281,25 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		return
 	}
 
-	if w.config.Storage.S3.TableARN != "" {
-		if err := w.writeRowsToS3Table(batch); err != nil {
-			atomic.AddInt64(&w.errorsCount, 1)
-			log.WithError(err).Error("failed to write rows to S3 table")
-			return
-		}
 
-		atomic.AddInt64(&w.filesWritten, 1)
-		log.Info("batch written to S3 table successfully")
-		logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
-		w.log.LogMetric("s3_writer", "rows_written", int64(batch.RecordCount), "counter", logger.Fields{
-			"exchange":     batch.Exchange,
-			"symbol":       batch.Symbol,
-			"record_count": batch.RecordCount,
-		})
-		return
-	}
-
-	// Generate S3 key path
-	s3Key := w.generateS3Key(batch)
-	log = log.WithFields(logger.Fields{"s3_key": s3Key})
-
-	// Create parquet file in memory
-	parquetData, fileSize, err := w.createParquetFile(batch.Entries)
-	if err != nil {
+	if err := w.writeRowsToS3Table(batch); err != nil {
 		atomic.AddInt64(&w.errorsCount, 1)
-		log.WithError(err).Error("failed to create parquet file")
+		log.WithError(err).Error("failed to write rows to S3 table")
 		return
 	}
 
-	// Upload to S3
-	err = w.uploadToS3(s3Key, parquetData)
-	if err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
-		log.WithError(err).
-			WithEnv("S3_BUCKET").
-			WithFields(logger.Fields{"bucket": w.config.Storage.S3.Bucket, "s3_key": s3Key}).
-			Error("failed to upload to S3")
-		return
-	}
-
-	// Update metrics
-	atomic.AddInt64(&w.filesWritten, 1)
-	atomic.AddInt64(&w.bytesWritten, fileSize)
-
-	log.WithFields(logger.Fields{
-		"file_size": fileSize,
-	}).Info("batch processed and uploaded successfully")
-
-	logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
-	w.log.LogMetric("s3_writer", "file_uploaded", 1, "counter", logger.Fields{
+	atomic.AddInt64(&w.rowsWritten, int64(batch.RecordCount))
+	log.Info("batch written to S3 table successfully")
+	logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
+	w.log.LogMetric("s3_writer", "rows_written", int64(batch.RecordCount), "counter", logger.Fields{
 		"exchange":     batch.Exchange,
 		"symbol":       batch.Symbol,
-		"file_size":    fileSize,
 		"record_count": batch.RecordCount,
 	})
-
-	if w.metaGen != nil {
-		df := metadata.DataFile{
-			Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),
-			FileSize:    fileSize,
-			RecordCount: int64(batch.RecordCount),
-			Partition: map[string]any{
-				"exchange": batch.Exchange,
-				"market":   batch.Market,
-				"symbol":   batch.Symbol,
-				"year":     batch.Timestamp.Year(),
-				"month":    int(batch.Timestamp.Month()),
-				"day":      batch.Timestamp.Day(),
-				"hour":     batch.Timestamp.Hour(),
-			},
-			Timestamp: batch.Timestamp,
-		}
-		if err := w.metaGen.AddFile(df); err != nil {
-			log.WithError(err).Warn("failed to update metadata")
-		}
-	}
 }
 
-func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
-	timestamp := batch.Timestamp
-
-	// Build key parts from additional keys in order
-	var parts []string
-	for _, k := range w.config.Writer.Partitioning.AdditionalKeys {
-		switch k {
-		case "exchange":
-			parts = append(parts, fmt.Sprintf("exchange=%s", batch.Exchange))
-		case "symbol":
-			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
-		case "market":
-			if batch.Market != "" {
-				parts = append(parts, fmt.Sprintf("market=%s", batch.Market))
-			}
-		}
-	}
-
-	// Time-based partition path
-	timeFormat := w.config.Writer.Partitioning.TimeFormat
-	timePath := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
-	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
-	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
-	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
-
-	parts = append(parts, timePath)
-
-	// Add filename
-	filename := fmt.Sprintf("orderbook_%s_%s_%d.parquet",
-		batch.Exchange,
-		batch.Symbol,
-		timestamp.UnixNano())
-
-	key := filepath.Join(append(parts, filename)...)
-
-	// Convert to forward slashes for S3
-	return filepath.ToSlash(key)
-}
-
-func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
-	// Filter out any entries that are missing critical fields to avoid
-	// producing placeholder rows in the resulting parquet file. Some
-	// upstream components may pass along entries with zero values when
-	// an order book level is absent; we ignore those here.
-	validEntries := make([]models.FlattenedOrderbookEntry, 0, len(entries))
-	for _, e := range entries {
-		if e.Timestamp.IsZero() || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
-			continue
-		}
-		validEntries = append(validEntries, e)
-	}
-
-	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"entries_count": len(validEntries),
-		"operation":     "create_parquet_file",
-	})
-	log.Info("creating parquet file")
-
-	// Create memory file writer
-	fw := newMemoryFileWriter()
-
-	// Create parquet writer
-	pw, err := writer.NewParquetWriter(fw, new(ParquetRecord), 4)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create parquet writer: %w", err)
-	}
-
-	// Set compression
-	switch w.config.Writer.Formats.Parquet.Compression {
-	case "snappy":
-		pw.CompressionType = parquet.CompressionCodec_SNAPPY
-	case "gzip":
-		pw.CompressionType = parquet.CompressionCodec_GZIP
-	case "lzo":
-		pw.CompressionType = parquet.CompressionCodec_LZO
-	default:
-		pw.CompressionType = parquet.CompressionCodec_UNCOMPRESSED
-	}
-
-	// Convert entries to parquet records and write
-	for _, entry := range validEntries {
-		record := ParquetRecord{
-			Exchange:     entry.Exchange,
-			Symbol:       entry.Symbol,
-			Timestamp:    entry.Timestamp.UnixMilli(),
-			LastUpdateID: entry.LastUpdateID,
-			Side:         entry.Side,
-			Price:        entry.Price,
-			Quantity:     entry.Quantity,
-			Level:        int32(entry.Level),
-		}
-
-		if err := pw.Write(record); err != nil {
-			pw.WriteStop()
-			return nil, 0, fmt.Errorf("failed to write parquet record: %w", err)
-		}
-	}
-
-	// Finalize writing
-	if err := pw.WriteStop(); err != nil {
-		return nil, 0, fmt.Errorf("failed to finalize parquet writing: %w", err)
-	}
-
-	data := fw.Bytes()
-
-	log.WithFields(logger.Fields{
-		"file_size":     len(data),
-		"entries_count": len(validEntries),
-		"compression":   w.config.Writer.Formats.Parquet.Compression,
-	}).Info("parquet file created successfully")
-
-	return data, int64(len(data)), nil
-}
-
+// writeRowsToS3Table converts entries to the WriteRows format and invokes the
+// S3Tables WriteRows API.
 func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) error {
 	if w.s3Table == nil {
 		return fmt.Errorf("s3 table client not initialized")
@@ -589,6 +334,7 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 	_, err := client.WriteRows(w.ctx, &writeRowsInput{
 		TableArn: aws.String(w.config.Storage.S3.TableARN),
 		Rows:     rows,
+
 	})
 	if err != nil {
 		return fmt.Errorf("write rows failed: %w", err)
@@ -596,34 +342,7 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 	return nil
 }
 
-func (w *S3Writer) uploadToS3(key string, data []byte) error {
-	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"operation": "upload_to_s3",
-		"data_size": len(data),
-	})
-	log.Info("uploading to S3")
-
-	input := &s3.PutObjectInput{
-		Bucket:      aws.String(w.config.Storage.S3.Bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String("application/octet-stream"),
-		Metadata: map[string]string{
-			"content-type":       "parquet",
-			"compression":        w.config.Writer.Formats.Parquet.Compression,
-			"cryptoflow-version": w.config.Cryptoflow.Version,
-		},
-	}
-
-	_, err := w.s3Client.PutObject(w.ctx, input)
-	if err != nil {
-		return fmt.Errorf("failed to upload to S3 bucket %s: %w", w.config.Storage.S3.Bucket, err)
-	}
-
-	log.Info("successfully uploaded to S3")
-	return nil
-}
-
+// metricsReporter periodically publishes internal metrics for observability.
 func (w *S3Writer) metricsReporter(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -638,10 +357,10 @@ func (w *S3Writer) metricsReporter(ctx context.Context) {
 	}
 }
 
+// reportMetrics emits aggregated metrics about writer performance.
 func (w *S3Writer) reportMetrics() {
 	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
-	filesWritten := atomic.LoadInt64(&w.filesWritten)
-	bytesWritten := atomic.LoadInt64(&w.bytesWritten)
+	rowsWritten := atomic.LoadInt64(&w.rowsWritten)
 	errorsCount := atomic.LoadInt64(&w.errorsCount)
 
 	errorRate := float64(0)
@@ -649,25 +368,16 @@ func (w *S3Writer) reportMetrics() {
 		errorRate = float64(errorsCount) / float64(batchesWritten+errorsCount)
 	}
 
-	avgBytesPerFile := float64(0)
-	if filesWritten > 0 {
-		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
-	}
-
 	log := w.log.WithComponent("s3_writer")
 	log.LogMetric("s3_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "files_written", filesWritten, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "bytes_written", bytesWritten, "counter", logger.Fields{})
+	log.LogMetric("s3_writer", "rows_written", rowsWritten, "counter", logger.Fields{})
 	log.LogMetric("s3_writer", "errors_count", errorsCount, "counter", logger.Fields{})
 	log.LogMetric("s3_writer", "error_rate", errorRate, "gauge", logger.Fields{})
-	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
-		"batches_written":    batchesWritten,
-		"files_written":      filesWritten,
-		"bytes_written":      bytesWritten,
-		"errors_count":       errorsCount,
-		"error_rate":         errorRate,
-		"avg_bytes_per_file": avgBytesPerFile,
+		"batches_written": batchesWritten,
+		"rows_written":    rowsWritten,
+		"errors_count":    errorsCount,
+		"error_rate":      errorRate,
 	}).Info("s3 writer metrics")
 }
