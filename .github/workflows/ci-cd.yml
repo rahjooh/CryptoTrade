@@ -44,10 +44,9 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          # yq (to JSON)
+          # yq (YAML -> JSON) and jq (transform)
           sudo curl -sSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
-          # ensure jq is present
           jq --version || (sudo apt-get update -y && sudo apt-get install -y jq)
       
           # Resolve the current workflow file path from workflow_ref
@@ -61,24 +60,40 @@ jobs:
             echo '```mermaid'
             echo 'flowchart LR'
       
-            # Edges: job -> needs (supports needs: string | array)
+            # --- Edges: job -> needs (supports needs: string | array) ---
             yq -o=json '.jobs' "$WF_FILE" \
-              | jq -r 'to_entries[]
-                        | .key as $j
-                        | (.value.needs // [] | if type=="string" then [.] else . end)[]?
-                        | "\($j) --> \(.)"' \
-              | sed 's/[^A-Za-z0-9_ -]//g; s/-/_/g'
+            | jq -r '
+                def clean(s):
+                  s
+                  | gsub("[^A-Za-z0-9_ -]";"")   # drop weird chars
+                  | gsub("-";"_")                # dashes -> underscores
+                  | gsub("\\s+";"_");            # spaces -> underscores
       
-            # Nodes: ensure standalone jobs show up
+                (to_entries[] | {j:.key, needs:(.value.needs // [])})
+                | .j = clean(.j)
+                | .needs = (if (.needs|type)=="string" then [ .needs ] else .needs end)
+                | .needs[]? as $n
+                | "\(.j) --> \(clean($n))"
+              ' \
+            | sort -u
+      
+            # --- Nodes: ensure standalone jobs appear ---
             yq -o=json '.jobs' "$WF_FILE" \
-              | jq -r 'keys[]' \
-              | sed 's/[^A-Za-z0-9_ -]//g; s/-/_/g' \
-              | awk '{print $1"["$1"]"}' | sort -u
+            | jq -r '
+                def clean(s):
+                  s
+                  | gsub("[^A-Za-z0-9_ -]";"")
+                  | gsub("-";"_")
+                  | gsub("\\s+";"_");
+                keys[] as $k | "\((clean($k)))[\((clean($k)))]"
+              ' \
+            | sort -u
       
             echo '```'
             echo
             echo "_ref: `${{ github.ref }}` • branch: `${{ github.ref_name }}` • event: `${{ github.event_name }}`_"
           } >> "$GITHUB_STEP_SUMMARY"
+
 
 
 
