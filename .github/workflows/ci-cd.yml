@@ -170,48 +170,60 @@ jobs:
             echo "✅ Deploy complete"
 
   deploy-s3table:
-    name: Deploy S3 Table
+    name: Deploy (S3-Table)
     needs: [test-build, test-ssh]
     if: github.ref_name == 'S3-Table'
     runs-on: ubuntu-latest
     env:
-      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
-      S3_TABLE_ARN: ${{ vars.S3_TABLE_ARN }}
+      REPO:                 ${{ github.repository }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION:            ${{ vars.AWS_REGION }}
+      S3_BUCKET:             ${{ vars.S3_BUCKET }}
+      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}  # use secrets for parity with main
+      LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Deploy to EC2 via SSH (S3-Table)
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          go-version: "1.22"
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Install deps
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Build binary
-        run: go build -o cryptoflow .
-
-      - name: Sanity check S3 table ARN
-        run: |
-          if [ -z "${S3_TABLE_ARN:-}" ]; then
-            echo "::warning::S3_TABLE_ARN is empty. Skipping S3 table deploy steps."
-            echo "Set secrets.S3_TABLE_ARN or pass it via env to enable."
-          else
-            echo "S3_TABLE_ARN detected."
-          fi
-
-      - name: Deploy/Update S3 Table (optional script)
-        if: env.S3_TABLE_ARN != ''
-        run: |
-          set -euo pipefail
-          if [ -x scripts/deploy-s3table.sh ]; then
-            scripts/deploy-s3table.sh "$S3_TABLE_ARN"
-          else
-            echo "::notice::scripts/deploy-s3table.sh not found or not executable."
-            echo "Add your provisioning logic here (e.g., AWS CLI/CDK/Terraform) and re-run."
-          fi
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          envs: REPO,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
+          script: |
+            set -euo pipefail
+            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+  
+            if [ ! -d .git ]; then
+              echo "Cloning $REPO into $APP_DIR"
+              git clone "git@github.com:${REPO}.git" . || git clone "https://github.com/${REPO}.git" .
+            fi
+  
+            git remote set-url origin "git@github.com:${REPO}.git" || true
+            git fetch origin S3-Table
+            git checkout -B S3-Table origin/S3-Table
+            git pull --rebase origin S3-Table
+  
+            # Optional: run your branch-specific provisioning script on the host
+            if [ -x scripts/deploy-s3table.sh ]; then
+              echo "Running scripts/deploy-s3table.sh"
+              scripts/deploy-s3table.sh "$S3_TABLE_ARN"
+            fi
+  
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+              docker compose down || true
+              docker compose up -d --build
+              docker compose ps
+            elif command -v docker-compose >/dev/null 2>&1; then
+              docker-compose down || true
+              docker-compose up -d --build
+              docker-compose ps
+            else
+              echo "Docker/Compose not installed on EC2. Install once, then re-run."
+              exit 1
+            fi
+  
+            echo "✅ Deploy complete (S3-Table)"
