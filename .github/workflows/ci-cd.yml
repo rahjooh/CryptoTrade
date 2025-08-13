@@ -2,7 +2,7 @@ name: cryptoflow CI/CD
 
 on:
   push:
-    branches: ["main", "s3-table"]
+    branches: ["main", "S3-Table"]
   workflow_dispatch:
 
 concurrency:
@@ -172,7 +172,7 @@ jobs:
   deploy-s3table:
     name: Deploy S3 Table
     needs: [test-build, test-ssh]
-    if: github.ref_name == 's3-table'
+    if: github.ref_name == 'S3-Table'
     runs-on: ubuntu-latest
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
