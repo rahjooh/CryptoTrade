@@ -5,25 +5,77 @@ on:
     branches: ["main", "s3-table"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   test-build:
+    name: Test & Build
     runs-on: ubuntu-latest
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
     steps:
+      - name: Show ref info
+        run: |
+          echo "ref=${{ github.ref }}"
+          echo "ref_name=${{ github.ref_name }}"
+          echo "event=${{ github.event_name }}"
+
       - uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: true
+          cache-dependency-path: go.sum
+
       - name: Install deps
         run: go mod download
+
       - name: Run tests
         run: go test -v ./...
+
       - name: Build binary
         run: go build -o cryptoflow .
 
+      - name: Add Mermaid job graph to Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          # Install yq
+          sudo curl -sSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          # Derive workflow file path from github.workflow_ref:
+          # e.g. owner/repo/.github/workflows/ci.yml@refs/heads/main  -> .github/workflows/ci.yml
+          WF_REF="${{ github.workflow_ref }}"
+          WF_FILE="$(printf '%s' "$WF_REF" | cut -d'/' -f3- | cut -d'@' -f1)"
+          echo "Using workflow file: $WF_FILE"
+          {
+            echo '## Workflow Graph'
+            echo
+            echo '```mermaid'
+            echo 'flowchart LR'
+            # Edges from `needs`
+            yq -r '.jobs | to_entries[] |
+                   .key as $j |
+                   ((.value.needs // []) | (if type=="string" then [.] else . end)[]) |
+                   "\($j) --> \(.)"' "$WF_FILE" \
+              | sed 's/[^A-Za-z0-9_ -]//g; s/-/_/g'
+            # Nodes so standalone jobs appear
+            yq -r '.jobs | keys[]' "$WF_FILE" \
+              | sed 's/[^A-Za-z0-9_ -]//g; s/-/_/g' \
+              | awk '{print $1"["$1"]"}' \
+              | sort -u
+            echo '```'
+            echo
+            echo "_ref: `${{ github.ref }}` • branch: `${{ github.ref_name }}` • event: `${{ github.event_name }}`_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
   test-ssh:
+    name: Test SSH
     runs-on: ubuntu-latest
     steps:
       - name: SSH reachability check
@@ -39,16 +91,19 @@ jobs:
             echo "ok: ssh works"
 
   deploy-main:
+    name: Deploy (main)
     runs-on: ubuntu-latest
     needs: [test-build, test-ssh]
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.ref_name == 'main' }}
     env:
       REPO: ${{ github.repository }}
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION:            ${{ vars.AWS_REGION }}
       S3_BUCKET:             ${{ vars.S3_BUCKET }}
+      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -92,20 +147,48 @@ jobs:
             echo "✅ Deploy complete"
 
   deploy-s3table:
+    name: Deploy S3 Table
     needs: [test-build, test-ssh]
-    if: github.ref == 'refs/heads/s3-table'
+    if: github.ref_name == 's3-table'
     runs-on: ubuntu-latest
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      S3_TABLE_ARN: ${{ vars.S3_TABLE_ARN }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: true
+          cache-dependency-path: go.sum
+
       - name: Install deps
         run: go mod download
+
       - name: Run tests
         run: go test -v ./...
+
       - name: Build binary
         run: go build -o cryptoflow .
+
+      - name: Sanity check S3 table ARN
+        run: |
+          if [ -z "${S3_TABLE_ARN:-}" ]; then
+            echo "::warning::S3_TABLE_ARN is empty. Skipping S3 table deploy steps."
+            echo "Set secrets.S3_TABLE_ARN or pass it via env to enable."
+          else
+            echo "S3_TABLE_ARN detected."
+          fi
+
+      - name: Deploy/Update S3 Table (optional script)
+        if: env.S3_TABLE_ARN != ''
+        run: |
+          set -euo pipefail
+          if [ -x scripts/deploy-s3table.sh ]; then
+            scripts/deploy-s3table.sh "$S3_TABLE_ARN"
+          else
+            echo "::notice::scripts/deploy-s3table.sh not found or not executable."
+            echo "Add your provisioning logic here (e.g., AWS CLI/CDK/Terraform) and re-run."
+          fi          
