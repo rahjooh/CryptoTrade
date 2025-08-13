@@ -26,7 +26,6 @@ type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
 	s3Table       *s3tables.Client
-
 	ctx         context.Context
 	wg          *sync.WaitGroup
 	mu          sync.RWMutex
@@ -228,6 +227,7 @@ func (w *S3Writer) flushWorker() {
 		}
 	}
 }
+
 
 // flushBuffers swaps the current buffer with a new one and processes each
 // batch group sequentially.
