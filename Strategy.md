@@ -59,14 +59,28 @@ CREATE TABLE orderbook_snapshot (
 
 ### `orderbook_delta`
 ```sql
-CREATE TABLE orderbook_delta (
-  exchange STRING,
-  market_type STRING,
-  symbol STRING,
-  timestamp_ms BIGINT,
-  bid_updates ARRAY<STRUCT<price DOUBLE, quantity DOUBLE>>,
-  ask_updates ARRAY<STRUCT<price DOUBLE, quantity DOUBLE>>
+CREATE TABLE IF NOT EXISTS cryptoflowdb.s3_table (
+                                                     exchange        string,
+                                                     market          string,
+                                                     symbol          string,
+                                                     timestamp       timestamp,
+                                                     last_update_id  bigint,
+                                                     side            string,
+                                                     price           double,
+                                                     quantity        double,
+                                                     level           int
 )
+    PARTITIONED BY (
+                       exchange,
+                       market,
+                       symbol,
+                       hour(timestamp)
+    )
+    LOCATION 's3://test-raw-databucket/S3-table/'
+    TBLPROPERTIES (
+                      'table_type' = 'ICEBERG',
+                      'format'     = 'parquet'
+                  );
 ```
 
 ### `contracts`
