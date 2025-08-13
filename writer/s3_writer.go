@@ -84,6 +84,7 @@ type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
 	s3Client      *s3.Client
+	s3Table       *s3tables.Client
 	ctx           context.Context
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
@@ -99,6 +100,25 @@ type S3Writer struct {
 	bytesWritten   int64
 	errorsCount    int64
 }
+
+// datum represents a single typed value for WriteRows.
+type datum struct {
+	StringValue    *string    `json:"stringValue,omitempty"`
+	LongValue      *int64     `json:"longValue,omitempty"`
+	DoubleValue    *float64   `json:"doubleValue,omitempty"`
+	TimestampValue *time.Time `json:"timestampValue,omitempty"`
+}
+
+type writeRowsRequestEntry struct {
+	Record map[string]datum `json:"record"`
+}
+
+type writeRowsInput struct {
+	TableArn *string                 `json:"tableArn"`
+	Rows     []writeRowsRequestEntry `json:"rows"`
+}
+
+type writeRowsOutput struct{}
 
 func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
@@ -228,6 +248,7 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 		config:        cfg,
 		flattenedChan: flattenedChan,
 		s3Client:      s3Client,
+		s3Table:       s3TableClient,
 		wg:            &sync.WaitGroup{},
 		log:           log,
 		metaGen:       gen,
@@ -341,6 +362,24 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		return
 	}
 
+	if w.config.Storage.S3.TableARN != "" {
+		if err := w.writeRowsToS3Table(batch); err != nil {
+			atomic.AddInt64(&w.errorsCount, 1)
+			log.WithError(err).Error("failed to write rows to S3 table")
+			return
+		}
+
+		atomic.AddInt64(&w.filesWritten, 1)
+		log.Info("batch written to S3 table successfully")
+		logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
+		w.log.LogMetric("s3_writer", "rows_written", int64(batch.RecordCount), "counter", logger.Fields{
+			"exchange":     batch.Exchange,
+			"symbol":       batch.Symbol,
+			"record_count": batch.RecordCount,
+		})
+		return
+	}
+
 	// Generate S3 key path
 	s3Key := w.generateS3Key(batch)
 	log = log.WithFields(logger.Fields{"s3_key": s3Key})
@@ -380,23 +419,25 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		"record_count": batch.RecordCount,
 	})
 
-	df := metadata.DataFile{
-		Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),
-		FileSize:    fileSize,
-		RecordCount: int64(batch.RecordCount),
-		Partition: map[string]any{
-			"exchange": batch.Exchange,
-			"market":   batch.Market,
-			"symbol":   batch.Symbol,
-			"year":     batch.Timestamp.Year(),
-			"month":    int(batch.Timestamp.Month()),
-			"day":      batch.Timestamp.Day(),
-			"hour":     batch.Timestamp.Hour(),
-		},
-		Timestamp: batch.Timestamp,
-	}
-	if err := w.metaGen.AddFile(df); err != nil {
-		log.WithError(err).Warn("failed to update metadata")
+	if w.metaGen != nil {
+		df := metadata.DataFile{
+			Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),
+			FileSize:    fileSize,
+			RecordCount: int64(batch.RecordCount),
+			Partition: map[string]any{
+				"exchange": batch.Exchange,
+				"market":   batch.Market,
+				"symbol":   batch.Symbol,
+				"year":     batch.Timestamp.Year(),
+				"month":    int(batch.Timestamp.Month()),
+				"day":      batch.Timestamp.Day(),
+				"hour":     batch.Timestamp.Hour(),
+			},
+			Timestamp: batch.Timestamp,
+		}
+		if err := w.metaGen.AddFile(df); err != nil {
+			log.WithError(err).Warn("failed to update metadata")
+		}
 	}
 }
 
@@ -512,6 +553,47 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 	}).Info("parquet file created successfully")
 
 	return data, int64(len(data)), nil
+}
+
+func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) error {
+	if w.s3Table == nil {
+		return fmt.Errorf("s3 table client not initialized")
+	}
+
+	type writeRowsAPI interface {
+		WriteRows(ctx context.Context, params *writeRowsInput, optFns ...func(*s3tables.Options)) (*writeRowsOutput, error)
+	}
+
+	client, ok := interface{}(w.s3Table).(writeRowsAPI)
+	if !ok {
+		return fmt.Errorf("WriteRows not supported by current AWS SDK")
+	}
+
+	rows := make([]writeRowsRequestEntry, 0, len(batch.Entries))
+	for _, e := range batch.Entries {
+		rows = append(rows, writeRowsRequestEntry{
+			Record: map[string]datum{
+				"exchange":       {StringValue: aws.String(e.Exchange)},
+				"market":         {StringValue: aws.String(e.Market)},
+				"symbol":         {StringValue: aws.String(e.Symbol)},
+				"timestamp":      {TimestampValue: &e.Timestamp},
+				"last_update_id": {LongValue: aws.Int64(e.LastUpdateID)},
+				"side":           {StringValue: aws.String(e.Side)},
+				"price":          {DoubleValue: aws.Float64(e.Price)},
+				"quantity":       {DoubleValue: aws.Float64(e.Quantity)},
+				"level":          {LongValue: aws.Int64(int64(e.Level))},
+			},
+		})
+	}
+
+	_, err := client.WriteRows(w.ctx, &writeRowsInput{
+		TableArn: aws.String(w.config.Storage.S3.TableARN),
+		Rows:     rows,
+	})
+	if err != nil {
+		return fmt.Errorf("write rows failed: %w", err)
+	}
+	return nil
 }
 
 func (w *S3Writer) uploadToS3(key string, data []byte) error {
