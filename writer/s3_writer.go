@@ -26,41 +26,19 @@ type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
 	s3Table       *s3tables.Client
-	ctx         context.Context
-	wg          *sync.WaitGroup
-	mu          sync.RWMutex
-	running     bool
-	log         *logger.Log
-	buffer      map[string][]models.FlattenedOrderbookEntry
-	flushTicker *time.Ticker
+	ctx           context.Context
+	wg            *sync.WaitGroup
+	mu            sync.RWMutex
+	running       bool
+	log           *logger.Log
+	buffer        map[string][]models.FlattenedOrderbookEntry
+	flushTicker   *time.Ticker
 
 	// Metrics
 	batchesWritten int64
 	rowsWritten    int64
 	errorsCount    int64
 }
-
-// datum represents a single typed value for WriteRows.
-type datum struct {
-	StringValue    *string    `json:"stringValue,omitempty"`
-	LongValue      *int64     `json:"longValue,omitempty"`
-	DoubleValue    *float64   `json:"doubleValue,omitempty"`
-	TimestampValue *time.Time `json:"timestampValue,omitempty"`
-}
-
-// writeRowsRequestEntry models the structure expected by the WriteRows API.
-type writeRowsRequestEntry struct {
-	Record map[string]datum `json:"record"`
-}
-
-// writeRowsInput is a minimal version of the input for the WriteRows API.
-type writeRowsInput struct {
-	TableArn *string                 `json:"tableArn"`
-	Rows     []writeRowsRequestEntry `json:"rows"`
-}
-
-// writeRowsOutput represents the WriteRows API response.
-type writeRowsOutput struct{}
 
 // NewS3Writer creates a new S3Writer instance. It configures the AWS SDK
 // and initializes the S3Tables client used for writing rows.
@@ -228,7 +206,6 @@ func (w *S3Writer) flushWorker() {
 	}
 }
 
-
 // flushBuffers swaps the current buffer with a new one and processes each
 // batch group sequentially.
 func (w *S3Writer) flushBuffers(reason string) {
@@ -305,19 +282,10 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 		return fmt.Errorf("s3 table client not initialized")
 	}
 
-	type writeRowsAPI interface {
-		WriteRows(ctx context.Context, params *writeRowsInput, optFns ...func(*s3tables.Options)) (*writeRowsOutput, error)
-	}
-
-	client, ok := interface{}(w.s3Table).(writeRowsAPI)
-	if !ok {
-		return fmt.Errorf("WriteRows not supported by current AWS SDK")
-	}
-
-	rows := make([]writeRowsRequestEntry, 0, len(batch.Entries))
+	rows := make([]s3tables.WriteRowsRequestEntry, 0, len(batch.Entries))
 	for _, e := range batch.Entries {
-		rows = append(rows, writeRowsRequestEntry{
-			Record: map[string]datum{
+		rows = append(rows, s3tables.WriteRowsRequestEntry{
+			Record: map[string]s3tables.Datum{
 				"exchange":       {StringValue: aws.String(e.Exchange)},
 				"market":         {StringValue: aws.String(e.Market)},
 				"symbol":         {StringValue: aws.String(e.Symbol)},
@@ -331,7 +299,7 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 		})
 	}
 
-	_, err := client.WriteRows(w.ctx, &writeRowsInput{
+	_, err := w.s3Table.WriteRows(w.ctx, &s3tables.WriteRowsInput{
 		TableArn: aws.String(w.config.Storage.S3.TableARN),
 		Rows:     rows,
 	})
