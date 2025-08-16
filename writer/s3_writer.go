@@ -1,16 +1,21 @@
 package writer
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsarn "github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3tables"
 	"github.com/google/uuid"
 
@@ -19,13 +24,17 @@ import (
 	"cryptoflow/models"
 )
 
-// S3Writer writes order book batches into an S3 table using the
-// AWS S3Tables WriteRows API. Batches are buffered and flushed based
-// on the configured flush interval to minimize API calls.
+// S3Writer buffers order book batches and periodically persists them as
+// JSON objects to the S3 bucket backing an S3 Table. The official S3
+// Tables WriteRows API is still unavailable in the AWS SDK, so this
+// implementation uploads batches via standard S3 PutObject calls.
 type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
 	s3Table       *s3tables.Client
+	s3Client      *s3.Client
+	bucket        string
+	prefix        string
 	ctx           context.Context
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
@@ -71,11 +80,20 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 	}
 
 	s3TableClient := s3tables.NewFromConfig(awsConfig)
+	s3Client := s3.NewFromConfig(awsConfig)
+
+	bucket, prefix, err := parseBucketAndPrefix(cfg.Storage.S3.TableARN)
+	if err != nil {
+		return nil, fmt.Errorf("invalid table arn: %w", err)
+	}
 
 	writer := &S3Writer{
 		config:        cfg,
 		flattenedChan: flattenedChan,
 		s3Table:       s3TableClient,
+		s3Client:      s3Client,
+		bucket:        bucket,
+		prefix:        prefix,
 		wg:            &sync.WaitGroup{},
 		log:           log,
 	}
@@ -275,38 +293,54 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	})
 }
 
-// writeRowsToS3Table converts entries to the WriteRows format and invokes the
-// S3Tables WriteRows API.
+// writeRowsToS3Table writes a batch to the underlying S3 bucket as a JSON
+// document. Each batch becomes an object whose key encodes exchange, market,
+// symbol and timestamp, allowing downstream tools to process the files or load
+// them into an S3 Table.
 func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) error {
-	if w.s3Table == nil {
-		return fmt.Errorf("s3 table client not initialized")
+	if w.s3Client == nil {
+		return fmt.Errorf("s3 client not initialized")
 	}
 
-	rows := make([]s3tables.WriteRowsRequestEntry, 0, len(batch.Entries))
-	for _, e := range batch.Entries {
-		rows = append(rows, s3tables.WriteRowsRequestEntry{
-			Record: map[string]s3tables.Datum{
-				"exchange":       {StringValue: aws.String(e.Exchange)},
-				"market":         {StringValue: aws.String(e.Market)},
-				"symbol":         {StringValue: aws.String(e.Symbol)},
-				"timestamp":      {TimestampValue: &e.Timestamp},
-				"last_update_id": {LongValue: aws.Int64(e.LastUpdateID)},
-				"side":           {StringValue: aws.String(e.Side)},
-				"price":          {DoubleValue: aws.Float64(e.Price)},
-				"quantity":       {DoubleValue: aws.Float64(e.Quantity)},
-				"level":          {LongValue: aws.Int64(int64(e.Level))},
-			},
-		})
+	data, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("marshal batch: %w", err)
 	}
 
-	_, err := w.s3Table.WriteRows(w.ctx, &s3tables.WriteRowsInput{
-		TableArn: aws.String(w.config.Storage.S3.TableARN),
-		Rows:     rows,
+	ts := batch.Timestamp.UTC().Format("2006-01-02T15-04-05.000000000Z07:00")
+	key := path.Join(w.prefix, batch.Exchange, batch.Market, batch.Symbol, ts+"_"+batch.BatchID+".json")
+
+	_, err = w.s3Client.PutObject(w.ctx, &s3.PutObjectInput{
+		Bucket: aws.String(w.bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(data),
 	})
 	if err != nil {
-		return fmt.Errorf("write rows failed: %w", err)
+		return fmt.Errorf("put object: %w", err)
 	}
+
 	return nil
+}
+
+// parseBucketAndPrefix extracts the S3 bucket name and prefix from an S3 Table
+// ARN of the form:
+// arn:aws:s3tables:region:account:tablebucket/{bucket}/table/{namespace}/{table}
+func parseBucketAndPrefix(tableARN string) (bucket, prefix string, err error) {
+	parsed, err := awsarn.Parse(tableARN)
+	if err != nil {
+		return "", "", err
+	}
+
+	parts := strings.Split(parsed.Resource, "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid table arn resource: %s", parsed.Resource)
+	}
+
+	bucket = parts[1]
+	if len(parts) > 2 {
+		prefix = strings.Join(parts[2:], "/")
+	}
+	return bucket, prefix, nil
 }
 
 // metricsReporter periodically publishes internal metrics for observability.
