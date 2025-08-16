@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsarn "github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -292,6 +291,7 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		"record_count": batch.RecordCount,
 	})
 }
+
 
 // writeRowsToS3Table writes a batch to the underlying S3 bucket as a JSON
 // document. Each batch becomes an object whose key encodes exchange, market,
