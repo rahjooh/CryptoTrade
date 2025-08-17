@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,26 @@ import (
 	//"cryptoflow/logger"
 	"gopkg.in/yaml.v3"
 )
+
+const terraformOutputsPath = "infra/s3tables-outputs.json"
+
+type terraformOutputs struct {
+	Region   string `json:"region"`
+	TableARN string `json:"table_arn"`
+}
+
+func loadTerraformOutputs(path string) (*terraformOutputs, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var out terraformOutputs
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
 
 type Config struct {
 	Cryptoflow CryptoflowConfig `yaml:"cryptoflow"`
@@ -224,18 +245,27 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Override S3 settings from environment variables if available
+	// Override S3 settings from Terraform outputs, then environment variables if available
 	if config.Storage.S3.Enabled {
+		if outputs, err := loadTerraformOutputs(terraformOutputsPath); err == nil {
+			if outputs.Region != "" {
+				config.Storage.S3.Region = strings.TrimSpace(outputs.Region)
+			}
+			if outputs.TableARN != "" {
+				config.Storage.S3.TableARN = strings.TrimSpace(outputs.TableARN)
+			}
+		}
+
 		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
 			config.Storage.S3.AccessKeyID = strings.TrimSpace(v)
 		}
 		if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
 			config.Storage.S3.SecretAccessKey = strings.TrimSpace(v)
 		}
-		if v := os.Getenv("AWS_REGION"); v != "" {
+		if v := os.Getenv("AWS_REGION"); v != "" && config.Storage.S3.Region == "" {
 			config.Storage.S3.Region = strings.TrimSpace(v)
 		}
-		if v := os.Getenv("S3_TABLE_ARN"); v != "" {
+		if v := os.Getenv("S3_TABLE_ARN"); v != "" && config.Storage.S3.TableARN == "" {
 			config.Storage.S3.TableARN = strings.TrimSpace(v)
 		}
 	}
