@@ -3,19 +3,25 @@ package writer
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"path"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsarn "github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3tables"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3tables/types"
 	"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
@@ -23,17 +29,18 @@ import (
 	"cryptoflow/models"
 )
 
-// S3Writer buffers order book batches and periodically persists them as
-// JSON objects to the S3 bucket backing an S3 Table. The official S3
-// Tables WriteRows API is still unavailable in the AWS SDK, so this
-// implementation uploads batches via standard S3 PutObject calls.
+// S3Writer buffers order book batches and writes them directly to an
+// Amazon S3 Table using the Iceberg REST endpoint. Batches are sent over
+// the S3 Tables API with SigV4 authentication, avoiding Glue or Athena.
 type S3Writer struct {
 	config        *appconfig.Config
 	flattenedChan <-chan models.FlattenedOrderbookBatch
 	s3Table       *s3tables.Client
-	s3Client      *s3.Client
 	bucket        string
-	prefix        string
+	namespace     string
+	table         string
+	awsConfig     aws.Config
+	httpClient    *http.Client
 	ctx           context.Context
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
@@ -79,9 +86,8 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 	}
 
 	s3TableClient := s3tables.NewFromConfig(awsConfig)
-	s3Client := s3.NewFromConfig(awsConfig)
 
-	bucket, prefix, err := parseBucketAndPrefix(cfg.Storage.S3.TableARN)
+	bucket, namespace, table, err := parseTableARN(cfg.Storage.S3.TableARN)
 	if err != nil {
 		return nil, fmt.Errorf("invalid table arn: %w", err)
 	}
@@ -90,11 +96,17 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 		config:        cfg,
 		flattenedChan: flattenedChan,
 		s3Table:       s3TableClient,
-		s3Client:      s3Client,
 		bucket:        bucket,
-		prefix:        prefix,
+		namespace:     namespace,
+		table:         table,
+		awsConfig:     awsConfig,
+		httpClient:    &http.Client{},
 		wg:            &sync.WaitGroup{},
 		log:           log,
+	}
+
+	if err := writer.ensurePrerequisites(ctx); err != nil {
+		return nil, fmt.Errorf("ensure prerequisites: %w", err)
 	}
 
 	log.WithComponent("s3_writer").WithFields(logger.Fields{
@@ -292,55 +304,135 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	})
 }
 
-
-// writeRowsToS3Table writes a batch to the underlying S3 bucket as a JSON
-// document. Each batch becomes an object whose key encodes exchange, market,
-// symbol and timestamp, allowing downstream tools to process the files or load
-// them into an S3 Table.
+// writeRowsToS3Table sends the batch directly to the S3 Tables Iceberg REST
+// endpoint. The request is signed with SigV4 using the "s3tables" signing name
+// and authenticated with the configured AWS credentials.
 func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) error {
-	if w.s3Client == nil {
-		return fmt.Errorf("s3 client not initialized")
-	}
-
 	data, err := json.Marshal(batch)
 	if err != nil {
 		return fmt.Errorf("marshal batch: %w", err)
 	}
 
-	ts := batch.Timestamp.UTC().Format("2006-01-02T15-04-05.000000000Z07:00")
-	key := path.Join(w.prefix, batch.Exchange, batch.Market, batch.Symbol, ts+"_"+batch.BatchID+".json")
+	endpoint := fmt.Sprintf("https://s3tables.%s.amazonaws.com/v1/namespaces/%s/tables/%s/rows",
+		w.awsConfig.Region, w.namespace, w.table)
 
-	_, err = w.s3Client.PutObject(w.ctx, &s3.PutObjectInput{
-		Bucket: aws.String(w.bucket),
-		Key:    aws.String(key),
-		Body:   bytes.NewReader(data),
-	})
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("put object: %w", err)
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	creds, err := w.awsConfig.Credentials.Retrieve(w.ctx)
+	if err != nil {
+		return fmt.Errorf("retrieve credentials: %w", err)
+	}
+
+	hash := sha256.Sum256(data)
+	signer := v4.NewSigner()
+	if err := signer.SignHTTP(w.ctx, creds, req, hex.EncodeToString(hash[:]), "s3tables", w.awsConfig.Region, time.Now()); err != nil {
+		return fmt.Errorf("sign request: %w", err)
+	}
+
+	resp, err := w.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("s3 tables write failed: %s", string(body))
 	}
 
 	return nil
 }
 
-// parseBucketAndPrefix extracts the S3 bucket name and prefix from an S3 Table
-// ARN of the form:
+// parseTableARN extracts bucket name, namespace, and table name from an S3
+// Table ARN of the form:
 // arn:aws:s3tables:region:account:tablebucket/{bucket}/table/{namespace}/{table}
-func parseBucketAndPrefix(tableARN string) (bucket, prefix string, err error) {
+func parseTableARN(tableARN string) (bucket, namespace, table string, err error) {
 	parsed, err := awsarn.Parse(tableARN)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	parts := strings.Split(parsed.Resource, "/")
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid table arn resource: %s", parsed.Resource)
+	if len(parts) < 5 || parts[0] != "tablebucket" || parts[2] != "table" {
+		return "", "", "", fmt.Errorf("invalid table arn resource: %s", parsed.Resource)
 	}
 
 	bucket = parts[1]
-	if len(parts) > 2 {
-		prefix = strings.Join(parts[2:], "/")
+	namespace = parts[3]
+	table = parts[4]
+	return
+}
+
+// ensurePrerequisites creates the table bucket, namespace, and table if they do
+// not already exist.
+func (w *S3Writer) ensurePrerequisites(ctx context.Context) error {
+	// Ensure table bucket exists.
+	if _, err := w.s3Table.GetTableBucket(ctx, &s3tables.GetTableBucketInput{
+		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+	}); err != nil {
+		if isNotFound(err) {
+			if _, err := w.s3Table.CreateTableBucket(ctx, &s3tables.CreateTableBucketInput{
+				Name: aws.String(w.bucket),
+			}); err != nil && !isConflict(err) {
+				return fmt.Errorf("create table bucket: %w", err)
+			}
+		} else {
+			return fmt.Errorf("get table bucket: %w", err)
+		}
 	}
-	return bucket, prefix, nil
+
+	// Ensure namespace exists.
+	if _, err := w.s3Table.GetNamespace(ctx, &s3tables.GetNamespaceInput{
+		Namespace:      aws.String(w.namespace),
+		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+	}); err != nil {
+		if isNotFound(err) {
+			if _, err := w.s3Table.CreateNamespace(ctx, &s3tables.CreateNamespaceInput{
+				Namespace:      []string{w.namespace},
+				TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+			}); err != nil && !isConflict(err) {
+				return fmt.Errorf("create namespace: %w", err)
+			}
+		} else {
+			return fmt.Errorf("get namespace: %w", err)
+		}
+	}
+
+	// Ensure table exists.
+	if _, err := w.s3Table.GetTable(ctx, &s3tables.GetTableInput{
+		Name:           aws.String(w.table),
+		Namespace:      aws.String(w.namespace),
+		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+	}); err != nil {
+		if isNotFound(err) {
+			if _, err := w.s3Table.CreateTable(ctx, &s3tables.CreateTableInput{
+				Format:         s3types.OpenTableFormatIceberg,
+				Name:           aws.String(w.table),
+				Namespace:      aws.String(w.namespace),
+				TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+			}); err != nil && !isConflict(err) {
+				return fmt.Errorf("create table: %w", err)
+			}
+		} else {
+			return fmt.Errorf("get table: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func isNotFound(err error) bool {
+	var nfe *s3types.NotFoundException
+	return errors.As(err, &nfe)
+}
+
+func isConflict(err error) bool {
+	var ce *s3types.ConflictException
+	return errors.As(err, &ce)
 }
 
 // metricsReporter periodically publishes internal metrics for observability.
