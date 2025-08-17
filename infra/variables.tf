@@ -1,6 +1,6 @@
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "ap-south-1"
 }
 
 variable "table_bucket_name" {
@@ -41,5 +41,5 @@ variable "outputs_path" {
 variable "name_prefix" {
   description = "Prefix used for named resources like IAM policies."
   type        = string
-  default     = "s3tables"
+  default     = "raw"
 }
