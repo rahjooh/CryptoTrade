@@ -26,8 +26,8 @@ terraform {
   # }
 }
 
-provider "aws"  { region = var.region }
-provider "awscc"{ region = var.region }
+provider "aws" { region = var.region }
+provider "awscc" { region = var.region }
 provider "local" {}
 
 data "aws_caller_identity" "current" {}
@@ -66,15 +66,15 @@ resource "awscc_s3tables_table" "tbl" {
   iceberg_metadata = {
     iceberg_schema = {
       schema_field_list = [
-        { name = "exchange",       type = "string",    required = true },
-        { name = "market",         type = "string",    required = true },
-        { name = "symbol",         type = "string",    required = true },
-        { name = "timestamp",      type = "timestamp", required = true },
-        { name = "last_update_id", type = "long",      required = true },
-        { name = "side",           type = "string",    required = true },
-        { name = "price",          type = "double",    required = true },
-        { name = "quantity",       type = "double",    required = true },
-        { name = "level",          type = "int",       required = true }
+        { name = "exchange", type = "string", required = true },
+        { name = "market", type = "string", required = true },
+        { name = "symbol", type = "string", required = true },
+        { name = "timestamp", type = "timestamp", required = true },
+        { name = "last_update_id", type = "long", required = true },
+        { name = "side", type = "string", required = true },
+        { name = "price", type = "double", required = true },
+        { name = "quantity", type = "double", required = true },
+        { name = "level", type = "int", required = true }
       ]
     }
   }
@@ -89,7 +89,7 @@ resource "awscc_s3tables_table" "tbl" {
 ########################################
 data "aws_iam_policy_document" "writer" {
   statement {
-    sid     = "S3TablesControlPlane"
+    sid = "S3TablesControlPlane"
     actions = [
       "s3tables:CreateNamespace",
       "s3tables:CreateTable",
@@ -107,7 +107,7 @@ data "aws_iam_policy_document" "writer" {
   }
 
   statement {
-    sid     = "S3TablesDataPlaneForThisTable"
+    sid = "S3TablesDataPlaneForThisTable"
     actions = [
       "s3tables:PutTableData",
       "s3tables:GetTableData"
@@ -165,7 +165,7 @@ resource "local_file" "persist_outputs" {
 # 6) Human-friendly outputs
 ########################################
 output "table_bucket_arn" { value = aws_s3tables_table_bucket.this.arn }
-output "namespace"        { value = awscc_s3tables_namespace.ns.namespace }
-output "table_arn"        { value = awscc_s3tables_table.tbl.table_arn }
-output "rest_endpoint"    { value = local.rest_endpoint }
-output "outputs_file"     { value = local_file.persist_outputs.filename }
+output "namespace" { value = awscc_s3tables_namespace.ns.namespace }
+output "table_arn" { value = awscc_s3tables_table.tbl.table_arn }
+output "rest_endpoint" { value = local.rest_endpoint }
+output "outputs_file" { value = local_file.persist_outputs.filename }
