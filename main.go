@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -41,10 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.WithFields(logger.Fields{
-		"service": cfg.Cryptoflow.Name,
-		"version": cfg.Cryptoflow.Version,
-	}).Info("starting cryptoflow")
+	logConfiguration(log, cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -69,7 +67,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		log.WithComponent("main").Info("S3 storage disabled; skipping S3 writer")
+		log.WithComponent("main").Debug("S3 storage disabled; skipping S3 writer")
 	}
 
 	var wg sync.WaitGroup
@@ -101,26 +99,26 @@ func main() {
 	}
 
 	time.Sleep(2 * time.Second)
-	log.Info("all components started successfully")
+	log.Debug("all components started successfully")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-sigChan
-	log.WithFields(logger.Fields{"signal": sig.String()}).Info("shutdown signal received")
+	log.WithFields(logger.Fields{"signal": sig.String()}).Debug("shutdown signal received")
 
-	log.Info("starting graceful shutdown")
+	log.Debug("starting graceful shutdown")
 	cancel()
 
 	if s3Writer != nil {
-		log.Info("stopping S3 writer")
+		log.Debug("stopping S3 writer")
 		s3Writer.Stop()
 	}
 
-	log.Info("stopping flattener")
+	log.Debug("stopping flattener")
 	flattener.Stop()
 
-	log.Info("stopping binance reader")
+	log.Debug("stopping binance reader")
 	binanceReader.Stop()
 
 	done := make(chan struct{})
@@ -131,10 +129,23 @@ func main() {
 
 	select {
 	case <-done:
-		log.Info("graceful shutdown completed")
+		log.Debug("graceful shutdown completed")
 	case <-time.After(30 * time.Second):
 		log.Warn("graceful shutdown timeout exceeded")
 	}
 
-	log.Info("cryptoflow stopped")
+	log.Debug("cryptoflow stopped")
+}
+
+func logConfiguration(log *logger.Log, cfg *config.Config) {
+	symbols := strings.Join(cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols, ",")
+	log.WithFields(logger.Fields{
+		"service":        cfg.Cryptoflow.Name,
+		"version":        cfg.Cryptoflow.Version,
+		"s3_table_arn":   cfg.Storage.S3.TableARN,
+		"s3_region":      cfg.Storage.S3.Region,
+		"symbols":        symbols,
+		"batch_size":     cfg.Writer.Batch.Size,
+		"flush_interval": cfg.Storage.S3.FlushInterval,
+	}).Info("configuration")
 }

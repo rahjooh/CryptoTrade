@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,7 +26,10 @@ type Entry struct {
 	*logrus.Entry
 }
 
-var globalLogger *Log
+var (
+	globalLogger *Log
+	errorCount   atomic.Int64
+)
 
 func init() {
 	globalLogger = Logger()
@@ -34,6 +38,8 @@ func init() {
 func Logger() *Log {
 	logger := logrus.New()
 	logger.SetReportCaller(true)
+
+	logger.AddHook(&errorCounterHook{})
 
 	// Determine log level from environment variable
 	levelStr := os.Getenv("LOG_LEVEL")
@@ -67,6 +73,30 @@ func Logger() *Log {
 
 func GetLogger() *Log {
 	return globalLogger
+}
+
+// errorCounterHook increments a global counter for error-level logs
+type errorCounterHook struct{}
+
+func (h *errorCounterHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *errorCounterHook) Fire(entry *logrus.Entry) error {
+	if entry.Level <= logrus.ErrorLevel {
+		errorCount.Add(1)
+	}
+	return nil
+}
+
+// GetErrorCount returns the number of error logs recorded
+func GetErrorCount() int64 {
+	return errorCount.Load()
+}
+
+// ResetErrorCount sets the error counter to zero
+func ResetErrorCount() {
+	errorCount.Store(0)
 }
 
 func (l *Log) WithComponent(component string) *Entry {
