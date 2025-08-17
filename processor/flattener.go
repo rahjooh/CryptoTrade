@@ -59,7 +59,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 	f.mu.Unlock()
 
 	log := f.log.WithComponent("flattener").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting flattener")
+	log.Debug("starting flattener")
 
 	// Start multiple workers for parallel processing
 	numWorkers := f.config.Processor.MaxWorkers
@@ -67,7 +67,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 		numWorkers = 1
 	}
 
-	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting flattener workers")
+	log.WithFields(logger.Fields{"workers": numWorkers}).Debug("starting flattener workers")
 
 	for i := 0; i < numWorkers; i++ {
 		f.wg.Add(1)
@@ -81,7 +81,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 	// Start metrics reporter
 	go f.metricsReporter(ctx)
 
-	log.Info("flattener started successfully")
+	log.Debug("flattener started successfully")
 	return nil
 }
 
@@ -90,13 +90,13 @@ func (f *Flattener) Stop() {
 	f.running = false
 	f.mu.Unlock()
 
-	f.log.WithComponent("flattener").Info("stopping flattener")
+	f.log.WithComponent("flattener").Debug("stopping flattener")
 
 	// Flush remaining batches
 	f.flushAllBatches()
 
 	f.wg.Wait()
-	f.log.WithComponent("flattener").Info("flattener stopped")
+	f.log.WithComponent("flattener").Debug("flattener stopped")
 }
 
 func (f *Flattener) worker(workerID int) {
@@ -107,16 +107,16 @@ func (f *Flattener) worker(workerID int) {
 		"worker":    "flattener",
 	})
 
-	log.Info("starting flattener worker")
+	log.Debug("starting flattener worker")
 
 	for {
 		select {
 		case <-f.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
+			log.Debug("worker stopped due to context cancellation")
 			return
 		case rawMsg, ok := <-f.rawChan:
 			if !ok {
-				log.Info("raw channel closed, worker stopping")
+				log.Debug("raw channel closed, worker stopping")
 				return
 			}
 
@@ -147,7 +147,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"operation":    "process_message",
 	})
 
-	log.Info("processing raw message")
+	log.Debug("processing raw message")
 
 	// Parse the raw orderbook data
 	var binanceResp models.BinanceOrderbookResponse
@@ -172,7 +172,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 		"entries_count": len(entries),
 		"bids_count":    len(binanceResp.Bids),
 		"asks_count":    len(binanceResp.Asks),
-	}).Info("message processed successfully")
+	}).Debug("message processed successfully")
 
 	logger.LogDataFlowEntry(log, "raw_channel", "flattened_channel", len(entries), "flattened_entries")
 
@@ -355,7 +355,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		"operation":    "flush_batch",
 	})
 
-	log.Info("flushing batch")
+	log.Debug("flushing batch")
 
 	select {
 	case f.flattenedChan <- *batch:
@@ -363,7 +363,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
 
-		log.Info("batch flushed successfully")
+		log.Debug("batch flushed successfully")
 		logger.LogDataFlowEntry(log, "flattener", "flattened_channel", batch.RecordCount, "batch")
 
 	case <-f.ctx.Done():
@@ -378,13 +378,13 @@ func (f *Flattener) flushAllBatches() {
 	defer f.mu.Unlock()
 
 	log := f.log.WithComponent("flattener").WithFields(logger.Fields{"operation": "flush_all_batches"})
-	log.Info("flushing all remaining batches")
+	log.Debug("flushing all remaining batches")
 
 	for batchKey := range f.batches {
 		f.flushBatch(batchKey)
 	}
 
-	log.WithFields(logger.Fields{"remaining_batches": len(f.batches)}).Info("all batches flushed")
+	log.WithFields(logger.Fields{"remaining_batches": len(f.batches)}).Debug("all batches flushed")
 }
 
 func (f *Flattener) metricsReporter(ctx context.Context) {
@@ -437,5 +437,5 @@ func (f *Flattener) reportMetrics() {
 		"error_rate":              errorRate,
 		"active_batches":          activeBatches,
 		"avg_entries_per_message": avgEntriesPerMessage,
-	}).Info("flattener metrics")
+	}).Debug("flattener metrics")
 }

@@ -112,7 +112,7 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 	log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"region":    cfg.Storage.S3.Region,
 		"table_arn": cfg.Storage.S3.TableARN,
-	}).Info("s3 writer initialized")
+	}).Debug("s3 writer initialized")
 
 	return writer, nil
 }
@@ -130,7 +130,7 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	w.mu.Unlock()
 
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting s3 writer")
+	log.Debug("starting s3 writer")
 
 	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
 	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
@@ -140,7 +140,7 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	if numWorkers < 1 {
 		numWorkers = 1
 	}
-	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting s3 writer workers")
+	log.WithFields(logger.Fields{"workers": numWorkers}).Debug("starting s3 writer workers")
 
 	for i := 0; i < numWorkers; i++ {
 		w.wg.Add(1)
@@ -154,7 +154,7 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	// Emit metrics periodically.
 	go w.metricsReporter(ctx)
 
-	log.Info("s3 writer started successfully")
+	log.Debug("s3 writer started successfully")
 	return nil
 }
 
@@ -168,9 +168,9 @@ func (w *S3Writer) Stop() {
 		w.flushTicker.Stop()
 	}
 
-	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
+	w.log.WithComponent("s3_writer").Debug("stopping s3 writer")
 	w.wg.Wait()
-	w.log.WithComponent("s3_writer").Info("s3 writer stopped")
+	w.log.WithComponent("s3_writer").Debug("s3 writer stopped")
 }
 
 // worker consumes batches from the flattened channel and buffers their
@@ -183,16 +183,16 @@ func (w *S3Writer) worker(workerID int) {
 		"worker":    "s3_writer",
 	})
 
-	log.Info("starting s3 writer worker")
+	log.Debug("starting s3 writer worker")
 
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
+			log.Debug("worker stopped due to context cancellation")
 			return
 		case batch, ok := <-w.flattenedChan:
 			if !ok {
-				log.Info("flattened channel closed, worker stopping")
+				log.Debug("flattened channel closed, worker stopping")
 				return
 			}
 			w.addBatch(batch)
@@ -221,13 +221,13 @@ func (w *S3Writer) flushWorker() {
 	defer w.wg.Done()
 
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"worker": "flush"})
-	log.Info("starting flush worker")
+	log.Debug("starting flush worker")
 
 	for {
 		select {
 		case <-w.ctx.Done():
 			w.flushBuffers("shutdown")
-			log.Info("flush worker stopped due to context cancellation")
+			log.Debug("flush worker stopped due to context cancellation")
 			return
 		case <-w.flushTicker.C:
 			w.flushBuffers("interval")
@@ -250,7 +250,7 @@ func (w *S3Writer) flushBuffers(reason string) {
 	w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"flushed_buffers": len(buffers),
 		"reason":          reason,
-	}).Info("flushing buffers")
+	}).Debug("flushing buffers")
 
 	for key, entries := range buffers {
 		if len(entries) == 0 {
@@ -281,21 +281,22 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		"operation":    "process_batch",
 	})
 
-	log.Info("processing batch")
+	log.Debug("processing batch")
 
 	if batch.RecordCount == 0 {
 		log.Debug("batch has no records, skipping")
 		return
 	}
 
-	if err := w.writeRowsToS3Table(batch); err != nil {
+	size, err := w.writeRowsToS3Table(batch)
+	if err != nil {
 		atomic.AddInt64(&w.errorsCount, 1)
 		log.WithError(err).Error("failed to write rows to S3 table")
 		return
 	}
 
 	atomic.AddInt64(&w.rowsWritten, int64(batch.RecordCount))
-	log.Info("batch written to S3 table successfully")
+	log.WithFields(logger.Fields{"batch_size_bytes": size}).Info("batch written to S3 table")
 	logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
 	w.log.LogMetric("s3_writer", "rows_written", int64(batch.RecordCount), "counter", logger.Fields{
 		"exchange":     batch.Exchange,
@@ -307,10 +308,10 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 // writeRowsToS3Table sends the batch directly to the S3 Tables Iceberg REST
 // endpoint. The request is signed with SigV4 using the "s3tables" signing name
 // and authenticated with the configured AWS credentials.
-func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) error {
+func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) (int, error) {
 	data, err := json.Marshal(batch)
 	if err != nil {
-		return fmt.Errorf("marshal batch: %w", err)
+		return 0, fmt.Errorf("marshal batch: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("https://s3tables.%s.amazonaws.com/v1/namespaces/%s/tables/%s/rows",
@@ -318,33 +319,33 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) erro
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return 0, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	creds, err := w.awsConfig.Credentials.Retrieve(w.ctx)
 	if err != nil {
-		return fmt.Errorf("retrieve credentials: %w", err)
+		return 0, fmt.Errorf("retrieve credentials: %w", err)
 	}
 
 	hash := sha256.Sum256(data)
 	signer := v4.NewSigner()
 	if err := signer.SignHTTP(w.ctx, creds, req, hex.EncodeToString(hash[:]), "s3tables", w.awsConfig.Region, time.Now()); err != nil {
-		return fmt.Errorf("sign request: %w", err)
+		return 0, fmt.Errorf("sign request: %w", err)
 	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("execute request: %w", err)
+		return 0, fmt.Errorf("execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("s3 tables write failed: %s", string(body))
+		return 0, fmt.Errorf("s3 tables write failed: %s", string(body))
 	}
 
-	return nil
+	return len(data), nil
 }
 
 // parseTableARN extracts bucket name, namespace, and table name from an S3
@@ -472,5 +473,5 @@ func (w *S3Writer) reportMetrics() {
 		"rows_written":    rowsWritten,
 		"errors_count":    errorsCount,
 		"error_rate":      errorRate,
-	}).Info("s3 writer metrics")
+	}).Debug("s3 writer metrics")
 }

@@ -5,6 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
+
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -39,14 +42,14 @@ func NewChannels(rawBufferSize, flattenedBufferSize int) *Channels {
 	log.WithComponent("channels").WithFields(logger.Fields{
 		"raw_buffer_size":       rawBufferSize,
 		"flattened_buffer_size": flattenedBufferSize,
-	}).Info("channels initialized")
+	}).Debug("channels initialized")
 
 	return c
 }
 
 func (c *Channels) StartMetricsReporting(ctx context.Context) {
 	c.ctx = ctx
-	c.metricsReportTicker = time.NewTicker(30 * time.Second)
+	c.metricsReportTicker = time.NewTicker(time.Minute)
 
 	go func() {
 		for {
@@ -66,6 +69,9 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 	stats := c.stats
 	c.statsMutex.RUnlock()
 
+	vm, _ := mem.VirtualMemory()
+	cpuPercent, _ := cpu.Percent(0, false)
+
 	log.WithComponent("channels").WithFields(logger.Fields{
 		"raw_messages_sent":         stats.RawMessagesSent,
 		"flattened_batches_sent":    stats.FlattenedBatchesSent,
@@ -75,7 +81,12 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 		"raw_channel_cap":           cap(c.RawMessageChan),
 		"flattened_channel_len":     len(c.FlattenedChan),
 		"flattened_channel_cap":     cap(c.FlattenedChan),
-	}).Info("channel statistics")
+		"cpu_percent":               cpuPercent[0],
+		"ram_used":                  vm.Used,
+		"ram_total":                 vm.Total,
+		"ram_used_percent":          vm.UsedPercent,
+		"error_count":               logger.GetErrorCount(),
+	}).Info("runtime statistics")
 }
 
 func (c *Channels) Close() {
@@ -86,7 +97,7 @@ func (c *Channels) Close() {
 	close(c.RawMessageChan)
 	close(c.FlattenedChan)
 
-	c.log.WithComponent("channels").Info("all channels closed")
+	c.log.WithComponent("channels").Debug("all channels closed")
 }
 
 func (c *Channels) IncrementRawMessagesSent() {

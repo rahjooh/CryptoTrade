@@ -58,7 +58,7 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 		"max_idle_conns":     cfg.Source.Binance.ConnectionPool.MaxIdleConns,
 		"max_conns_per_host": cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
 		"timeout":            cfg.Reader.Timeout,
-	}).Info("binance reader initialized")
+	}).Debug("binance reader initialized")
 
 	return reader
 }
@@ -84,7 +84,7 @@ func (br *BinanceReader) Start(ctx context.Context) error {
 	log.WithFields(logger.Fields{
 		"symbols":  snapshotCfg.Symbols,
 		"interval": snapshotCfg.IntervalMs,
-	}).Info("starting binance reader")
+	}).Debug("starting binance reader")
 
 	for _, symbol := range snapshotCfg.Symbols {
 		br.wg.Add(1)
@@ -94,7 +94,7 @@ func (br *BinanceReader) Start(ctx context.Context) error {
 	// Start metrics reporter
 	go br.metricsReporter(ctx)
 
-	log.Info("binance reader started successfully")
+	log.Debug("binance reader started successfully")
 	return nil
 }
 
@@ -103,9 +103,9 @@ func (br *BinanceReader) Stop() {
 	br.running = false
 	br.mu.Unlock()
 
-	br.log.WithComponent("binance_reader").Info("stopping binance reader")
+	br.log.WithComponent("binance_reader").Debug("stopping binance reader")
 	br.wg.Wait()
-	br.log.WithComponent("binance_reader").Info("binance reader stopped")
+	br.log.WithComponent("binance_reader").Debug("binance reader stopped")
 }
 
 func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
@@ -116,7 +116,7 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 		"worker": "orderbook_fetcher",
 	})
 
-	log.Info("starting orderbook worker")
+	log.Debug("starting orderbook worker")
 
 	interval := time.Duration(snapshotCfg.IntervalMs) * time.Millisecond
 
@@ -129,7 +129,7 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 	for {
 		select {
 		case <-br.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
+			log.Debug("worker stopped due to context cancellation")
 			return
 		case <-timer.C:
 			start := time.Now()
@@ -166,7 +166,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		symbol,
 		snapshotCfg.Limit)
 
-	log.WithFields(logger.Fields{"url": url}).Info("making API request")
+	log.WithFields(logger.Fields{"url": url}).Debug("making API request")
 
 	req, err := http.NewRequestWithContext(br.ctx, "GET", url, nil)
 	if err != nil {
@@ -204,7 +204,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		"bids_count":     len(binanceResp.Bids),
 		"asks_count":     len(binanceResp.Asks),
 		"last_update_id": binanceResp.LastUpdateID,
-	}).Info("received orderbook data")
+	}).Debug("received orderbook data")
 
 	// Validate data
 	if br.config.Reader.Validation.EnablePriceValidation {
@@ -231,7 +231,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 
 	select {
 	case br.rawChannel <- rawData:
-		log.Info("orderbook data sent to raw channel")
+		log.Debug("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "binance_api", "raw_channel", len(binanceResp.Bids)+len(binanceResp.Asks), "orderbook_entries")
 	case <-br.ctx.Done():
 		return
@@ -286,7 +286,7 @@ func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, sy
 			"best_bid": bestBid,
 			"best_ask": bestAsk,
 			"spread":   spread,
-		}).Info("price validation passed")
+		}).Debug("price validation passed")
 	}
 
 	return true
@@ -309,7 +309,7 @@ func (br *BinanceReader) sendError(symbol, market string, err error) {
 
 	select {
 	case br.rawChannel <- rawData:
-		log.Info("error sent to raw channel")
+		log.Debug("error sent to raw channel")
 	default:
 		log.Warn("raw channel full, dropping error message")
 	}
@@ -349,5 +349,5 @@ func (br *BinanceReader) reportMetrics() {
 		"request_count": requestCount,
 		"error_count":   errorCount,
 		"error_rate":    errorRate,
-	}).Info("binance reader metrics")
+	}).Debug("binance reader metrics")
 }
