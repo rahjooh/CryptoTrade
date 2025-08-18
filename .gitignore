@@ -31,3 +31,5 @@ go.work.sum
 .idea/
 .vscode/
 data/
+/infra/.terraform/
+/infra/.terraform.lock.hcl
