@@ -399,3 +399,42 @@ SELECT * FROM (
   SELECT * FROM ob WHERE side='ask' ORDER BY price ASC LIMIT 10
 ) AS asks;
 ```
+```mermaid
+graph LR
+
+  T0["<b>T0 API JSON:</b><br/><pre>{
+  &quot;lastUpdateId&quot;: 0,
+&quot;bids&quot;: [[100, 5], [99, 3]],
+&quot;asks&quot;: [[101, 2], [102, 4]]
+}</pre>
+<table border='1' cellspacing='0' cellpadding='4'> <tr><th colspan='5'>T0 Snapshot</th></tr> <tr><th>Side</th><th>Price</th><th>Size</th><th>vf</th><th>vt</th></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>5</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>99</td><td align='center'>3</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>101</td><td align='center'>2</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>4</td><td align='center'>T0</td><td align='center'>NULL</td></tr> </table>"]
+
+T1["<b>T1 API JSON:</b><br/><pre>{
+&quot;event&quot;: &quot;delta&quot;,
+&quot;bids&quot;: [[100, 7]],
+&quot;asks&quot;: [[101, 0]]
+}</pre>
+<table border='1' cellspacing='0' cellpadding='4'> <tr><th colspan='5'>T1 Delta</th></tr> <tr><th>Side</th><th>Price</th><th>Size</th><th>vf</th><th>vt</th></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>5</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>7</td><td align='center'>T1</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>99</td><td align='center'>3</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>101</td><td align='center'>2</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>4</td><td align='center'>T0</td><td align='center'>NULL</td></tr> </table>"]
+
+T2["<b>T2 API JSON:</b><br/><pre>{
+&quot;event&quot;: &quot;delta&quot;,
+&quot;bids&quot;: [[98, 6]],
+&quot;asks&quot;: [[103, 2]]
+}</pre>
+<table border='1' cellspacing='0' cellpadding='4'> <tr><th colspan='5'>T2 Delta</th></tr> <tr><th>Side</th><th>Price</th><th>Size</th><th>vf</th><th>vt</th></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>5</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>7</td><td align='center'>T1</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>99</td><td align='center'>3</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>98</td><td align='center'>6</td><td align='center'>T2</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>101</td><td align='center'>2</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>4</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>103</td><td align='center'>2</td><td align='center'>T2</td><td align='center'>NULL</td></tr> </table>"]
+
+T3["<b>T3 API JSON:</b><br/><pre>{
+&quot;event&quot;: &quot;delta&quot;,
+&quot;bids&quot;: [[100, 6]]
+}</pre>
+<table border='1' cellspacing='0' cellpadding='4'> <tr><th colspan='5'>T3 Delta</th></tr> <tr><th>Side</th><th>Price</th><th>Size</th><th>vf</th><th>vt</th></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>5</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>7</td><td align='center'>T1</td><td align='center'>T3</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>6</td><td align='center'>T3</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>99</td><td align='center'>3</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>98</td><td align='center'>6</td><td align='center'>T2</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>101</td><td align='center'>2</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>4</td><td align='center'>T0</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>103</td><td align='center'>2</td><td align='center'>T2</td><td align='center'>NULL</td></tr> </table>"]
+
+T10["<b>T10 API JSON:</b><br/><pre>{
+&quot;lastUpdateId&quot;: 10,
+&quot;bids&quot;: [[100, 6], [97, 8]],
+&quot;asks&quot;: [[102, 5], [104, 1]]
+}</pre>
+<table border='1' cellspacing='0' cellpadding='4'> <tr><th colspan='5'>T10 Snapshot</th></tr> <tr><th>Side</th><th>Price</th><th>Size</th><th>vf</th><th>vt</th></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>5</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>7</td><td align='center'>T1</td><td align='center'>T3</td></tr> <tr><td align='center'>Bid</td><td align='center'>100</td><td align='center'>6</td><td align='center'>T3</td><td align='center'>NULL</td></tr> <tr><td align='center'>Bid</td><td align='center'>99</td><td align='center'>3</td><td align='center'>T0</td><td align='center'>T10</td></tr> <tr><td align='center'>Bid</td><td align='center'>98</td><td align='center'>6</td><td align='center'>T2</td><td align='center'>T10</td></tr> <tr><td align='center'>Bid</td><td align='center'>97</td><td align='center'>8</td><td align='center'>T10</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>101</td><td align='center'>2</td><td align='center'>T0</td><td align='center'>T1</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>4</td><td align='center'>T0</td><td align='center'>T10</td></tr> <tr><td align='center'>Ask</td><td align='center'>102</td><td align='center'>5</td><td align='center'>T10</td><td align='center'>NULL</td></tr> <tr><td align='center'>Ask</td><td align='center'>103</td><td align='center'>2</td><td align='center'>T2</td><td align='center'>T10</td></tr> <tr><td align='center'>Ask</td><td align='center'>104</td><td align='center'>1</td><td align='center'>T10</td><td align='center'>NULL</td></tr></table>"]
+
+T0 --> T1 --> T2 --> T3 --> T10
+```
