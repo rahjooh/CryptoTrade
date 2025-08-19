@@ -400,7 +400,7 @@ SELECT * FROM (
 ) AS asks;
 ```
 ```mermaid
-graph LR
+graph 
 
   T0["<b>T0 API JSON:</b><br/><pre>{
   &quot;lastUpdateId&quot;: 0,
