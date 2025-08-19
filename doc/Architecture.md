@@ -53,37 +53,38 @@
 
 ```mermaid
 flowchart LR
-  subgraph Exchanges
-    A1[REST]
-    A2[WebSocket]
-    A3[Bulk Downloads]
-  end
+    subgraph Exchanges
+        A1[REST]
+        A2[WebSocket]
+        A3[Bulk Downloads]
+    end
 
-  A1 --> B
-  A2 --> B
-  A3 --> B
+    A1 --> B
+    A2 --> B
+    A3 --> B
 
-  B[Go Collectors on EC2<br/>10 EIPs via ENI<br/>sharded by symbol] --> C[Kafka topic: raw]
+    B[Go Collectors on EC2<br/>10 EIPs via ENI<br/>sharded by symbol] --> C[Kafka topic: raw]
 
-  C --> D[ksqlDB: Raw → Processed]
-  D --> E[Kafka topic: processed]
+    C --> D[ksqlDB: Raw → Processed]
+D --> E[Kafka topic: processed]
 
-  E --> F[ksqlDB: Processed → Feature]
-  F --> G[Kafka topic: feature]
+E --> F[ksqlDB: Processed → Feature]
+F --> G[Kafka topic: feature]
 
-  E --> H[Kafka Connect S3 Sink]
-  H --> I[(S3 Table Bucket<br/>managed metadata: Iceberg/Delta)]
+E --> H[Kafka Connect S3 Sink]
+H ---> I[(S3 Table Bucket<br/>managed metadata: Iceberg/Delta)]
 
-  F --> CH[ClickHouse (live)]
-  I --> CH
+F --> CH[ClickHouse R&D]
+I --> CH
 
-  E --> SP[Spark cluster]
-  SP --> G
-  SP --> I
-  SP --> IMG[(S3 Standard Bucket<br/>charts/images)]
+E --> SP[Spark cluster]
+SP --> G
+SP --> I
+SP ---> IMG[(S3 Standard Bucket<br/>charts/images)]
 
-  I --> MLTrain[ML Training (offline)]
-  G --> MLServe[ML Inference (online)]
+I --> MLTrain[ML Training]
+IMG --> MLTrain[ML Training]
+G ---> MLServe[ML Prediction]
 ```
 
 ### End‑to‑End Sequence
