@@ -23,7 +23,7 @@ type Flattener struct {
 	wg            *sync.WaitGroup
 	mu            sync.RWMutex
 	running       bool
-	log           *logger.Logger
+	log           *logger.Log
 
 	// Batching
 	batches   map[string]*models.FlattenedOrderbookBatch
@@ -59,7 +59,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 	f.mu.Unlock()
 
 	log := f.log.WithComponent("flattener").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting flattener")
+	log.Debug("starting flattener")
 
 	// Start multiple workers for parallel processing
 	numWorkers := f.config.Processor.MaxWorkers
@@ -67,7 +67,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 		numWorkers = 1
 	}
 
-	log.WithFields(logger.Fields{"workers": numWorkers}).Info("starting flattener workers")
+	log.WithFields(logger.Fields{"workers": numWorkers}).Debug("starting flattener workers")
 
 	for i := 0; i < numWorkers; i++ {
 		f.wg.Add(1)
@@ -81,7 +81,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 	// Start metrics reporter
 	go f.metricsReporter(ctx)
 
-	log.Info("flattener started successfully")
+	log.Debug("flattener started successfully")
 	return nil
 }
 
@@ -90,13 +90,13 @@ func (f *Flattener) Stop() {
 	f.running = false
 	f.mu.Unlock()
 
-	f.log.WithComponent("flattener").Info("stopping flattener")
+	f.log.WithComponent("flattener").Debug("stopping flattener")
 
 	// Flush remaining batches
 	f.flushAllBatches()
 
 	f.wg.Wait()
-	f.log.WithComponent("flattener").Info("flattener stopped")
+	f.log.WithComponent("flattener").Debug("flattener stopped")
 }
 
 func (f *Flattener) worker(workerID int) {
@@ -107,16 +107,16 @@ func (f *Flattener) worker(workerID int) {
 		"worker":    "flattener",
 	})
 
-	log.Info("starting flattener worker")
+	log.Debug("starting flattener worker")
 
 	for {
 		select {
 		case <-f.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
+			log.Debug("worker stopped due to context cancellation")
 			return
 		case rawMsg, ok := <-f.rawChan:
 			if !ok {
-				log.Info("raw channel closed, worker stopping")
+				log.Debug("raw channel closed, worker stopping")
 				return
 			}
 
@@ -154,7 +154,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 	err := json.Unmarshal(rawMsg.Data, &binanceResp)
 	if err != nil {
 		f.errorsCount++
-		log.WithError(err).Error("failed to unmarshal orderbook data")
+		log.WithError(err).Warn("failed to unmarshal orderbook data")
 		return 0
 	}
 
@@ -193,7 +193,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "bid",
 				"level":     level + 1,
 				"raw_price": bid[0],
-			}).Error("failed to parse bid price")
+			}).Warn("failed to parse bid price")
 			continue
 		}
 
@@ -206,13 +206,18 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "bid",
 				"level":        level + 1,
 				"raw_quantity": bid[1],
-			}).Error("failed to parse bid quantity")
+			}).Warn("failed to parse bid quantity")
+			continue
+		}
+
+		if price == 0 || quantity == 0 {
 			continue
 		}
 
 		entries = append(entries, models.FlattenedOrderbookEntry{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
+			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
 			Side:         "bid",
@@ -233,7 +238,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":      "ask",
 				"level":     level + 1,
 				"raw_price": ask[0],
-			}).Error("failed to parse ask price")
+			}).Warn("failed to parse ask price")
 			continue
 		}
 
@@ -246,13 +251,18 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 				"side":         "ask",
 				"level":        level + 1,
 				"raw_quantity": ask[1],
-			}).Error("failed to parse ask quantity")
+			}).Warn("failed to parse ask quantity")
+			continue
+		}
+
+		if price == 0 || quantity == 0 {
 			continue
 		}
 
 		entries = append(entries, models.FlattenedOrderbookEntry{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
+			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
 			Side:         "ask",
@@ -269,7 +279,7 @@ func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []mode
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	batchKey := fmt.Sprintf("%s_%s", rawMsg.Exchange, rawMsg.Symbol)
+	batchKey := fmt.Sprintf("%s_%s_%s", rawMsg.Exchange, rawMsg.Market, rawMsg.Symbol)
 
 	batch, exists := f.batches[batchKey]
 	if !exists {
@@ -277,6 +287,7 @@ func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []mode
 			BatchID:     uuid.New().String(),
 			Exchange:    rawMsg.Exchange,
 			Symbol:      rawMsg.Symbol,
+			Market:      rawMsg.Market,
 			Entries:     make([]models.FlattenedOrderbookEntry, 0, f.config.Processor.BatchSize),
 			RecordCount: 0,
 			Timestamp:   rawMsg.Timestamp,
@@ -352,7 +363,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
 
-		log.Info("batch flushed successfully")
+		log.Debug("batch flushed successfully")
 		logger.LogDataFlowEntry(log, "flattener", "flattened_channel", batch.RecordCount, "batch")
 
 	case <-f.ctx.Done():
@@ -367,13 +378,13 @@ func (f *Flattener) flushAllBatches() {
 	defer f.mu.Unlock()
 
 	log := f.log.WithComponent("flattener").WithFields(logger.Fields{"operation": "flush_all_batches"})
-	log.Info("flushing all remaining batches")
+	log.Debug("flushing all remaining batches")
 
 	for batchKey := range f.batches {
 		f.flushBatch(batchKey)
 	}
 
-	log.WithFields(logger.Fields{"remaining_batches": len(f.batches)}).Info("all batches flushed")
+	log.WithFields(logger.Fields{"remaining_batches": len(f.batches)}).Debug("all batches flushed")
 }
 
 func (f *Flattener) metricsReporter(ctx context.Context) {
@@ -410,13 +421,13 @@ func (f *Flattener) reportMetrics() {
 	}
 
 	log := f.log.WithComponent("flattener")
-	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, logger.Fields{})
-	f.log.LogMetric("flattener", "errors_count", errorsCount, logger.Fields{})
-	f.log.LogMetric("flattener", "error_rate", errorRate, logger.Fields{})
-	f.log.LogMetric("flattener", "active_batches", activeBatches, logger.Fields{})
-	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, logger.Fields{})
+	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "errors_count", errorsCount, "counter", logger.Fields{})
+	f.log.LogMetric("flattener", "error_rate", errorRate, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "active_batches", activeBatches, "gauge", logger.Fields{})
+	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"messages_processed":      messagesProcessed,
@@ -426,5 +437,5 @@ func (f *Flattener) reportMetrics() {
 		"error_rate":              errorRate,
 		"active_batches":          activeBatches,
 		"avg_entries_per_message": avgEntriesPerMessage,
-	}).Info("flattener metrics")
+	}).Debug("flattener metrics")
 }

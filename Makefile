@@ -1,7 +1,7 @@
 .PHONY: build run stop clean docker-build docker-run
 
 build:
-	go build -o CryptoFlow ./cmd/CryptoFlow
+	go build -o CryptoFlow .
 
 run:
 	SYMBOLS=BTCUSDT,ETHUSDT,XRPUSDT ./CryptoFlow
@@ -21,3 +21,10 @@ docker-run:
 		-p 2112:2112 \
 		-v $(PWD)/data:/app/data \
 		CryptoFlow
+
+clus-up:
+	docker compose -f local_cluster.yml up
+
+clus-down:
+	docker compose -f local_cluster.yml down
+

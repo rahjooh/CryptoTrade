@@ -1,20 +1,43 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	//"cryptoflow/logger"
 	"gopkg.in/yaml.v3"
 )
 
+const terraformOutputsPath = "infra/s3tables-outputs.json"
+
+type terraformOutputs struct {
+	Region   string `json:"region"`
+	TableARN string `json:"table_arn"`
+}
+
+func loadTerraformOutputs(path string) (*terraformOutputs, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var out terraformOutputs
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 type Config struct {
 	Cryptoflow CryptoflowConfig `yaml:"cryptoflow"`
 	Channels   ChannelsConfig   `yaml:"channels"`
 	Reader     ReaderConfig     `yaml:"reader"`
+	Processor  ProcessorConfig  `yaml:"processor"`
 	Writer     WriterConfig     `yaml:"writer"`
-	Exchanges  ExchangesConfig  `yaml:"exchanges"`
+	Source     SourceConfig     `yaml:"source"`
 	Storage    StorageConfig    `yaml:"storage"`
 	Monitoring MonitoringConfig `yaml:"monitoring"`
 	Logging    LoggingConfig    `yaml:"logging"`
@@ -28,7 +51,6 @@ type CryptoflowConfig struct {
 type ChannelsConfig struct {
 	RawBuffer       int `yaml:"raw_buffer"`
 	ProcessedBuffer int `yaml:"processed_buffer"`
-	WriteBuffer     int `yaml:"write_buffer"`
 	ErrorBuffer     int `yaml:"error_buffer"`
 	PoolSize        int `yaml:"pool_size"`
 }
@@ -40,6 +62,12 @@ type ReaderConfig struct {
 	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
 	Retry          RetryConfig          `yaml:"retry"`
 	Validation     ValidationConfig     `yaml:"validation"`
+}
+
+type ProcessorConfig struct {
+	MaxWorkers   int           `yaml:"max_workers"`
+	BatchSize    int           `yaml:"batch_size"`
+	BatchTimeout time.Duration `yaml:"batch_timeout"`
 }
 
 type CircuitBreakerConfig struct {
@@ -109,31 +137,38 @@ type AvroConfig struct {
 	Compression string `yaml:"compression"`
 }
 
-type ExchangesConfig struct {
-	Binance  ExchangeConfig `yaml:"binance"`
-	Coinbase ExchangeConfig `yaml:"coinbase"`
-}
-
-type ExchangeConfig struct {
-	Enabled        bool                 `yaml:"enabled"`
-	BaseURL        string               `yaml:"base_url"`
-	Endpoints      []EndpointConfig     `yaml:"endpoints"`
-	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
-}
-
-type EndpointConfig struct {
-	Name       string        `yaml:"name"`
-	Path       string        `yaml:"path"`
-	Limit      int           `yaml:"limit"`
-	IntervalMs int           `yaml:"interval_ms"`
-	Symbols    []string      `yaml:"symbols"`
-	Timeout    time.Duration `yaml:"timeout"`
-}
-
 type ConnectionPoolConfig struct {
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	MaxConnsPerHost int           `yaml:"max_conns_per_host"`
 	IdleConnTimeout time.Duration `yaml:"idle_conn_timeout"`
+}
+
+type SourceConfig struct {
+	Binance BinanceSourceConfig `yaml:"binance"`
+}
+
+type BinanceSourceConfig struct {
+	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
+	Future         BinanceFutureConfig  `yaml:"future"`
+}
+
+type BinanceFutureConfig struct {
+	Orderbook BinanceFutureOrderbookConfig `yaml:"orderbook"`
+}
+
+type BinanceFutureOrderbookConfig struct {
+	Snapshots BinanceSnapshotConfig `yaml:"snapshots"`
+}
+
+type BinanceSnapshotConfig struct {
+	Enabled           bool     `yaml:"enabled"`
+	Connection        string   `yaml:"connection"`
+	URL               string   `yaml:"url"`
+	Limit             int      `yaml:"limit"`
+	IntervalMs        int      `yaml:"interval_ms"`
+	Symbols           []string `yaml:"symbols"`
+	ConcurrentSymbols int      `yaml:"concurrent_symbols"`
+	BatchSize         int      `yaml:"batch_size"`
 }
 
 type StorageConfig struct {
@@ -142,13 +177,16 @@ type StorageConfig struct {
 }
 
 type S3Config struct {
-	Enabled           bool   `yaml:"enabled"`
-	Bucket            string `yaml:"bucket"`
-	Region            string `yaml:"region"`
-	Endpoint          string `yaml:"endpoint"`
-	PathStyle         bool   `yaml:"path_style"`
-	UploadConcurrency int    `yaml:"upload_concurrency"`
-	PartSize          string `yaml:"part_size"`
+	Enabled           bool          `yaml:"enabled"`
+	Region            string        `yaml:"region"`
+	Endpoint          string        `yaml:"endpoint"`
+	PathStyle         bool          `yaml:"path_style"`
+	UploadConcurrency int           `yaml:"upload_concurrency"`
+	PartSize          string        `yaml:"part_size"`
+	AccessKeyID       string        `yaml:"access_key_id"`
+	SecretAccessKey   string        `yaml:"secret_access_key"`
+	TableARN          string        `yaml:"table_arn"`
+	FlushInterval     time.Duration `yaml:"flush_interval"`
 }
 
 type GCSConfig struct {
@@ -196,33 +234,46 @@ type LoggingConfig struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	//log := logger.GetLogger().WithComponent("config")
-
-	//log.WithFields(logger.Fields{"path": path}).Info("loading configuration file")
-
+	// Read configuration file
 	data, err := os.ReadFile(path)
 	if err != nil {
-		//log.WithError(err).WithFields(logger.Fields{"path": path}).Error("failed to read config file")
-		fmt.Print("failed to read config file")
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	var config Config
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		//log.WithError(err).Error("failed to parse config file")
-		fmt.Print("ffailed to parse config file")
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Override S3 settings from Terraform outputs, then environment variables if available
+	if config.Storage.S3.Enabled {
+		if outputs, err := loadTerraformOutputs(terraformOutputsPath); err == nil {
+			if outputs.Region != "" {
+				config.Storage.S3.Region = strings.TrimSpace(outputs.Region)
+			}
+			if outputs.TableARN != "" {
+				config.Storage.S3.TableARN = strings.TrimSpace(outputs.TableARN)
+			}
+		}
+
+		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
+			config.Storage.S3.AccessKeyID = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
+			config.Storage.S3.SecretAccessKey = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("AWS_REGION"); v != "" && config.Storage.S3.Region == "" {
+			config.Storage.S3.Region = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_TABLE_ARN"); v != "" && config.Storage.S3.TableARN == "" {
+			config.Storage.S3.TableARN = strings.TrimSpace(v)
+		}
 	}
 
 	// Validate configuration
 	if err := validateConfig(&config); err != nil {
-		//log.WithError(err).Error("configuration validation failed")
-		fmt.Print("configuration validation failed")
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-
-	fmt.Print("failed to read config file")
 
 	return &config, nil
 }
@@ -244,12 +295,28 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("reader.max_workers must be greater than 0")
 	}
 
+	if cfg.Processor.MaxWorkers <= 0 {
+		return fmt.Errorf("processor.max_workers must be greater than 0")
+	}
+	if cfg.Processor.BatchSize <= 0 {
+		return fmt.Errorf("processor.batch_size must be greater than 0")
+	}
+	if cfg.Processor.BatchTimeout <= 0 {
+		return fmt.Errorf("processor.batch_timeout must be greater than 0")
+	}
+
 	if cfg.Storage.S3.Enabled {
-		if cfg.Storage.S3.Bucket == "" {
-			return fmt.Errorf("storage.s3.bucket is required when S3 is enabled")
-		}
 		if cfg.Storage.S3.Region == "" {
 			return fmt.Errorf("storage.s3.region is required when S3 is enabled")
+		}
+		if cfg.Storage.S3.AccessKeyID == "" || cfg.Storage.S3.SecretAccessKey == "" {
+			return fmt.Errorf("storage.s3.access_key_id and storage.s3.secret_access_key are required when S3 is enabled")
+		}
+		if cfg.Storage.S3.TableARN == "" {
+			return fmt.Errorf("storage.s3.table_arn is required when S3 is enabled (set storage.s3.table_arn or S3_TABLE_ARN env var)")
+		}
+		if cfg.Storage.S3.FlushInterval <= 0 {
+			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
 		}
 	}
 

@@ -2,50 +2,228 @@ name: cryptoflow CI/CD
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
+    branches: ["main", "S3-Table"]
+  workflow_dispatch:
 
-env:
-  AWS_REGION: us-east-1
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   test-build:
+    name: Test & Build
     runs-on: ubuntu-latest
+    env:
+      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
     steps:
+      - name: Show ref info
+        run: |
+          echo "ref=${{ github.ref }}"
+          echo "ref_name=${{ github.ref_name }}"
+          echo "event=${{ github.event_name }}"
+
       - uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: "1.24.5"
+          cache: true
+          cache-dependency-path: go.sum
+
       - name: Install deps
         run: go mod download
+
       - name: Run tests
         run: go test -v ./...
+
       - name: Build binary
-        run: go build -o cryptoflow ./cmd/cryptoflow
+        run: go build -o cryptoflow .
 
-  docker:
-    runs-on: ubuntu-latest
-    needs: test-build
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build docker image
-        run: docker build -t cryptoflow:latest .
+      - name: Add Mermaid job graph to Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          # yq (YAML -> JSON) and jq (transform)
+          sudo curl -sSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          jq --version || (sudo apt-get update -y && sudo apt-get install -y jq)
+          
+          # Resolve the current workflow file path from workflow_ref
+          WF_REF="${{ github.workflow_ref }}"
+          WF_FILE="$(printf '%s' "$WF_REF" | cut -d'/' -f3- | cut -d'@' -f1)"
+          echo "Using workflow file: $WF_FILE"
+          
+          {
+            echo '## Workflow Graph'
+            echo
+            echo '```mermaid'
+            echo 'flowchart LR'
+          
+            # --- Edges: job -> needs (supports needs: string | array) ---
+            yq -o=json '.jobs' "$WF_FILE" \
+            | jq -r '
+                def clean(s):
+                  s
+                  | gsub("[^A-Za-z0-9_ -]";"")   # drop weird chars
+                  | gsub("-";"_")                # dashes -> underscores
+                  | gsub("\\s+";"_");            # spaces -> underscores
+          
+                (to_entries[] | {j:.key, needs:(.value.needs // [])})
+                | .j = clean(.j)
+                | .needs = (if (.needs|type)=="string" then [ .needs ] else .needs end)
+                | .needs[]? as $n
+                | "\(.j) --> \(clean($n))"
+              ' \
+            | sort -u
+          
+            # --- Nodes: ensure standalone jobs appear ---
+            yq -o=json '.jobs' "$WF_FILE" \
+            | jq -r '
+                def clean(s):
+                  s
+                  | gsub("[^A-Za-z0-9_ -]";"")
+                  | gsub("-";"_")
+                  | gsub("\\s+";"_");
+                keys[] as $k | "\((clean($k)))[\((clean($k)))]"
+              ' \
+            | sort -u
+          
+            echo '```'
+            echo
+            echo "_ref: `${{ github.ref }}` • branch: `${{ github.ref_name }}` • event: `${{ github.event_name }}`_"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-ec2:
+
+
+
+  test-ssh:
+    name: Test SSH
     runs-on: ubuntu-latest
-    needs: docker
-    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@master
+      - name: SSH reachability check
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET
           script: |
-            cd /home/${{ secrets.EC2_USER }}/cryptoflow
-            git pull
-            docker-compose down || true
-            docker-compose up -d --build
+            set -e
+            whoami
+            hostname
+            echo "ok: ssh works"
+
+  deploy-main:
+    name: Deploy (main)
+    runs-on: ubuntu-latest
+    needs: [test-build, test-ssh]
+    if: ${{ github.ref_name == 'main' }}
+    env:
+      REPO: ${{ github.repository }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION:            ${{ vars.AWS_REGION }}
+      S3_BUCKET:             ${{ vars.S3_BUCKET }}
+      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
+      LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: REPO,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
+          script: |
+            set -euo pipefail
+            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            # first-time clone if directory isn't a git repo
+            if [ ! -d .git ]; then
+              echo "Cloning $REPO into $APP_DIR"
+              git clone "git@github.com:${REPO}.git" . || git clone "https://github.com/${REPO}.git" .
+            fi
+
+            # ensure remote points to SSH (works if you added a Deploy Key on EC2; falls back to https if public)
+            git remote set-url origin "git@github.com:${REPO}.git" || true
+
+            # fetch and fast-forward to main
+            git fetch origin main
+            git checkout -B main origin/main
+            git pull --rebase origin main
+
+            # run your stack (compose v2 preferred)
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+              docker compose down || true
+              docker compose up -d --build
+            elif command -v docker-compose >/dev/null 2>&1; then
+              docker-compose down || true
+              docker-compose up -d --build
+            else
+              echo "Docker/Compose not installed. Install them once, then re-run."
+              exit 1
+            fi
+
+            echo "✅ Deploy complete"
+
+  deploy-s3table:
+    name: Deploy (S3-Table)
+    needs: [test-build, test-ssh]
+    if: github.ref_name == 'S3-Table'
+    runs-on: ubuntu-latest
+    env:
+      REPO:                 ${{ github.repository }}
+      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION:            ${{ vars.AWS_REGION }}
+      S3_BUCKET:             ${{ vars.S3_BUCKET }}
+      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}  # use secrets for parity with main
+      LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+
+    steps:
+      - name: Deploy to EC2 via SSH (S3-Table)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          envs: REPO,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
+          script: |
+            set -euo pipefail
+            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+  
+            if [ ! -d .git ]; then
+              echo "Cloning $REPO into $APP_DIR"
+              git clone "git@github.com:${REPO}.git" . || git clone "https://github.com/${REPO}.git" .
+            fi
+  
+            git remote set-url origin "git@github.com:${REPO}.git" || true
+            git fetch origin S3-Table
+            git checkout -B S3-Table origin/S3-Table
+            git pull --rebase origin S3-Table
+  
+            # Optional: run your branch-specific provisioning script on the host
+            if [ -x scripts/deploy-s3table.sh ]; then
+              echo "Running scripts/deploy-s3table.sh"
+              scripts/deploy-s3table.sh "$S3_TABLE_ARN"
+            fi
+  
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+              docker compose down || true
+              docker compose up -d --build
+              docker compose ps
+            elif command -v docker-compose >/dev/null 2>&1; then
+              docker-compose down || true
+              docker-compose up -d --build
+              docker-compose ps
+            else
+              echo "Docker/Compose not installed on EC2. Install once, then re-run."
+              exit 1
+            fi
+  
+            echo "✅ Deploy complete (S3-Table)"

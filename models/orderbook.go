@@ -8,6 +8,7 @@ import (
 type RawOrderbookMessage struct {
 	Exchange    string
 	Symbol      string
+	Market      string
 	Data        []byte
 	Timestamp   time.Time
 	MessageType string
@@ -33,6 +34,7 @@ type OrderbookSnapshot struct {
 type FlattenedOrderbookEntry struct {
 	Exchange     string    `json:"exchange"`
 	Symbol       string    `json:"symbol"`
+	Market       string    `json:"market"`
 	Timestamp    time.Time `json:"timestamp"`
 	LastUpdateID int64     `json:"last_update_id"`
 	Side         string    `json:"side"` // "bid" or "ask"
@@ -46,22 +48,11 @@ type FlattenedOrderbookBatch struct {
 	BatchID     string                    `json:"batch_id"`
 	Exchange    string                    `json:"exchange"`
 	Symbol      string                    `json:"symbol"`
+	Market      string                    `json:"market"`
 	Entries     []FlattenedOrderbookEntry `json:"entries"`
 	RecordCount int                       `json:"record_count"`
 	Timestamp   time.Time                 `json:"timestamp"`
 	ProcessedAt time.Time                 `json:"processed_at"`
-}
-
-// SortedOrderbookBatch represents a batch of sorted orderbook entries
-type SortedOrderbookBatch struct {
-	BatchID     string                    `json:"batch_id"`
-	Exchange    string                    `json:"exchange"`
-	Symbol      string                    `json:"symbol"`
-	Entries     []FlattenedOrderbookEntry `json:"entries"`
-	RecordCount int                       `json:"record_count"`
-	Timestamp   time.Time                 `json:"timestamp"`
-	ProcessedAt time.Time                 `json:"processed_at"`
-	SortedAt    time.Time                 `json:"sorted_at"`
 }
 
 // BinanceOrderbookResponse represents the response from Binance API

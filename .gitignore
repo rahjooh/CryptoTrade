@@ -31,3 +31,7 @@ go.work.sum
 .idea/
 .vscode/
 data/
+/CryptoFlow
+/.terraform/
+/infra/.terraform/
+/infra/.terraform.lock.hcl
