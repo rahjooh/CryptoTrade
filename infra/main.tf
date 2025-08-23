@@ -26,8 +26,16 @@ terraform {
   # }
 }
 
-provider "aws" { region = var.region }
-provider "awscc" { region = var.region }
+provider "aws" {
+  region  = var.region
+  profile = "default"
+}
+
+provider "awscc" {
+  region  = var.region
+  profile = "default"
+}
+
 provider "local" {}
 
 data "aws_caller_identity" "current" {}
