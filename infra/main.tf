@@ -28,12 +28,12 @@ terraform {
 
 provider "aws" {
   region  = var.region
-  profile = "default"
+  profile = "Terraform"
 }
 
 provider "awscc" {
   region  = var.region
-  profile = "default"
+  profile = "Terraform"
 }
 
 provider "local" {}

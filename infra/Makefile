@@ -1,7 +1,6 @@
 # Makefile for S3 Tables Terraform workflow + AWS CLI inspection
 # Requirements: terraform >=1.6, awscli v2 (with s3tables), jq
 # Optional: set OUT=... if you changed outputs_path in variables.tf
-
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .ONESHELL:
@@ -12,6 +11,15 @@ AWS           ?= aws
 JQ            ?= jq
 OUT           ?= s3tables-outputs.json
 PLANFILE      ?= tfplan.bin
+
+# Run everything via the Terraform role profile from ~/.aws/config
+PROFILE       ?= Terraform
+AWS_ENV       := AWS_PROFILE=$(PROFILE) AWS_SDK_LOAD_CONFIG=1
+
+
+# Compose commands with env prefix (do NOT self-reference!)
+TFCMD := $(AWS_ENV) $(TFCMD)
+AWSCMD := $(AWS_ENV) $(AWSCMD)
 
 # Derive values from the persisted outputs file (written by local_file)
 HAS_OUT       := $(shell test -f "$(OUT)" && echo 1 || echo 0)
@@ -46,55 +54,55 @@ tools: ## Check required tools exist
 check: tools tf-version aws-version aws-whoami ## Run preflight checks
 
 tf-version: ## Show Terraform version
-	$(TF) version
+	$(TFCMD) version
 
 aws-version: ## Show AWS CLI version
-	$(AWS) --version
+	$(AWSCMD) --version
 
 aws-whoami: ## Show AWS caller identity
-	$(AWS) sts get-caller-identity $(AWS_REGION_FLAG)
+	$(AWSCMD) sts get-caller-identity $(AWS_REGION_FLAG)
 
 # -------- Terraform steps (run individually) --------
 .PHONY: init fmt validate plan plan-out apply apply-plan show outputs state-list destroy clean graph
 init: ## terraform init
-	$(TF) init
+	$(TFCMD) init
 
 fmt: ## terraform fmt (recursive)
-	$(TF) fmt -recursive
+	$(TFCMD) fmt -recursive
 
 validate: ## terraform validate
-	$(TF) validate
+	$(TFCMD) validate
 
 plan: ## terraform plan
-	$(TF) plan
+	$(TFCMD) plan
 
 plan-out: ## terraform plan -out=$(PLANFILE)
-	$(TF) plan -out=$(PLANFILE)
+	$(TFCMD) plan -out=$(PLANFILE)
 
 apply: ## terraform apply (auto-approve)
-	$(TF) apply -auto-approve
+	$(TFCMD) apply -auto-approve
 
 apply-plan: ## terraform apply $(PLANFILE)
 	@test -f "$(PLANFILE)" || { echo "Missing $(PLANFILE). Run 'make plan-out' first."; exit 1; }
-	$(TF) apply "$(PLANFILE)"
+	$(TFCMD) apply "$(PLANFILE)"
 
 show: ## terraform show (current state)
-	$(TF) show
+	$(TFCMD) show
 
 outputs: ## terraform output + cat persisted $(OUT)
-	$(TF) output
+	$(TFCMD) output
 	@echo "------- $(OUT) -------"
 	@test -f "$(OUT)" && cat "$(OUT)" || echo "No outputs file yet. Run 'make apply'."
 
 state-list: ## terraform state list
-	$(TF) state list
+	$(TFCMD) state list
 
 graph: ## terraform graph (DOT) -> graph.dot
-	$(TF) graph > graph.dot && echo "Wrote graph.dot"
+	$(TFCMD) graph > graph.dot && echo "Wrote graph.dot"
 
 destroy: ## terraform destroy (may be blocked by prevent_destroy in main.tf)
 	@echo "NOTE: destroy may fail due to prevent_destroy=true in resources."
-	-$(TF) destroy
+	-$(TFCMD) destroy
 
 clean: ## Remove local plan file
 	@rm -f "$(PLANFILE)"
@@ -105,31 +113,31 @@ _require_out:
 	@test -f "$(OUT)" || { echo "Outputs file '$(OUT)' not found. Run 'make apply' first or set OUT=..."; exit 1; }
 
 list-table-buckets: ## List S3 Table Buckets in the account
-	$(AWS) s3tables list-table-buckets $(AWS_REGION_FLAG)
+	$(AWSCMD) s3tables list-table-buckets $(AWS_REGION_FLAG)
 
 list-namespaces: _require_out ## List namespaces in the table bucket
 	@test -n "$(TABLE_BUCKET_ARN)" || { echo "TABLE_BUCKET_ARN missing"; exit 1; }
-	$(AWS) s3tables list-namespaces --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG)
+	$(AWSCMD) s3tables list-namespaces --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG)
 
 list-tables: _require_out ## List tables (optionally filter by namespace)
 	@test -n "$(TABLE_BUCKET_ARN)" || { echo "TABLE_BUCKET_ARN missing"; exit 1; }
 	@if [ -n "$(NAMESPACE)" ]; then \
-	  $(AWS) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" $(AWS_REGION_FLAG); \
+	  $(AWSCMD) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" $(AWS_REGION_FLAG); \
 	else \
-	  $(AWS) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG); \
+	  $(AWSCMD) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG); \
 	fi
 
 get-table-bucket: _require_out ## Get details for the table bucket
 	@test -n "$(TABLE_BUCKET_ARN)" || { echo "TABLE_BUCKET_ARN missing"; exit 1; }
-	$(AWS) s3tables get-table-bucket --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG)
+	$(AWSCMD) s3tables get-table-bucket --table-bucket-arn "$(TABLE_BUCKET_ARN)" $(AWS_REGION_FLAG)
 
 get-namespace: _require_out ## Get details for the namespace
 	@test -n "$(TABLE_BUCKET_ARN)" -a -n "$(NAMESPACE)" || { echo "TABLE_BUCKET_ARN/NAMESPACE missing"; exit 1; }
-	$(AWS) s3tables get-namespace --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" $(AWS_REGION_FLAG)
+	$(AWSCMD) s3tables get-namespace --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" $(AWS_REGION_FLAG)
 
 get-table: _require_out ## Get details for the table (by name from FQN)
 	@test -n "$(TABLE_BUCKET_ARN)" -a -n "$(NAMESPACE)" -a -n "$(TABLE_NAME)" || { echo "Need TABLE_BUCKET_ARN, NAMESPACE, TABLE_NAME"; exit 1; }
-	$(AWS) s3tables get-table --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --name "$(TABLE_NAME)" $(AWS_REGION_FLAG)
+	$(AWSCMD) s3tables get-table --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --name "$(TABLE_NAME)" $(AWS_REGION_FLAG)
 
 # ---------------- Deletion/Nuke targets (S3 Tables) ----------------
 # Docs: delete-table, delete-namespace, delete-table-bucket and ordering notes:
@@ -144,7 +152,7 @@ TABLE ?= $(TABLE_NAME)
 delete-table: _require_out ## Delete a single table (TABLE?=$(TABLE_NAME))
 	@test -n "$(TABLE_BUCKET_ARN)" -a -n "$(NAMESPACE)" -a -n "$(TABLE)" || { echo "Need TABLE_BUCKET_ARN, NAMESPACE, and TABLE"; exit 1; }
 	@echo "Deleting table: $(NAMESPACE).$(TABLE)"
-	$(AWS) s3tables delete-table \
+	$(AWSCMD) s3tables delete-table \
 	  --table-bucket-arn "$(TABLE_BUCKET_ARN)" \
 	  --namespace "$(NAMESPACE)" \
 	  --name "$(TABLE)" \
@@ -154,13 +162,13 @@ delete-all-tables: _require_out ## Delete ALL tables in the namespace
 	@test -n "$(TABLE_BUCKET_ARN)" -a -n "$(NAMESPACE)" || { echo "Need TABLE_BUCKET_ARN and NAMESPACE"; exit 1; }
 	@echo "Listing tables in namespace: $(NAMESPACE)"
 	@set -eu; \
-	tables="$$( $(AWS) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --output json $(AWS_REGION_FLAG) | $(JQ) -r '.tables[]?.name // empty' )"; \
+	tables="$$( $(AWSCMD) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --output json $(AWS_REGION_FLAG) | $(JQ) -r '.tables[]?.name // empty' )"; \
 	if [ -z "$$tables" ]; then \
 	  echo "No tables found in namespace $(NAMESPACE)."; \
 	else \
 	  for t in $$tables; do \
 	    echo "Deleting $$t ..."; \
-	    $(AWS) s3tables delete-table --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --name "$$t" $(AWS_REGION_FLAG); \
+	    $(AWSCMD) s3tables delete-table --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --name "$$t" $(AWS_REGION_FLAG); \
 	  done; \
 	fi
 
@@ -169,14 +177,14 @@ wait-empty-namespace: _require_out ## Wait until namespace has zero tables
 	@echo "Waiting for namespace $(NAMESPACE) to become empty..."
 	@set -eu; \
 	while :; do \
-	  count="$$( $(AWS) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --output json $(AWS_REGION_FLAG) | $(JQ) -r '.tables | length' 2>/dev/null || echo 0)"; \
+	  count="$$( $(AWSCMD) s3tables list-tables --table-bucket-arn "$(TABLE_BUCKET_ARN)" --namespace "$(NAMESPACE)" --output json $(AWS_REGION_FLAG) | $(JQ) -r '.tables | length' 2>/dev/null || echo 0)"; \
 	  [ "$$count" -eq 0 ] && { echo "Namespace is empty."; break; } || { echo "Remaining tables: $$count"; sleep 3; }; \
 	done
 
 delete-namespace: _require_out ## Delete the namespace (must be empty)
 	@test -n "$(TABLE_BUCKET_ARN)" -a -n "$(NAMESPACE)" || { echo "Need TABLE_BUCKET_ARN and NAMESPACE"; exit 1; }
 	@echo "Deleting namespace: $(NAMESPACE)"
-	$(AWS) s3tables delete-namespace \
+	$(AWSCMD) s3tables delete-namespace \
 	  --table-bucket-arn "$(TABLE_BUCKET_ARN)" \
 	  --namespace "$(NAMESPACE)" \
 	  $(AWS_REGION_FLAG)
@@ -184,7 +192,7 @@ delete-namespace: _require_out ## Delete the namespace (must be empty)
 delete-table-bucket: _require_out ## Delete the table bucket (must have no namespaces/tables)
 	@test -n "$(TABLE_BUCKET_ARN)" || { echo "Need TABLE_BUCKET_ARN"; exit 1; }
 	@echo "Deleting table bucket: $(TABLE_BUCKET_ARN)"
-	$(AWS) s3tables delete-table-bucket \
+	$(AWSCMD) s3tables delete-table-bucket \
 	  --table-bucket-arn "$(TABLE_BUCKET_ARN)" \
 	  $(AWS_REGION_FLAG)
 
@@ -193,7 +201,7 @@ nuke-s3tables: delete-all-tables wait-empty-namespace delete-namespace delete-ta
 
 # Optional: clean up Terraform state after manual (CLI) deletion to avoid drift
 state-rm-s3tables: ## Remove S3 Tables resources from Terraform state (after CLI deletion)
-	-$(TF) state rm awscc_s3tables_table.tbl
-	-$(TF) state rm awscc_s3tables_namespace.ns
-	-$(TF) state rm aws_s3tables_table_bucket.this
+	-$(TFCMD) state rm awscc_s3tables_table.tbl
+	-$(TFCMD) state rm awscc_s3tables_namespace.ns
+	-$(TFCMD) state rm aws_s3tables_table_bucket.this
 	@echo "Removed S3 Tables resources from Terraform state."
