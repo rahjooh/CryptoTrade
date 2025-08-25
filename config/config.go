@@ -172,8 +172,9 @@ type BinanceSnapshotConfig struct {
 }
 
 type StorageConfig struct {
-	S3  S3Config  `yaml:"s3"`
-	GCS GCSConfig `yaml:"gcs"`
+	S3    S3Config    `yaml:"s3"`
+	GCS   GCSConfig   `yaml:"gcs"`
+	Kafka KafkaConfig `yaml:"kafka"`
 }
 
 type S3Config struct {
@@ -193,6 +194,12 @@ type GCSConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	Bucket    string `yaml:"bucket"`
 	ProjectID string `yaml:"project_id"`
+}
+
+type KafkaConfig struct {
+	Enabled bool     `yaml:"enabled"`
+	Brokers []string `yaml:"brokers"`
+	Topic   string   `yaml:"topic"`
 }
 
 type MonitoringConfig struct {
@@ -317,6 +324,15 @@ func validateConfig(cfg *Config) error {
 		}
 		if cfg.Storage.S3.FlushInterval <= 0 {
 			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
+		}
+	}
+
+	if cfg.Storage.Kafka.Enabled {
+		if len(cfg.Storage.Kafka.Brokers) == 0 {
+			return fmt.Errorf("storage.kafka.brokers must be provided when Kafka is enabled")
+		}
+		if cfg.Storage.Kafka.Topic == "" {
+			return fmt.Errorf("storage.kafka.topic is required when Kafka is enabled")
 		}
 	}
 

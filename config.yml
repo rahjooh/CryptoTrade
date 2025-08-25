@@ -254,12 +254,17 @@ processor:
 
 storage:
   s3:
-    enabled: true
+    enabled: false
     flush_interval: "1m"
     table_arn: "arn:aws:s3tables:ap-south-1:640168415309:bucket/test-table/table/19deb686-4bfd-421f-86fe-24838d070cd7" # ARN of the S3 table, e.g. arn:aws:s3tables:region:account:tablebucket/bucket/table/namespace/s3-table
 
     # Region and credentials are loaded from environment variables:
     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and S3_TABLE_ARN
+
+  kafka:
+    enabled: true
+    brokers: [ "localhost:9092" ]
+    topic: "orderbook_snapshots"
 
 writer:
   max_workers: 1

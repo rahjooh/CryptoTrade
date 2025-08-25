@@ -58,7 +58,10 @@ func main() {
 	binanceReader := reader.NewBinanceReader(cfg, channels.RawMessageChan)
 	flattener := processor.NewFlattener(cfg, channels.RawMessageChan, channels.FlattenedChan)
 
-	var s3Writer *writer.S3Writer
+	var (
+		s3Writer    *writer.S3Writer
+		kafkaWriter *writer.KafkaWriter
+	)
 	if cfg.Storage.S3.Enabled {
 		var err error
 		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
@@ -66,8 +69,15 @@ func main() {
 			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
 		}
+	} else if cfg.Storage.Kafka.Enabled {
+		var err error
+		kafkaWriter, err = writer.NewKafkaWriter(cfg, channels.FlattenedChan)
+		if err != nil {
+			log.WithError(err).Error("failed to create Kafka writer")
+			os.Exit(1)
+		}
 	} else {
-		log.WithComponent("main").Debug("S3 storage disabled; skipping S3 writer")
+		log.WithComponent("main").Debug("no storage writer configured; skipping writer")
 	}
 
 	var wg sync.WaitGroup
@@ -96,6 +106,14 @@ func main() {
 				log.WithError(err).Warn("s3 writer failed to start")
 			}
 		}()
+	} else if kafkaWriter != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := kafkaWriter.Start(ctx); err != nil {
+				log.WithError(err).Warn("kafka writer failed to start")
+			}
+		}()
 	}
 
 	time.Sleep(2 * time.Second)
@@ -113,6 +131,9 @@ func main() {
 	if s3Writer != nil {
 		log.Debug("stopping S3 writer")
 		s3Writer.Stop()
+	} else if kafkaWriter != nil {
+		log.Debug("stopping Kafka writer")
+		kafkaWriter.Stop()
 	}
 
 	log.Debug("stopping flattener")
