@@ -43,7 +43,7 @@ CryptoFlow/
 ├── reader/                # Binance futures depth reader
 ├── writer/                # S3 parquet writer
 ├── main.go                # application entrypoint
-├── config.yml             # runtime configuration
+├── config/                # runtime configuration files
 ├── .env.example           # sample AWS credentials
 └── ...
 ```
@@ -52,7 +52,7 @@ CryptoFlow/
 
 ## Configuration
 
-All runtime options live in `config.yml`.  Key sections:
+Runtime options are split across multiple YAML files in the `config/` directory. Key sections:
 
 - `cryptoflow`: service name and version.
 - `channels`: buffer sizes for the raw and flattened channels.
@@ -85,14 +85,14 @@ Copy `.env.example` to `.env` and populate with your values before running the a
 go build ./...
 go test  ./...
 
-# Start the service (uses config.yml by default)
+# Start the service (uses config/ by default)
 go run main.go
 ```
 
 On startup CryptoFlow will:
 
 1. Load environment variables from `.env`.
-2. Read `config.yml` and validate required fields.
+2. Read configuration from `config/` and validate required fields.
 3. Start the reader, flattener and (if enabled) the S3 writer.
 4. Begin streaming snapshots until interrupted (`Ctrl+C`).
 
@@ -117,9 +117,9 @@ go fmt ./...
 # Run unit tests
 go test ./...
 
-# Execute the service with a custom config
+# Execute the service with a custom config directory
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... S3_TABLE_ARN=... \
-  go run main.go -config config.yml
+  go run main.go -config config
 ```
 
 Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.

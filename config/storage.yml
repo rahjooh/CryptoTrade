@@ -1,0 +1,9 @@
+storage:
+  s3:
+    enabled: false
+    flush_interval: "1m"
+    table_arn: "arn:aws:s3tables:ap-south-1:640168415309:bucket/test-table/table/19deb686-4bfd-421f-86fe-24838d070cd7"
+  kafka:
+    enabled: true
+    brokers: [ "localhost:9092" ]
+    topic: "orderbook_snapshots"
