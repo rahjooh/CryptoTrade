@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -241,15 +243,46 @@ type LoggingConfig struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	// Read configuration file
-	data, err := os.ReadFile(path)
+	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("failed to stat config path: %w", err)
 	}
 
 	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+
+	if fi.IsDir() {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config directory: %w", err)
+		}
+
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			ext := filepath.Ext(name)
+			if ext != ".yml" && ext != ".yaml" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(path, name))
+			if err != nil {
+				return nil, fmt.Errorf("failed to read config file %s: %w", name, err)
+			}
+			if err := yaml.Unmarshal(data, &config); err != nil {
+				return nil, fmt.Errorf("failed to parse config file %s: %w", name, err)
+			}
+		}
+	} else {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("failed to parse config file: %w", err)
+		}
 	}
 
 	// Override S3 settings from Terraform outputs, then environment variables if available

@@ -1,0 +1,3 @@
+channels:
+  raw_buffer: 100
+  processed_buffer: 100

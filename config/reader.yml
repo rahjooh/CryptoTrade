@@ -1,0 +1,3 @@
+reader:
+  max_workers: 1
+  timeout: "5s"

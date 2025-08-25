@@ -28,7 +28,7 @@ func main() {
 		log.WithError(err).Warn("Error loading .env file")
 	}
 
-	configPath := flag.String("config", "config.yml", "Path to configuration file")
+	configPath := flag.String("config", "config", "Path to configuration file or directory")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(*configPath)

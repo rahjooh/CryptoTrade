@@ -149,6 +149,12 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 
 	log.Debug("processing raw message")
 
+	if rawMsg.MessageType != "snapshot" {
+		f.errorsCount++
+		log.WithFields(logger.Fields{"raw_message": string(rawMsg.Data)}).Warn("unsupported message type")
+		return 0
+	}
+
 	// Parse the raw orderbook data
 	var binanceResp models.BinanceOrderbookResponse
 	err := json.Unmarshal(rawMsg.Data, &binanceResp)

@@ -1,0 +1,8 @@
+app:
+  name: "CryptoFlow"
+  version: "1.0.0"
+  environment: "development"
+
+cryptoflow:
+  name: "CryptoFlow"
+  version: "1.0.0"

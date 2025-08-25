@@ -1,0 +1,23 @@
+writer:
+  max_workers: 1
+  batch:
+    size: 10
+    timeout: "1s"
+    max_memory: "1MB"
+  buffer:
+    max_size: 10
+    flush_interval: "1s"
+    memory_threshold: 0.8
+  partitioning:
+    scheme: "time"
+    time_format: "year={year}/month={month}/day={day}/hour={hour}"
+    additional_keys: ["exchange", "market", "symbol"]
+  formats:
+    parquet:
+      enabled: true
+      compression: "snappy"
+      page_size: 0
+    avro:
+      enabled: false
+      compression: ""
+  compression: ""

@@ -1,10 +1,3 @@
-# Application Settings
-app:
-  name: "CryptoFlow"
-  version: "1.0.0"
-  environment: "development"
-
-# Source Configuration
 source:
   binance:
     connection_pool:
@@ -17,7 +10,7 @@ source:
           enabled: false
           connection: rest
           url: https://api.binance.com/api/v3/depth
-          limit: 1000      # Max allowed for spot order book depth
+          limit: 1000
           interval_ms: 1000
           symbols: [ BTCUSDT, ETHUSDT ]
         delta:
@@ -32,11 +25,11 @@ source:
           enabled: true
           connection: rest
           url: https://fapi.binance.com/fapi/v1/depth
-          limit: 1000                   # Number of price levels
-          interval_ms: 1000             # Collect every 1000 mili seconds
+          limit: 1000
+          interval_ms: 1000
           symbols: [ BTCUSDT, ETHUSDT ]
-          concurrent_symbols: 5         # Max concurrent API calls
-          batch_size: 10000             #  Records per batch before writing
+          concurrent_symbols: 5
+          batch_size: 10000
         delta:
           enabled: false
           connection: websocket
@@ -127,7 +120,7 @@ source:
           enabled: false
           connection: rest
           url: https://www.okx.com/api/v5/market/books
-          limit: 400
+          limit: 100
           interval_ms: 1000
           symbols: [ BTC-USDT, ETH-USDT ]
         delta:
@@ -142,7 +135,7 @@ source:
           enabled: false
           connection: rest
           url: https://www.okx.com/api/v5/market/books
-          limit: 400
+          limit: 100
           interval_ms: 1000
           symbols: [ BTC-USDT, ETH-USDT ]
         delta:
@@ -150,11 +143,11 @@ source:
           connection: websocket
           url: wss://ws.okx.com:8443/ws/v5/public
           interval_ms: 100
-          symbols: [ BTC-USDT ]
+          symbols: [ BTC-USDT, ETH-USDT ]
       contracts:
         enabled: false
         connection: rest
-        url: https://www.okx.com/api/v5/public/instruments
+        url: https://www.okx.com/api/v5/market/instruments
         interval_minutes: 10
       liquidation:
         enabled: false
@@ -224,68 +217,3 @@ source:
           url: wss://ws.kraken.com
           interval_ms: 100
           symbols: [ XBT/USD, ETH/USD ]
-
-
-# Logging Configuration
-logging:
-  level: "info"
-  format: "json"
-  output: "stdout"
-  file_path: "logs/collector.log"
-  include_caller: true
-
-# CryptoFlow pipeline configuration
-cryptoflow:
-  name: "CryptoFlow"
-  version: "1.0.0"
-
-channels:
-  raw_buffer: 100
-  processed_buffer: 100
-
-reader:
-  max_workers: 1
-  timeout: "5s"
-
-processor:
-  max_workers: 1
-  batch_size: 1
-  batch_timeout: "1s"
-
-storage:
-  s3:
-    enabled: false
-    flush_interval: "1m"
-    table_arn: "arn:aws:s3tables:ap-south-1:640168415309:bucket/test-table/table/19deb686-4bfd-421f-86fe-24838d070cd7" # ARN of the S3 table, e.g. arn:aws:s3tables:region:account:tablebucket/bucket/table/namespace/s3-table
-
-    # Region and credentials are loaded from environment variables:
-    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and S3_TABLE_ARN
-
-  kafka:
-    enabled: true
-    brokers: [ "localhost:9092" ]
-    topic: "orderbook_snapshots"
-
-writer:
-  max_workers: 1
-  batch:
-    size: 10
-    timeout: "1s"
-    max_memory: "1MB"
-  buffer:
-    max_size: 10
-    flush_interval: "1s"
-    memory_threshold: 0.8
-  partitioning:
-    scheme: "time"
-    time_format: "year={year}/month={month}/day={day}/hour={hour}"
-    additional_keys: ["exchange", "market", "symbol"]
-  formats:
-    parquet:
-      enabled: true
-      compression: "snappy"
-      page_size: 0
-    avro:
-      enabled: false
-      compression: ""
-  compression: ""
