@@ -5,32 +5,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
+	"net/url"
 	"sync"
 	"time"
 
 	"cryptoflow/config"
 	"cryptoflow/logger"
 	"cryptoflow/models"
+
+	futures "github.com/adshao/go-binance/v2/futures"
 )
 
+// BinanceReader fetches futures order book snapshots from Binance.
 type BinanceReader struct {
 	config     *config.Config
-	client     *http.Client
+	client     *futures.Client
 	rawChannel chan<- models.RawOrderbookMessage
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	mu         sync.RWMutex
 	running    bool
 	log        *logger.Log
-
-	// Metrics
-	requestCount     int64
-	errorCount       int64
-	lastRequestTime  time.Time
-	lastResponseTime time.Time
 }
 
+// NewBinanceReader creates a new BinanceReader using the binance-go client.
 func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookMessage) *BinanceReader {
 	log := logger.GetLogger()
 
@@ -41,9 +39,18 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 		DisableCompression: false,
 	}
 
-	client := &http.Client{
+	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   cfg.Reader.Timeout,
+	}
+
+	client := futures.NewClient("", "")
+	client.HTTPClient = httpClient
+
+	snapshotCfg := cfg.Source.Binance.Future.Orderbook.Snapshots
+	if parsed, err := url.Parse(snapshotCfg.URL); err == nil {
+		base := fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+		client.SetApiEndpoint(base)
 	}
 
 	reader := &BinanceReader{
@@ -63,6 +70,7 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 	return reader
 }
 
+// Start begins fetching order book snapshots for configured symbols.
 func (br *BinanceReader) Start(ctx context.Context) error {
 	br.mu.Lock()
 	if br.running {
@@ -91,13 +99,11 @@ func (br *BinanceReader) Start(ctx context.Context) error {
 		go br.fetchOrderbookWorker(symbol, snapshotCfg)
 	}
 
-	// Start metrics reporter
-	go br.metricsReporter(ctx)
-
 	log.Info("binance reader started successfully")
 	return nil
 }
 
+// Stop signals all workers to stop and waits for completion.
 func (br *BinanceReader) Stop() {
 	br.mu.Lock()
 	br.running = false
@@ -120,7 +126,6 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 
 	interval := time.Duration(snapshotCfg.IntervalMs) * time.Millisecond
 
-	// Align first fetch to the start of the next interval boundary
 	now := time.Now()
 	nextTick := now.Truncate(interval).Add(interval)
 	timer := time.NewTimer(nextTick.Sub(now))
@@ -143,7 +148,6 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 				}).Warn("fetch took longer than interval")
 			}
 
-			// Schedule next fetch at the subsequent interval boundary
 			nextTick = start.Truncate(interval).Add(interval)
 			timer.Reset(time.Until(nextTick))
 		}
@@ -158,65 +162,38 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 
 	market := "future-orderbook-snapshot"
 
-	br.lastRequestTime = time.Now()
-	br.requestCount++
-
-	url := fmt.Sprintf("%s?symbol=%s&limit=%d",
-		snapshotCfg.URL,
-		symbol,
-		snapshotCfg.Limit)
-
-	log.WithFields(logger.Fields{"url": url}).Info("making API request")
-
-	req, err := http.NewRequestWithContext(br.ctx, "GET", url, nil)
+	start := time.Now()
+	res, err := br.client.NewDepthService().
+		Symbol(symbol).
+		Limit(snapshotCfg.Limit).
+		Do(br.ctx)
 	if err != nil {
-		br.sendError(symbol, market, fmt.Errorf("failed to create request: %w", err))
+		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
-
-	resp, err := br.client.Do(req)
-	if err != nil {
-		br.sendError(symbol, market, fmt.Errorf("failed to fetch orderbook: %w", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	br.lastResponseTime = time.Now()
-	requestDuration := br.lastResponseTime.Sub(br.lastRequestTime)
-
-	logger.LogPerformanceEntry(log, "binance_reader", "api_request", requestDuration, logger.Fields{
-		"symbol":      symbol,
-		"status_code": resp.StatusCode,
+	duration := time.Since(start)
+	logger.LogPerformanceEntry(log, "binance_reader", "api_request", duration, logger.Fields{
+		"symbol": symbol,
 	})
 
-	if resp.StatusCode != http.StatusOK {
-		br.sendError(symbol, market, fmt.Errorf("unexpected status code: %d", resp.StatusCode))
-		return
+	bids := make([][]string, len(res.Bids))
+	for i, b := range res.Bids {
+		bids[i] = []string{b.Price, b.Quantity}
+	}
+	asks := make([][]string, len(res.Asks))
+	for i, a := range res.Asks {
+		asks[i] = []string{a.Price, a.Quantity}
 	}
 
-	var binanceResp models.BinanceOrderbookResponse
-	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
-		br.sendError(symbol, market, fmt.Errorf("failed to decode response: %w", err))
-		return
-	}
-
-	log.WithFields(logger.Fields{
-		"bids_count":     len(binanceResp.Bids),
-		"asks_count":     len(binanceResp.Asks),
-		"last_update_id": binanceResp.LastUpdateID,
-	}).Info("received orderbook data")
-
-	// Validate data
-	if br.config.Reader.Validation.EnablePriceValidation {
-		if !br.validatePrices(binanceResp, symbol) {
-			br.sendError(symbol, market, fmt.Errorf("price validation failed"))
-			return
-		}
+	binanceResp := models.BinanceOrderbookResponse{
+		LastUpdateID: res.LastUpdateID,
+		Bids:         bids,
+		Asks:         asks,
 	}
 
 	payload, err := json.Marshal(binanceResp)
 	if err != nil {
-		br.sendError(symbol, market, fmt.Errorf("failed to marshal orderbook: %w", err))
+		log.WithError(err).Warn("failed to marshal orderbook")
 		return
 	}
 
@@ -236,118 +213,6 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 	case <-br.ctx.Done():
 		return
 	default:
-		br.sendError(symbol, market, fmt.Errorf("raw channel is full, dropping data"))
+		log.Warn("raw channel is full, dropping data")
 	}
-}
-
-func (br *BinanceReader) validatePrices(resp models.BinanceOrderbookResponse, symbol string) bool {
-	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{"operation": "price_validation"})
-
-	if len(resp.Bids) == 0 || len(resp.Asks) == 0 {
-		log.Warn("empty bids or asks in response")
-		return false
-	}
-
-	// Check if best bid is less than best ask
-	if len(resp.Bids[0]) >= 2 && len(resp.Asks[0]) >= 2 {
-		bestBid, err1 := strconv.ParseFloat(resp.Bids[0][0], 64)
-		bestAsk, err2 := strconv.ParseFloat(resp.Asks[0][0], 64)
-
-		if err1 != nil || err2 != nil {
-			log.WithFields(logger.Fields{
-				"best_bid_str": resp.Bids[0][0],
-				"best_ask_str": resp.Asks[0][0],
-				"parse_error":  fmt.Sprintf("bid_err: %v, ask_err: %v", err1, err2),
-			}).Warn("failed to parse best bid/ask prices")
-			return false
-		}
-
-		if bestBid >= bestAsk {
-			log.WithFields(logger.Fields{
-				"best_bid": bestBid,
-				"best_ask": bestAsk,
-			}).Warn("best bid is greater than or equal to best ask")
-			return false
-		}
-
-		// Check spread percentage
-		spread := (bestAsk - bestBid) / bestBid * 100
-		if spread > br.config.Reader.Validation.MaxSpreadPercentage {
-			log.WithFields(logger.Fields{
-				"spread":     spread,
-				"max_spread": br.config.Reader.Validation.MaxSpreadPercentage,
-				"best_bid":   bestBid,
-				"best_ask":   bestAsk,
-			}).Warn("spread exceeds maximum allowed percentage")
-			return false
-		}
-
-		log.WithFields(logger.Fields{
-			"best_bid": bestBid,
-			"best_ask": bestAsk,
-			"spread":   spread,
-		}).Info("price validation passed")
-	}
-
-	return true
-}
-
-func (br *BinanceReader) sendError(symbol, market string, err error) {
-	br.errorCount++
-
-	log := br.log.WithComponent("binance_reader").WithError(err)
-	log.Warn("error occurred during orderbook fetch")
-
-	rawData := models.RawOrderbookMessage{
-		Exchange:    "binance",
-		Symbol:      symbol,
-		Market:      market,
-		Timestamp:   time.Now().UTC(),
-		MessageType: "error",
-		Data:        []byte(err.Error()),
-	}
-
-	select {
-	case br.rawChannel <- rawData:
-		log.Info("error sent to raw channel")
-	default:
-		log.Warn("raw channel full, dropping error message")
-	}
-}
-
-func (br *BinanceReader) metricsReporter(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			br.reportMetrics()
-		}
-	}
-}
-
-func (br *BinanceReader) reportMetrics() {
-	br.mu.RLock()
-	requestCount := br.requestCount
-	errorCount := br.errorCount
-	br.mu.RUnlock()
-
-	errorRate := float64(0)
-	if requestCount > 0 {
-		errorRate = float64(errorCount) / float64(requestCount)
-	}
-
-	log := br.log.WithComponent("binance_reader")
-	log.LogMetric("binance_reader", "request_count", requestCount, "counter", logger.Fields{})
-	log.LogMetric("binance_reader", "error_count", errorCount, "counter", logger.Fields{})
-	log.LogMetric("binance_reader", "error_rate", errorRate, "gauge", logger.Fields{})
-
-	log.WithFields(logger.Fields{
-		"request_count": requestCount,
-		"error_count":   errorCount,
-		"error_rate":    errorRate,
-	}).Info("binance reader metrics")
 }
