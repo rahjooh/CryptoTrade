@@ -1,6 +1,7 @@
 # Makefile for S3 Tables Terraform workflow + AWS CLI inspection
 # Requirements: terraform >=1.6, awscli v2 (with s3tables), jq
 # Optional: set OUT=... if you changed outputs_path in variables.tf
+
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .ONESHELL:
@@ -16,21 +17,20 @@ PLANFILE      ?= tfplan.bin
 PROFILE       ?= Terraform
 AWS_ENV       := AWS_PROFILE=$(PROFILE) AWS_SDK_LOAD_CONFIG=1
 
-
 # Compose commands with env prefix (do NOT self-reference!)
-TFCMD := $(AWS_ENV) $(TFCMD)
-AWSCMD := $(AWS_ENV) $(AWSCMD)
+TFCMD         := $(AWS_ENV) $(TF)
+AWSCMD        := $(AWS_ENV) $(AWS)
 
 # Derive values from the persisted outputs file (written by local_file)
-HAS_OUT       := $(shell test -f "$(OUT)" && echo 1 || echo 0)
-REGION        := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.region'           "$(OUT)" || echo "")
-TABLE_BUCKET_ARN := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_bucket_arn' "$(OUT)" || echo "")
-NAMESPACE     := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.namespace'        "$(OUT)" || echo "")
-TABLE_ARN     := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_arn'        "$(OUT)" || echo "")
-TABLE_FQN     := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_fqn'        "$(OUT)" || echo "")
+HAS_OUT          := $(shell test -f "$(OUT)" && echo 1 || echo 0)
+REGION           := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.region'            "$(OUT)" || echo "")
+TABLE_BUCKET_ARN := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_bucket_arn'  "$(OUT)" || echo "")
+NAMESPACE        := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.namespace'         "$(OUT)" || echo "")
+TABLE_ARN        := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_arn'         "$(OUT)" || echo "")
+TABLE_FQN        := $(shell [ "$(HAS_OUT)" = "1" ] && $(JQ) -r '.table_fqn'         "$(OUT)" || echo "")
 # Parse table name from FQN s3tablescatalog/<bucket>.<namespace>.<table>
-TABLE_NAME    := $(shell [ -n "$(TABLE_FQN)" ] && echo "$(TABLE_FQN)" | awk -F'[./]' '{print $$NF}' || echo "")
-AWS_REGION_FLAG := $(if $(REGION),--region $(REGION),)
+TABLE_NAME       := $(shell [ -n "$(TABLE_FQN)" ] && echo "$(TABLE_FQN)" | awk -F'[./]' '{print $$NF}' || echo "")
+AWS_REGION_FLAG  := $(if $(REGION),--region $(REGION),)
 
 # -------- Helpers --------
 .PHONY: help env check tools tf-version aws-version aws-whoami
