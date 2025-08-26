@@ -35,7 +35,7 @@ table_name        = "s3_table"
 # writer_role_arns = ["arn:aws:iam::123456789012:role/my-writer-role"]
 ```
 
-> The Makefile expects Terraform to write a local JSON file (default `s3tables-outputs.json`).  
+> The Makefile expects Terraform to write a local JSON file (default `s3tables-outputs.json`).
 > If you changed `outputs_path` in `variables.tf`, run `make … OUT=/path/to/that.json`.
 
 ---
@@ -186,7 +186,7 @@ make env
 
 You can override these at invocation time, e.g. `make outputs OUT=/tmp/custom.json`:
 
-- `OUT` – path to outputs json (defaults to `s3tables-outputs.json`)  
+- `OUT` – path to outputs json (defaults to `s3tables-outputs.json`)
 - `PLANFILE` – plan artifact (defaults to `tfplan.bin`)  
 - `TF` / `AWS` / `JQ` – command names (if installed in nonstandard paths)  
 - `TABLE` – used by `delete-table` (defaults to the table parsed from `table_fqn`)
@@ -209,7 +209,7 @@ The Makefile also auto-derives:
 ## Troubleshooting
 
 - **No `s3tables` in AWS CLI** → Update to AWS CLI v2 and verify with `aws s3tables help`.  
-- **`Outputs file 's3tables-outputs.json' not found`** → Run `make apply` first (or set `OUT=...`).  
+- **`Outputs file 's3tables-outputs.json' not found`** → Run `make apply` first (or set `OUT=...`).
 - **Permission errors (AccessDenied)** → Ensure your principal has S3 Tables permissions and correct region.  
 - **`terraform destroy` fails** → Expected when lifecycle `prevent_destroy` is set. Use the nuke targets (CLI) or temporarily remove lifecycle protection.  
 - **Bash missing** → Install bash (e.g., `apk add bash` on Alpine) or change the Makefile header to POSIX-only mode (remove `pipefail`).

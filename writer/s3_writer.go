@@ -87,9 +87,14 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 
 	s3TableClient := s3tables.NewFromConfig(awsConfig)
 
-	bucket, namespace, table, err := parseTableARN(cfg.Storage.S3.TableARN)
+	bucket, err := parseTableBucketARN(cfg.Storage.S3.TableBucketARN)
 	if err != nil {
-		return nil, fmt.Errorf("invalid table arn: %w", err)
+		return nil, fmt.Errorf("invalid table bucket arn: %w", err)
+	}
+	namespace := cfg.Storage.S3.Namespace
+	table := cfg.Storage.S3.TableName
+	if namespace == "" || table == "" {
+		return nil, fmt.Errorf("missing namespace or table name")
 	}
 
 	writer := &S3Writer{
@@ -314,8 +319,11 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) (int
 		return 0, fmt.Errorf("marshal batch: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("https://s3tables.%s.amazonaws.com/v1/namespaces/%s/tables/%s/rows",
-		w.awsConfig.Region, w.namespace, w.table)
+	baseEndpoint := w.config.Storage.S3.Endpoint
+	if baseEndpoint == "" {
+		baseEndpoint = fmt.Sprintf("https://s3tables.%s.amazonaws.com/iceberg/v1", w.awsConfig.Region)
+	}
+	endpoint := fmt.Sprintf("%s/namespaces/%s/tables/%s/rows", strings.TrimSuffix(baseEndpoint, "/"), w.namespace, w.table)
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
 	if err != nil {
@@ -348,24 +356,19 @@ func (w *S3Writer) writeRowsToS3Table(batch models.FlattenedOrderbookBatch) (int
 	return len(data), nil
 }
 
-// parseTableARN extracts bucket name, namespace, and table name from an S3
-// Table ARN of the form:
-// arn:aws:s3tables:region:account:tablebucket/{bucket}/table/{namespace}/{table}
-func parseTableARN(tableARN string) (bucket, namespace, table string, err error) {
-	parsed, err := awsarn.Parse(tableARN)
+// parseTableBucketARN extracts the bucket name from an S3 Table Bucket ARN.
+func parseTableBucketARN(bucketARN string) (string, error) {
+	parsed, err := awsarn.Parse(bucketARN)
 	if err != nil {
-		return "", "", "", err
+		return "", err
 	}
 
 	parts := strings.Split(parsed.Resource, "/")
-	if len(parts) < 5 || parts[0] != "tablebucket" || parts[2] != "table" {
-		return "", "", "", fmt.Errorf("invalid table arn resource: %s", parsed.Resource)
+	if len(parts) != 2 || parts[0] != "bucket" {
+		return "", fmt.Errorf("invalid table bucket arn resource: %s", parsed.Resource)
 	}
 
-	bucket = parts[1]
-	namespace = parts[3]
-	table = parts[4]
-	return
+	return parts[1], nil
 }
 
 // ensurePrerequisites creates the table bucket, namespace, and table if they do
@@ -373,7 +376,7 @@ func parseTableARN(tableARN string) (bucket, namespace, table string, err error)
 func (w *S3Writer) ensurePrerequisites(ctx context.Context) error {
 	// Ensure table bucket exists.
 	if _, err := w.s3Table.GetTableBucket(ctx, &s3tables.GetTableBucketInput{
-		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+		TableBucketARN: aws.String(w.config.Storage.S3.TableBucketARN),
 	}); err != nil {
 		if isNotFound(err) {
 			if _, err := w.s3Table.CreateTableBucket(ctx, &s3tables.CreateTableBucketInput{
@@ -389,12 +392,12 @@ func (w *S3Writer) ensurePrerequisites(ctx context.Context) error {
 	// Ensure namespace exists.
 	if _, err := w.s3Table.GetNamespace(ctx, &s3tables.GetNamespaceInput{
 		Namespace:      aws.String(w.namespace),
-		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+		TableBucketARN: aws.String(w.config.Storage.S3.TableBucketARN),
 	}); err != nil {
 		if isNotFound(err) {
 			if _, err := w.s3Table.CreateNamespace(ctx, &s3tables.CreateNamespaceInput{
 				Namespace:      []string{w.namespace},
-				TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+				TableBucketARN: aws.String(w.config.Storage.S3.TableBucketARN),
 			}); err != nil && !isConflict(err) {
 				return fmt.Errorf("create namespace: %w", err)
 			}
@@ -407,14 +410,14 @@ func (w *S3Writer) ensurePrerequisites(ctx context.Context) error {
 	if _, err := w.s3Table.GetTable(ctx, &s3tables.GetTableInput{
 		Name:           aws.String(w.table),
 		Namespace:      aws.String(w.namespace),
-		TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+		TableBucketARN: aws.String(w.config.Storage.S3.TableBucketARN),
 	}); err != nil {
 		if isNotFound(err) {
 			if _, err := w.s3Table.CreateTable(ctx, &s3tables.CreateTableInput{
 				Format:         s3types.OpenTableFormatIceberg,
 				Name:           aws.String(w.table),
 				Namespace:      aws.String(w.namespace),
-				TableBucketARN: aws.String(w.config.Storage.S3.TableARN),
+				TableBucketARN: aws.String(w.config.Storage.S3.TableBucketARN),
 			}); err != nil && !isConflict(err) {
 				return fmt.Errorf("create table: %w", err)
 			}
