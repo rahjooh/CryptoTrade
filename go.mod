@@ -3,6 +3,7 @@ module cryptoflow
 go 1.22
 
 require (
+	github.com/adshao/go-binance/v2 v2.8.5
 	github.com/aws/aws-sdk-go-v2 v1.37.2
 	github.com/aws/aws-sdk-go-v2/config v1.30.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.3
@@ -31,11 +32,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.32.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.36.0 // indirect
 	github.com/aws/smithy-go v1.22.5 // indirect
+	github.com/bitly/go-simplejson v0.5.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/klauspost/compress v1.13.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.8 // indirect
-	github.com/stretchr/testify v1.8.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/xitongsys/parquet-go-source v0.0.0-20200817004010-026bad9b25d0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
