@@ -2,7 +2,7 @@ name: cryptoflow CI/CD
 
 on:
   push:
-    branches: ["main", "fobs-s3table", "fobs-raw-kafka"]
+    branches: ["main", "fobs-s3table", "fobs-raw-kafka", "fobs-s3bucket"]
   workflow_dispatch:
     inputs:
       deploy_branch:

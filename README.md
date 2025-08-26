@@ -19,7 +19,7 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 
 1. **Reader** – polls the Binance depth endpoint at the configured interval and emits a `RawOrderbookMessage`.
 2. **Flattener** – converts each message into a `FlattenedOrderbookBatch`, expanding bids and asks into individual price levels.
-3. **S3 Writer** – writes each batch directly to an Amazon S3 Table as Parquet files.
+3. **S3 Writer** – buffers batches per `exchange/market/symbol` and periodically flushes them to an Amazon S3 Table as Parquet files.
 4. **Channels** – provide back‑pressure aware communication between stages and expose lightweight metrics.
 
 ### Channels
@@ -44,6 +44,7 @@ CryptoFlow/
 ├── writer/                # S3 parquet writer
 ├── main.go                # application entrypoint
 ├── config.yml             # runtime configuration
+├── .env.example           # sample AWS credentials
 └── ...
 ```
 
@@ -58,7 +59,7 @@ All runtime options live in `config.yml`.  Key sections:
 - `reader`: concurrency and retry controls for the exchange client.
 - `processor`: batch size and timeout for the flattener.
 - `source`: exchange endpoints to poll (e.g. `binance: future: orderbook`).
-- `storage.s3`: toggle S3 table writes and set partitioning, compression, etc.
+- `storage.s3`: toggle and tune S3 table writes (`flush_interval`, `partition_format`, compression, etc.).
 - `logging`: level, format and output destination.
 
 Sensitive S3 credentials are not stored in YAML.  Provide them through an `.env` file or the environment:
@@ -72,6 +73,8 @@ S3_TABLE_ARN=...
 ```
 
 `S3_TABLE_ARN` must reference the Amazon S3 table you created (for example `arn:aws:s3tables:REGION:ACCOUNT:tablebucket/BUCKET/table/default/s3-table`). Ensure your IAM user has `s3tables:*` permissions to update the table metadata.
+
+Copy `.env.example` to `.env` and populate with your values before running the application.
 
 ---
 
@@ -98,6 +101,8 @@ The S3 writer partitions data as:
 ```
 exchange=<exchange>/market=<market>/symbol=<symbol>/year=YYYY/month=MM/day=DD/hour=HH/<file>.parquet
 ```
+
+and flushes buffers at the configured `flush_interval`.
 
 ---
 
@@ -139,7 +144,7 @@ The main process listens for `SIGINT`/`SIGTERM`.  When received it:
 2. Stops the S3 writer, flattener and reader in order.
 3. Waits up to 30 seconds for all goroutines to exit.
 
-This ensures all goroutines exit cleanly before the process terminates.
+This ensures buffered data is flushed before the process terminates.
 
 ---
 
@@ -167,7 +172,7 @@ The following sections describe each component in detail.
 3. Instantiates typed channels (`internal.Channels`).
 4. Creates the reader, flattener, and optional S3 writer.
 5. Starts components concurrently and listens for shutdown signals.
-6. Ensures graceful termination by waiting for goroutines to finish.
+6. Ensures graceful termination by flushing buffers and waiting for goroutines to finish.
 
 This file binds all other modules and is required to assemble the pipeline into a runnable service.
 
@@ -215,7 +220,8 @@ Flattening converts heterogeneous exchange data into a uniform schema, enabling 
 ## writer/
 `writer/s3_writer.go` persists batches into an Amazon S3Table using the WriteRows API:
 - Initializes AWS SDK clients with credentials from configuration.
-- Writes each batch immediately to the table and handles API failures with metrics.
+- Buffers entries grouped by partition and flushes at a configurable interval.
+- Converts rows to the typed format required by S3Tables and handles API failures with metrics.
 
 This stage provides durable storage and partitions data for long‑term analytics.
 
@@ -230,7 +236,7 @@ sequenceDiagram
 
     R->>F: RawOrderbookMessage
     F->>F: parse & buffer
-    F-->>W: FlattenedOrderbookBatch
+    F-->>W: Flush FlattenedOrderbookBatch
     W->>S: WriteRows
     S-->>W: ACK
     W-->>F: metrics/logs

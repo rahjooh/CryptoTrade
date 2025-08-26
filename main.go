@@ -140,10 +140,12 @@ func main() {
 func logConfiguration(log *logger.Log, cfg *config.Config) {
 	symbols := strings.Join(cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols, ",")
 	log.WithFields(logger.Fields{
-		"service":      cfg.Cryptoflow.Name,
-		"version":      cfg.Cryptoflow.Version,
-		"s3_table_arn": cfg.Storage.S3.TableARN,
-		"s3_region":    cfg.Storage.S3.Region,
-		"symbols":      symbols,
+		"service":        cfg.Cryptoflow.Name,
+		"version":        cfg.Cryptoflow.Version,
+		"s3_table_arn":   cfg.Storage.S3.TableARN,
+		"s3_region":      cfg.Storage.S3.Region,
+		"symbols":        symbols,
+		"batch_size":     cfg.Writer.Batch.Size,
+		"flush_interval": cfg.Storage.S3.FlushInterval,
 	}).Info("configuration")
 }

@@ -1,11 +1,48 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 )
+
+const terraformOutputsPath = "infra/s3tables-outputs.json"
+
+type terraformOutputs struct {
+	Region         string `json:"region"`
+	TableARN       string `json:"table_arn"`
+	TableBucketARN string `json:"table_bucket_arn"`
+	RestEndpoint   string `json:"rest_endpoint"`
+	Namespace      string `json:"namespace"`
+	TableFQN       string `json:"table_fqn"`
+}
+
+func loadTerraformOutputs(path string) (*terraformOutputs, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var out terraformOutputs
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func parseTableFQN(fqn string) (bucket, namespace, table string, err error) {
+	parts := strings.Split(fqn, "/")
+	if len(parts) != 2 {
+		return "", "", "", fmt.Errorf("invalid table fqn: %s", fqn)
+	}
+	segs := strings.Split(parts[1], ".")
+	if len(segs) != 3 {
+		return "", "", "", fmt.Errorf("invalid table fqn: %s", fqn)
+	}
+	return segs[0], segs[1], segs[2], nil
+}
 
 type Config struct {
 	Cryptoflow CryptoflowConfig `yaml:"cryptoflow"`
@@ -71,7 +108,46 @@ type ValidationConfig struct {
 }
 
 type WriterConfig struct {
-	MaxWorkers int `yaml:"max_workers"`
+	MaxWorkers   int                `yaml:"max_workers"`
+	Batch        BatchConfig        `yaml:"batch"`
+	Buffer       BufferConfig       `yaml:"buffer"`
+	Partitioning PartitioningConfig `yaml:"partitioning"`
+	Formats      FormatsConfig      `yaml:"formats"`
+	Compression  string             `yaml:"compression"`
+}
+
+type BatchConfig struct {
+	Size      int           `yaml:"size"`
+	Timeout   time.Duration `yaml:"timeout"`
+	MaxMemory string        `yaml:"max_memory"`
+}
+
+type BufferConfig struct {
+	MaxSize         int           `yaml:"max_size"`
+	FlushInterval   time.Duration `yaml:"flush_interval"`
+	MemoryThreshold float64       `yaml:"memory_threshold"`
+}
+
+type PartitioningConfig struct {
+	Scheme         string   `yaml:"scheme"`
+	TimeFormat     string   `yaml:"time_format"`
+	AdditionalKeys []string `yaml:"additional_keys"`
+}
+
+type FormatsConfig struct {
+	Parquet ParquetConfig `yaml:"parquet"`
+	Avro    AvroConfig    `yaml:"avro"`
+}
+
+type ParquetConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Compression string `yaml:"compression"`
+	PageSize    int    `yaml:"page_size"`
+}
+
+type AvroConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Compression string `yaml:"compression"`
 }
 
 type ConnectionPoolConfig struct {
@@ -114,18 +190,19 @@ type StorageConfig struct {
 }
 
 type S3Config struct {
-	Enabled           bool   `yaml:"enabled"`
-	Region            string `yaml:"region"`
-	Endpoint          string `yaml:"endpoint"`
-	PathStyle         bool   `yaml:"path_style"`
-	UploadConcurrency int    `yaml:"upload_concurrency"`
-	PartSize          string `yaml:"part_size"`
-	AccessKeyID       string `yaml:"access_key_id"`
-	SecretAccessKey   string `yaml:"secret_access_key"`
-	TableARN          string `yaml:"table_arn"`
-	TableBucketARN    string `yaml:"table_bucket_arn"`
-	Namespace         string `yaml:"namespace"`
-	TableName         string `yaml:"table_name"`
+	Enabled           bool          `yaml:"enabled"`
+	Region            string        `yaml:"region"`
+	Endpoint          string        `yaml:"endpoint"`
+	PathStyle         bool          `yaml:"path_style"`
+	UploadConcurrency int           `yaml:"upload_concurrency"`
+	PartSize          string        `yaml:"part_size"`
+	AccessKeyID       string        `yaml:"access_key_id"`
+	SecretAccessKey   string        `yaml:"secret_access_key"`
+	TableARN          string        `yaml:"table_arn"`
+	TableBucketARN    string        `yaml:"table_bucket_arn"`
+	Namespace         string        `yaml:"namespace"`
+	TableName         string        `yaml:"table_name"`
+	FlushInterval     time.Duration `yaml:"flush_interval"`
 }
 
 type GCSConfig struct {
@@ -184,8 +261,34 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Override S3 settings from environment variables if available
+	// Override S3 settings from Terraform outputs, then environment variables if available
 	if config.Storage.S3.Enabled {
+		if outputs, err := loadTerraformOutputs(terraformOutputsPath); err == nil {
+			if outputs.Region != "" {
+				config.Storage.S3.Region = strings.TrimSpace(outputs.Region)
+			}
+			if outputs.TableARN != "" {
+				config.Storage.S3.TableARN = strings.TrimSpace(outputs.TableARN)
+			}
+			if outputs.TableBucketARN != "" {
+				config.Storage.S3.TableBucketARN = strings.TrimSpace(outputs.TableBucketARN)
+			}
+			if outputs.RestEndpoint != "" {
+				config.Storage.S3.Endpoint = strings.TrimSpace(outputs.RestEndpoint)
+			}
+			if outputs.Namespace != "" {
+				config.Storage.S3.Namespace = strings.TrimSpace(outputs.Namespace)
+			}
+			if outputs.TableFQN != "" {
+				if _, ns, tbl, err := parseTableFQN(outputs.TableFQN); err == nil {
+					if config.Storage.S3.Namespace == "" {
+						config.Storage.S3.Namespace = strings.TrimSpace(ns)
+					}
+					config.Storage.S3.TableName = strings.TrimSpace(tbl)
+				}
+			}
+		}
+
 		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
 			config.Storage.S3.AccessKeyID = strings.TrimSpace(v)
 		}
@@ -265,6 +368,9 @@ func validateConfig(cfg *Config) error {
 		}
 		if cfg.Storage.S3.TableName == "" {
 			return fmt.Errorf("storage.s3.table_name is required when S3 is enabled (set storage.s3.table_name or S3_TABLE_NAME env var)")
+		}
+		if cfg.Storage.S3.FlushInterval <= 0 {
+			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
 		}
 	}
 
