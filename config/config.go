@@ -14,8 +14,12 @@ import (
 const terraformOutputsPath = "infra/s3tables-outputs.json"
 
 type terraformOutputs struct {
-	Region   string `json:"region"`
-	TableARN string `json:"table_arn"`
+	Region         string `json:"region"`
+	TableARN       string `json:"table_arn"`
+	TableBucketARN string `json:"table_bucket_arn"`
+	RestEndpoint   string `json:"rest_endpoint"`
+	Namespace      string `json:"namespace"`
+	TableFQN       string `json:"table_fqn"`
 }
 
 func loadTerraformOutputs(path string) (*terraformOutputs, error) {
@@ -29,6 +33,18 @@ func loadTerraformOutputs(path string) (*terraformOutputs, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+func parseTableFQN(fqn string) (bucket, namespace, table string, err error) {
+	parts := strings.Split(fqn, "/")
+	if len(parts) != 2 {
+		return "", "", "", fmt.Errorf("invalid table fqn: %s", fqn)
+	}
+	segs := strings.Split(parts[1], ".")
+	if len(segs) != 3 {
+		return "", "", "", fmt.Errorf("invalid table fqn: %s", fqn)
+	}
+	return segs[0], segs[1], segs[2], nil
 }
 
 type Config struct {
@@ -186,6 +202,9 @@ type S3Config struct {
 	AccessKeyID       string        `yaml:"access_key_id"`
 	SecretAccessKey   string        `yaml:"secret_access_key"`
 	TableARN          string        `yaml:"table_arn"`
+	TableBucketARN    string        `yaml:"table_bucket_arn"`
+	Namespace         string        `yaml:"namespace"`
+	TableName         string        `yaml:"table_name"`
 	FlushInterval     time.Duration `yaml:"flush_interval"`
 }
 
@@ -254,6 +273,23 @@ func LoadConfig(path string) (*Config, error) {
 			if outputs.TableARN != "" {
 				config.Storage.S3.TableARN = strings.TrimSpace(outputs.TableARN)
 			}
+			if outputs.TableBucketARN != "" {
+				config.Storage.S3.TableBucketARN = strings.TrimSpace(outputs.TableBucketARN)
+			}
+			if outputs.RestEndpoint != "" {
+				config.Storage.S3.Endpoint = strings.TrimSpace(outputs.RestEndpoint)
+			}
+			if outputs.Namespace != "" {
+				config.Storage.S3.Namespace = strings.TrimSpace(outputs.Namespace)
+			}
+			if outputs.TableFQN != "" {
+				if _, ns, tbl, err := parseTableFQN(outputs.TableFQN); err == nil {
+					if config.Storage.S3.Namespace == "" {
+						config.Storage.S3.Namespace = strings.TrimSpace(ns)
+					}
+					config.Storage.S3.TableName = strings.TrimSpace(tbl)
+				}
+			}
 		}
 
 		if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
@@ -267,6 +303,18 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		if v := os.Getenv("S3_TABLE_ARN"); v != "" && config.Storage.S3.TableARN == "" {
 			config.Storage.S3.TableARN = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_TABLE_BUCKET_ARN"); v != "" && config.Storage.S3.TableBucketARN == "" {
+			config.Storage.S3.TableBucketARN = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_ENDPOINT"); v != "" && config.Storage.S3.Endpoint == "" {
+			config.Storage.S3.Endpoint = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_TABLE_NAMESPACE"); v != "" && config.Storage.S3.Namespace == "" {
+			config.Storage.S3.Namespace = strings.TrimSpace(v)
+		}
+		if v := os.Getenv("S3_TABLE_NAME"); v != "" && config.Storage.S3.TableName == "" {
+			config.Storage.S3.TableName = strings.TrimSpace(v)
 		}
 	}
 
@@ -314,6 +362,15 @@ func validateConfig(cfg *Config) error {
 		}
 		if cfg.Storage.S3.TableARN == "" {
 			return fmt.Errorf("storage.s3.table_arn is required when S3 is enabled (set storage.s3.table_arn or S3_TABLE_ARN env var)")
+		}
+		if cfg.Storage.S3.TableBucketARN == "" {
+			return fmt.Errorf("storage.s3.table_bucket_arn is required when S3 is enabled (set storage.s3.table_bucket_arn or S3_TABLE_BUCKET_ARN env var)")
+		}
+		if cfg.Storage.S3.Namespace == "" {
+			return fmt.Errorf("storage.s3.namespace is required when S3 is enabled (set storage.s3.namespace or S3_TABLE_NAMESPACE env var)")
+		}
+		if cfg.Storage.S3.TableName == "" {
+			return fmt.Errorf("storage.s3.table_name is required when S3 is enabled (set storage.s3.table_name or S3_TABLE_NAME env var)")
 		}
 		if cfg.Storage.S3.FlushInterval <= 0 {
 			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
