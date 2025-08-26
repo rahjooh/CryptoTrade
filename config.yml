@@ -255,7 +255,6 @@ processor:
 storage:
   s3:
     enabled: true
-    flush_interval: "1m"
     table_arn: "arn:aws:s3tables:ap-south-1:640168415309:bucket/test-table/table/19deb686-4bfd-421f-86fe-24838d070cd7" # ARN of the S3 table, e.g. arn:aws:s3tables:region:account:tablebucket/bucket/table/namespace/s3-table
 
     # Region and credentials are loaded from environment variables:
@@ -263,24 +262,24 @@ storage:
 
 writer:
   max_workers: 1
-  batch:
-    size: 10
-    timeout: "1s"
-    max_memory: "1MB"
-  buffer:
-    max_size: 10
-    flush_interval: "1s"
-    memory_threshold: 0.8
-  partitioning:
-    scheme: "time"
-    time_format: "year={year}/month={month}/day={day}/hour={hour}"
-    additional_keys: ["exchange", "market", "symbol"]
-  formats:
-    parquet:
-      enabled: true
-      compression: "snappy"
-      page_size: 0
-    avro:
-      enabled: false
-      compression: ""
-  compression: ""
+#  batch:
+#    size: 10
+#    timeout: "1s"
+#    max_memory: "1MB"
+#  buffer:
+#    max_size: 10
+#    flush_interval: "1s"
+#    memory_threshold: 0.8
+#  partitioning:
+#    scheme: "time"
+#    time_format: "year={year}/month={month}/day={day}/hour={hour}"
+#    additional_keys: ["exchange", "market", "symbol"]
+#  formats:
+#    parquet:
+#      enabled: true
+#      compression: "snappy"
+#      page_size: 0
+#    avro:
+#      enabled: false
+#      compression: ""
+#  compression: ""

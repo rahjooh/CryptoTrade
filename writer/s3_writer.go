@@ -15,6 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	appconfig "cryptoflow/config"
+	"cryptoflow/logger"
+	"cryptoflow/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsarn "github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
@@ -22,13 +25,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3tables"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3tables/types"
-	"github.com/google/uuid"
-
-	appconfig "cryptoflow/config"
-	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
+const maxS3RequestBytes = 10 * 1024 * 1024 // 10MB limit for S3 Tables API
 // S3Writer buffers order book batches and writes them directly to an
 // Amazon S3 Table using the Iceberg REST endpoint. Batches are sent over
 // the S3 Tables API with SigV4 authentication, avoiding Glue or Athena.
@@ -46,8 +45,6 @@ type S3Writer struct {
 	mu            sync.RWMutex
 	running       bool
 	log           *logger.Log
-	buffer        map[string][]models.FlattenedOrderbookEntry
-	flushTicker   *time.Ticker
 
 	// Metrics
 	batchesWritten int64
@@ -122,8 +119,8 @@ func NewS3Writer(cfg *appconfig.Config, flattenedChan <-chan models.FlattenedOrd
 	return writer, nil
 }
 
-// Start launches the worker and flush goroutines. Batches are buffered and
-// flushed at the interval specified in the configuration.
+// Start launches worker goroutines that write each incoming batch
+// immediately to the S3 table.
 func (w *S3Writer) Start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
@@ -137,9 +134,6 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
 	log.Debug("starting s3 writer")
 
-	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
-	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
-
 	// Launch worker goroutines to receive batches concurrently.
 	numWorkers := w.config.Writer.MaxWorkers
 	if numWorkers < 1 {
@@ -152,10 +146,6 @@ func (w *S3Writer) Start(ctx context.Context) error {
 		go w.worker(i)
 	}
 
-	// Launch flush worker to periodically write buffered rows.
-	w.wg.Add(1)
-	go w.flushWorker()
-
 	// Emit metrics periodically.
 	go w.metricsReporter(ctx)
 
@@ -163,23 +153,19 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop waits for all workers to finish and stops the flush ticker.
+// Stop waits for all workers to finish
 func (w *S3Writer) Stop() {
 	w.mu.Lock()
 	w.running = false
 	w.mu.Unlock()
-
-	if w.flushTicker != nil {
-		w.flushTicker.Stop()
-	}
 
 	w.log.WithComponent("s3_writer").Debug("stopping s3 writer")
 	w.wg.Wait()
 	w.log.WithComponent("s3_writer").Debug("s3 writer stopped")
 }
 
-// worker consumes batches from the flattened channel and buffers their
-// entries for later flushing.
+// worker consumes batches from the flattened channel and writes them to
+// the S3 table.
 func (w *S3Writer) worker(workerID int) {
 	defer w.wg.Done()
 
@@ -200,78 +186,10 @@ func (w *S3Writer) worker(workerID int) {
 				log.Debug("flattened channel closed, worker stopping")
 				return
 			}
-			w.addBatch(batch)
+			w.processBatch(batch)
 			atomic.AddInt64(&w.batchesWritten, 1)
-			logger.LogDataFlowEntry(log, "flattened_channel", "s3_table_buffer", batch.RecordCount, "rows")
+			logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
 		}
-	}
-}
-
-// addBatch appends the entries of a batch into a per-symbol buffer so that
-// multiple batches for the same symbol can be flushed together.
-func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
-	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
-	w.mu.Lock()
-	w.buffer[key] = append(w.buffer[key], batch.Entries...)
-	w.mu.Unlock()
-}
-
-// bufferKey generates the map key used for buffering entries by symbol.
-func (w *S3Writer) bufferKey(exchange, market, symbol string) string {
-	return fmt.Sprintf("%s|%s|%s", exchange, market, symbol)
-}
-
-// flushWorker periodically flushes all buffered entries to the S3 table.
-func (w *S3Writer) flushWorker() {
-	defer w.wg.Done()
-
-	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"worker": "flush"})
-	log.Debug("starting flush worker")
-
-	for {
-		select {
-		case <-w.ctx.Done():
-			w.flushBuffers("shutdown")
-			log.Debug("flush worker stopped due to context cancellation")
-			return
-		case <-w.flushTicker.C:
-			w.flushBuffers("interval")
-		}
-	}
-}
-
-// flushBuffers swaps the current buffer with a new one and processes each
-// batch group sequentially.
-func (w *S3Writer) flushBuffers(reason string) {
-	w.mu.Lock()
-	buffers := w.buffer
-	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
-	w.mu.Unlock()
-
-	if len(buffers) == 0 {
-		return
-	}
-
-	w.log.WithComponent("s3_writer").WithFields(logger.Fields{
-		"flushed_buffers": len(buffers),
-		"reason":          reason,
-	}).Debug("flushing buffers")
-
-	for key, entries := range buffers {
-		if len(entries) == 0 {
-			continue
-		}
-		parts := strings.SplitN(key, "|", 3)
-		batch := models.FlattenedOrderbookBatch{
-			BatchID:     uuid.New().String(),
-			Exchange:    parts[0],
-			Market:      parts[1],
-			Symbol:      parts[2],
-			Entries:     entries,
-			RecordCount: len(entries),
-			Timestamp:   time.Now(),
-		}
-		w.processBatch(batch)
 	}
 }
 
@@ -293,21 +211,70 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		return
 	}
 
-	size, err := w.writeRowsToS3Table(batch)
+	batches, err := w.splitBatch(batch, maxS3RequestBytes)
 	if err != nil {
 		atomic.AddInt64(&w.errorsCount, 1)
-		log.WithError(err).Error("failed to write rows to S3 table")
+		log.WithError(err).Error("failed to split batch")
 		return
 	}
+	for _, sb := range batches {
+		size, err := w.writeRowsToS3Table(sb)
+		if err != nil {
+			atomic.AddInt64(&w.errorsCount, 1)
+			log.WithFields(logger.Fields{"sub_batch_id": sb.BatchID}).WithError(err).Error("failed to write rows to S3 table")
+			return
+		}
 
-	atomic.AddInt64(&w.rowsWritten, int64(batch.RecordCount))
-	log.WithFields(logger.Fields{"batch_size_bytes": size}).Info("batch written to S3 table")
-	logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", batch.RecordCount, "rows")
-	w.log.LogMetric("s3_writer", "rows_written", int64(batch.RecordCount), "counter", logger.Fields{
-		"exchange":     batch.Exchange,
-		"symbol":       batch.Symbol,
-		"record_count": batch.RecordCount,
-	})
+		atomic.AddInt64(&w.rowsWritten, int64(sb.RecordCount))
+		log.WithFields(logger.Fields{
+			"sub_batch_id":     sb.BatchID,
+			"batch_size_bytes": size,
+			"record_count":     sb.RecordCount,
+		}).Info("batch written to S3 table")
+		logger.LogDataFlowEntry(log, "flattened_channel", "s3_table", sb.RecordCount, "rows")
+		w.log.LogMetric("s3_writer", "rows_written", int64(sb.RecordCount), "counter", logger.Fields{
+			"exchange":     sb.Exchange,
+			"symbol":       sb.Symbol,
+			"record_count": sb.RecordCount,
+		})
+	}
+}
+
+// splitBatch recursively divides a batch until each piece is within the maxBytes limit.
+func (w *S3Writer) splitBatch(batch models.FlattenedOrderbookBatch, maxBytes int) ([]models.FlattenedOrderbookBatch, error) {
+	data, err := json.Marshal(batch)
+	if err != nil {
+		return nil, fmt.Errorf("marshal batch: %w", err)
+	}
+	if len(data) <= maxBytes {
+		return []models.FlattenedOrderbookBatch{batch}, nil
+	}
+	if len(batch.Entries) <= 1 {
+		return nil, fmt.Errorf("batch too large and cannot be split further")
+	}
+
+	mid := len(batch.Entries) / 2
+
+	left := batch
+	left.BatchID = uuid.New().String()
+	left.Entries = batch.Entries[:mid]
+	left.RecordCount = len(left.Entries)
+
+	right := batch
+	right.BatchID = uuid.New().String()
+	right.Entries = batch.Entries[mid:]
+	right.RecordCount = len(right.Entries)
+
+	lb, err := w.splitBatch(left, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	rb, err := w.splitBatch(right, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(lb, rb...), nil
 }
 
 // writeRowsToS3Table sends the batch directly to the S3 Tables Iceberg REST

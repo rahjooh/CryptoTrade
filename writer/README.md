@@ -5,8 +5,7 @@ This package provides a writer that sends flattened order book data directly to 
 ## Components
 
 - **Initialization** – `NewS3Writer` configures the AWS SDK, parses the target table ARN and ensures the table bucket, namespace and table exist.
-- **Buffering** – incoming batches are grouped by market symbol and flushed on a configurable interval.
-- **REST Writes** – `writeRowsToS3Table` signs and posts each batch to the S3 Tables endpoint so only S3 Tables charges apply (storage, requests, monitoring and optional compaction).
+- **Direct Writes** – each batch is written immediately to the S3 Tables endpoint, signed with SigV4 so only S3 Tables charges apply (storage, requests, monitoring and optional compaction).
 - **Workers & Metrics** – concurrent workers process incoming batches while periodic metrics reporting provides observability.
 
 Each part is essential to reliably persist streaming data directly into an S3 Table without incurring Glue or Athena costs.
