@@ -126,7 +126,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 	}
 
 	entries := make([]models.OrderbookDeltaEntry, 0, len(evt.Bids)+len(evt.Asks))
-	ts := time.UnixMilli(evt.Time).UTC()
+	recv := raw.Timestamp.UnixMilli()
 	for _, b := range evt.Bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
 		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
@@ -134,15 +134,19 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 			continue
 		}
 		entries = append(entries, models.OrderbookDeltaEntry{
-			Exchange:      raw.Exchange,
-			Symbol:        raw.Symbol,
-			Market:        raw.Market,
-			Timestamp:     ts,
-			FirstUpdateID: evt.FirstUpdateID,
-			LastUpdateID:  evt.LastUpdateID,
-			Side:          "bid",
-			Price:         price,
-			Quantity:      qty,
+			Exchange:        raw.Exchange,
+			Symbol:          raw.Symbol,
+			Market:          raw.Market,
+			EventType:       evt.Event,
+			EventTime:       evt.Time,
+			TransactionTime: evt.TransactionTime,
+			UpdateID:        evt.LastUpdateID,
+			PrevUpdateID:    evt.PrevLastUpdateID,
+			FirstUpdateID:   evt.FirstUpdateID,
+			Side:            "bid",
+			Price:           price,
+			Quantity:        qty,
+			ReceivedTime:    recv,
 		})
 	}
 	for _, a := range evt.Asks {
@@ -152,15 +156,19 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 			continue
 		}
 		entries = append(entries, models.OrderbookDeltaEntry{
-			Exchange:      raw.Exchange,
-			Symbol:        raw.Symbol,
-			Market:        raw.Market,
-			Timestamp:     ts,
-			FirstUpdateID: evt.FirstUpdateID,
-			LastUpdateID:  evt.LastUpdateID,
-			Side:          "ask",
-			Price:         price,
-			Quantity:      qty,
+			Exchange:        raw.Exchange,
+			Symbol:          raw.Symbol,
+			Market:          raw.Market,
+			EventType:       evt.Event,
+			EventTime:       evt.Time,
+			TransactionTime: evt.TransactionTime,
+			UpdateID:        evt.LastUpdateID,
+			PrevUpdateID:    evt.PrevLastUpdateID,
+			FirstUpdateID:   evt.FirstUpdateID,
+			Side:            "ask",
+			Price:           price,
+			Quantity:        qty,
+			ReceivedTime:    recv,
 		})
 	}
 
