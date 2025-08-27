@@ -27,14 +27,17 @@ import (
 // Level information is not included as deltas contain only price updates
 // and associated quantities.
 type deltaRecord struct {
-	Exchange      string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Symbol        string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Timestamp     int64   `parquet:"name=timestamp, type=INT64"`
-	FirstUpdateID int64   `parquet:"name=first_update_id, type=INT64"`
-	LastUpdateID  int64   `parquet:"name=last_update_id, type=INT64"`
-	Side          string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Price         float64 `parquet:"name=price, type=DOUBLE"`
-	Quantity      float64 `parquet:"name=quantity, type=DOUBLE"`
+	Symbol          string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	EventType       string  `parquet:"name=event_type, type=BYTE_ARRAY, convertedtype=UTF8"`
+	EventTime       int64   `parquet:"name=event_time, type=INT64"`
+	TransactionTime int64   `parquet:"name=transaction_time, type=INT64"`
+	UpdateID        int64   `parquet:"name=update_id, type=INT64"`
+	PrevUpdateID    int64   `parquet:"name=prev_update_id, type=INT64"`
+	FirstUpdateID   int64   `parquet:"name=first_update_id, type=INT64"`
+	Side            string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Price           float64 `parquet:"name=price, type=DOUBLE"`
+	Quantity        float64 `parquet:"name=quantity, type=DOUBLE"`
+	ReceivedTime    int64   `parquet:"name=received_time, type=INT64"`
 }
 
 // memory file writer reused from s3_writer.go
@@ -231,14 +234,17 @@ func (w *DeltaWriter) createParquet(entries []models.OrderbookDeltaEntry) ([]byt
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	for _, e := range entries {
 		rec := deltaRecord{
-			Exchange:      e.Exchange,
-			Symbol:        e.Symbol,
-			Timestamp:     e.Timestamp.UnixMilli(),
-			FirstUpdateID: e.FirstUpdateID,
-			LastUpdateID:  e.LastUpdateID,
-			Side:          e.Side,
-			Price:         e.Price,
-			Quantity:      e.Quantity,
+			Symbol:          e.Symbol,
+			EventType:       e.EventType,
+			EventTime:       e.EventTime,
+			TransactionTime: e.TransactionTime,
+			UpdateID:        e.UpdateID,
+			PrevUpdateID:    e.PrevUpdateID,
+			FirstUpdateID:   e.FirstUpdateID,
+			Side:            e.Side,
+			Price:           e.Price,
+			Quantity:        e.Quantity,
+			ReceivedTime:    e.ReceivedTime,
 		}
 		if err := pw.Write(rec); err != nil {
 			return nil, 0, err
@@ -264,9 +270,12 @@ func (w *DeltaWriter) s3Key(batch models.OrderbookDeltaBatch) string {
 	timestamp := batch.Timestamp
 	parts := []string{
 		fmt.Sprintf("exchange=%s", batch.Exchange),
-		fmt.Sprintf("symbol=%s", batch.Symbol),
 		fmt.Sprintf("market=%s", batch.Market),
-		fmt.Sprintf("%04d/%02d/%02d/%02d", timestamp.Year(), timestamp.Month(), timestamp.Day(), timestamp.Hour()),
+		fmt.Sprintf("symbol=%s", batch.Symbol),
+		fmt.Sprintf("year=%04d", timestamp.Year()),
+		fmt.Sprintf("month=%02d", int(timestamp.Month())),
+		fmt.Sprintf("day=%02d", timestamp.Day()),
+		fmt.Sprintf("hour=%02d", timestamp.Hour()),
 	}
 	filename := fmt.Sprintf("delta_%s_%s_%d.parquet", batch.Exchange, batch.Symbol, timestamp.UnixNano())
 	return filepath.ToSlash(filepath.Join(append(parts, filename)...))

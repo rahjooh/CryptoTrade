@@ -98,7 +98,7 @@ func (r *BinanceDeltaReader) streamSymbol(symbol string, interval time.Duration)
 			Symbol:    event.Symbol,
 			Market:    "future-orderbook-delta",
 			Data:      payload,
-			Timestamp: time.Now().UTC(),
+			Timestamp: time.Now(),
 		}
 
 		select {
