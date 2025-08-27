@@ -60,7 +60,8 @@ All runtime options live in `config.yml`.  Key sections:
 - `processor`: batch size and timeout for the flattener.
 - `source`: exchange endpoints to poll (e.g. `binance: future: orderbook`).
 - `storage.s3`: toggle and tune S3 writes (bucket, partition format, compression, etc.).
-- `writer.buffer`: control batching behaviour including the `flush_interval`.
+- `writer.buffer`: control batching behaviour including separate
+  `snapshot_flush_interval` and `delta_flush_interval`.
 - `logging`: level, format and output destination.
 
 Sensitive S3 credentials are not stored in YAML.  Provide them through an `.env` file or the environment:
@@ -100,7 +101,9 @@ The S3 writer partitions data as:
 exchange=<exchange>/market=<market>/symbol=<symbol>/year=YYYY/month=MM/day=DD/hour=HH/<file>.parquet
 ```
 
-and flushes buffers at the configured `writer.buffer.flush_interval`.
+and flushes snapshot and delta buffers at their configured intervals:
+`writer.buffer.snapshot_flush_interval` and
+`writer.buffer.delta_flush_interval`.
 
 ---
 

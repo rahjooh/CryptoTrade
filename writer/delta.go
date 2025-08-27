@@ -109,7 +109,7 @@ func (w *DeltaWriter) Start(ctx context.Context) error {
 	}
 	w.running = true
 	w.ctx = ctx
-	w.flushTicker = time.NewTicker(w.cfg.Writer.Buffer.FlushInterval)
+	w.flushTicker = time.NewTicker(w.cfg.Writer.Buffer.DeltaFlushInterval)
 	w.mu.Unlock()
 
 	w.wg.Add(1)
