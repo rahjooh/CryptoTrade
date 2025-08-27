@@ -27,17 +27,15 @@ import (
 // Level information is not included as deltas contain only price updates
 // and associated quantities.
 type deltaRecord struct {
-	Symbol          string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	EventType       string  `parquet:"name=event_type, type=BYTE_ARRAY, convertedtype=UTF8"`
-	EventTime       int64   `parquet:"name=event_time, type=INT64"`
-	TransactionTime int64   `parquet:"name=transaction_time, type=INT64"`
-	UpdateID        int64   `parquet:"name=update_id, type=INT64"`
-	PrevUpdateID    int64   `parquet:"name=prev_update_id, type=INT64"`
-	FirstUpdateID   int64   `parquet:"name=first_update_id, type=INT64"`
-	Side            string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Price           float64 `parquet:"name=price, type=DOUBLE"`
-	Quantity        float64 `parquet:"name=quantity, type=DOUBLE"`
-	ReceivedTime    int64   `parquet:"name=received_time, type=INT64"`
+	Symbol        string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	EventTime     int64   `parquet:"name=event_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	UpdateID      int64   `parquet:"name=update_id, type=INT64"`
+	PrevUpdateID  int64   `parquet:"name=prev_update_id, type=INT64"`
+	FirstUpdateID int64   `parquet:"name=first_update_id, type=INT64"`
+	Side          string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Price         float64 `parquet:"name=price, type=DOUBLE"`
+	Quantity      float64 `parquet:"name=quantity, type=DOUBLE"`
+	ReceivedTime  int64   `parquet:"name=received_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
 }
 
 // memory file writer reused from s3_writer.go
@@ -234,17 +232,15 @@ func (w *DeltaWriter) createParquet(entries []models.OrderbookDeltaEntry) ([]byt
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	for _, e := range entries {
 		rec := deltaRecord{
-			Symbol:          e.Symbol,
-			EventType:       e.EventType,
-			EventTime:       e.EventTime,
-			TransactionTime: e.TransactionTime,
-			UpdateID:        e.UpdateID,
-			PrevUpdateID:    e.PrevUpdateID,
-			FirstUpdateID:   e.FirstUpdateID,
-			Side:            e.Side,
-			Price:           e.Price,
-			Quantity:        e.Quantity,
-			ReceivedTime:    e.ReceivedTime,
+			Symbol:        e.Symbol,
+			EventTime:     e.EventTime,
+			UpdateID:      e.UpdateID,
+			PrevUpdateID:  e.PrevUpdateID,
+			FirstUpdateID: e.FirstUpdateID,
+			Side:          e.Side,
+			Price:         e.Price,
+			Quantity:      e.Quantity,
+			ReceivedTime:  e.ReceivedTime,
 		}
 		if err := pw.Write(rec); err != nil {
 			return nil, 0, err
