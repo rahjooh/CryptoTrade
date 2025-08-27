@@ -12,6 +12,7 @@ import (
 	"cryptoflow/models"
 
 	futures "github.com/adshao/go-binance/v2/futures"
+	"github.com/sirupsen/logrus"
 )
 
 // BinanceDeltaReader streams futures order book deltas from Binance.
@@ -103,7 +104,9 @@ func (r *BinanceDeltaReader) streamSymbol(symbol string, interval time.Duration)
 
 		select {
 		case r.rawChan <- msg:
-			logger.LogDataFlowEntry(log, "binance_ws", "rawfobd", len(event.Bids)+len(event.Asks), "delta_entries")
+			if log.Logger.IsLevelEnabled(logrus.DebugLevel) {
+				logger.LogDataFlowEntry(log, "binance_ws", "rawfobd", len(event.Bids)+len(event.Asks), "delta_entries")
+			}
 		case <-r.ctx.Done():
 		default:
 			log.Warn("raw delta channel full, dropping message")
