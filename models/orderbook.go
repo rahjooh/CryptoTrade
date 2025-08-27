@@ -79,15 +79,19 @@ type RawOrderbookDelta struct {
 
 // OrderbookDeltaEntry represents a single order book delta entry
 type OrderbookDeltaEntry struct {
-	Exchange      string    `json:"exchange"`
-	Symbol        string    `json:"symbol"`
-	Market        string    `json:"market"`
-	Timestamp     time.Time `json:"timestamp"`
-	FirstUpdateID int64     `json:"first_update_id"`
-	LastUpdateID  int64     `json:"last_update_id"`
-	Side          string    `json:"side"`
-	Price         float64   `json:"price"`
-	Quantity      float64   `json:"quantity"`
+	Exchange        string  `json:"exchange"`
+	Symbol          string  `json:"symbol"`
+	Market          string  `json:"market"`
+	EventType       string  `json:"event_type"`
+	EventTime       int64   `json:"event_time"`
+	TransactionTime int64   `json:"transaction_time"`
+	UpdateID        int64   `json:"update_id"`
+	PrevUpdateID    int64   `json:"prev_update_id"`
+	FirstUpdateID   int64   `json:"first_update_id"`
+	Side            string  `json:"side"`
+	Price           float64 `json:"price"`
+	Quantity        float64 `json:"quantity"`
+	ReceivedTime    int64   `json:"received_time"`
 }
 
 // OrderbookDeltaBatch represents a batch of order book delta entries
