@@ -14,11 +14,15 @@ type ChannelStats struct {
 	FlattenedBatchesSent    int64
 	RawMessagesDropped      int64
 	FlattenedBatchesDropped int64
+	RawFOBDSent             int64
+	NormFOBDSent            int64
 }
 
 type Channels struct {
 	RawMessageChan chan models.RawOrderbookMessage
 	FlattenedChan  chan models.FlattenedOrderbookBatch
+	RawFOBDChan    chan models.RawOrderbookDelta
+	NormFOBDChan   chan models.OrderbookDeltaBatch
 
 	stats               ChannelStats
 	statsMutex          sync.RWMutex
@@ -33,6 +37,8 @@ func NewChannels(rawBufferSize, flattenedBufferSize int) *Channels {
 	c := &Channels{
 		RawMessageChan: make(chan models.RawOrderbookMessage, rawBufferSize),
 		FlattenedChan:  make(chan models.FlattenedOrderbookBatch, flattenedBufferSize),
+		RawFOBDChan:    make(chan models.RawOrderbookDelta, rawBufferSize),
+		NormFOBDChan:   make(chan models.OrderbookDeltaBatch, flattenedBufferSize),
 		log:            log,
 	}
 
@@ -75,6 +81,10 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 		"raw_channel_cap":           cap(c.RawMessageChan),
 		"flattened_channel_len":     len(c.FlattenedChan),
 		"flattened_channel_cap":     cap(c.FlattenedChan),
+		"raw_fobd_channel_len":      len(c.RawFOBDChan),
+		"raw_fobd_channel_cap":      cap(c.RawFOBDChan),
+		"norm_fobd_channel_len":     len(c.NormFOBDChan),
+		"norm_fobd_channel_cap":     cap(c.NormFOBDChan),
 	}).Info("channel statistics")
 }
 
@@ -85,6 +95,8 @@ func (c *Channels) Close() {
 
 	close(c.RawMessageChan)
 	close(c.FlattenedChan)
+	close(c.RawFOBDChan)
+	close(c.NormFOBDChan)
 
 	c.log.WithComponent("channels").Info("all channels closed")
 }
