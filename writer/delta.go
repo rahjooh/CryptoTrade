@@ -204,6 +204,7 @@ func (w *DeltaWriter) flushBuffers() {
 }
 
 func (w *DeltaWriter) writeBatch(batch models.OrderbookDeltaBatch) {
+	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
 		w.log.WithComponent("delta_writer").WithError(err).Error("create parquet failed")
@@ -214,7 +215,17 @@ func (w *DeltaWriter) writeBatch(batch models.OrderbookDeltaBatch) {
 		w.log.WithComponent("delta_writer").WithError(err).Error("upload to s3 failed")
 		return
 	}
-	w.log.WithComponent("delta_writer").WithFields(logger.Fields{"s3_key": key, "records": batch.RecordCount, "bytes": size}).Info("delta batch uploaded")
+	duration := time.Since(start)
+	fields := logger.Fields{
+		"s3_key":      key,
+		"records":     batch.RecordCount,
+		"bytes":       size,
+		"duration_ms": float64(duration.Nanoseconds()) / 1e6,
+	}
+	if duration > 0 {
+		fields["throughput_bytes_per_sec"] = float64(size) / duration.Seconds()
+	}
+	w.log.WithComponent("delta_writer").WithFields(fields).Info("delta batch uploaded")
 }
 
 func (w *DeltaWriter) createParquet(entries []models.OrderbookDeltaEntry) ([]byte, int64, error) {
