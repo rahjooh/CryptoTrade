@@ -239,7 +239,7 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	log.Info("starting s3 writer")
 
 	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
-	w.flushTicker = time.NewTicker(w.config.Storage.S3.FlushInterval)
+	w.flushTicker = time.NewTicker(w.config.Writer.Buffer.FlushInterval)
 
 	// Start multiple workers for parallel processing
 	numWorkers := w.config.Writer.MaxWorkers

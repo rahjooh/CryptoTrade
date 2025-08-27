@@ -166,16 +166,15 @@ type StorageConfig struct {
 }
 
 type S3Config struct {
-	Enabled           bool          `yaml:"enabled"`
-	Bucket            string        `yaml:"bucket"`
-	Region            string        `yaml:"region"`
-	Endpoint          string        `yaml:"endpoint"`
-	PathStyle         bool          `yaml:"path_style"`
-	UploadConcurrency int           `yaml:"upload_concurrency"`
-	PartSize          string        `yaml:"part_size"`
-	AccessKeyID       string        `yaml:"access_key_id"`
-	SecretAccessKey   string        `yaml:"secret_access_key"`
-	FlushInterval     time.Duration `yaml:"flush_interval"`
+	Enabled           bool   `yaml:"enabled"`
+	Bucket            string `yaml:"bucket"`
+	Region            string `yaml:"region"`
+	Endpoint          string `yaml:"endpoint"`
+	PathStyle         bool   `yaml:"path_style"`
+	UploadConcurrency int    `yaml:"upload_concurrency"`
+	PartSize          string `yaml:"part_size"`
+	AccessKeyID       string `yaml:"access_key_id"`
+	SecretAccessKey   string `yaml:"secret_access_key"`
 }
 
 type GCSConfig struct {
@@ -287,6 +286,10 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("processor.batch_timeout must be greater than 0")
 	}
 
+	if cfg.Writer.Buffer.FlushInterval <= 0 {
+		return fmt.Errorf("writer.buffer.flush_interval must be greater than 0")
+	}
+
 	if cfg.Storage.S3.Enabled {
 		if cfg.Storage.S3.Bucket == "" {
 			return fmt.Errorf("storage.s3.bucket is required when S3 is enabled")
@@ -299,9 +302,6 @@ func validateConfig(cfg *Config) error {
 		}
 		if !isValidS3Bucket(cfg.Storage.S3.Bucket) {
 			return fmt.Errorf("storage.s3.bucket '%s' is invalid", cfg.Storage.S3.Bucket)
-		}
-		if cfg.Storage.S3.FlushInterval <= 0 {
-			return fmt.Errorf("storage.s3.flush_interval must be greater than 0 when S3 is enabled")
 		}
 	}
 
