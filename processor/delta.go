@@ -134,19 +134,15 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 			continue
 		}
 		entries = append(entries, models.OrderbookDeltaEntry{
-			Exchange:        raw.Exchange,
-			Symbol:          raw.Symbol,
-			Market:          raw.Market,
-			EventType:       evt.Event,
-			EventTime:       evt.Time,
-			TransactionTime: evt.TransactionTime,
-			UpdateID:        evt.LastUpdateID,
-			PrevUpdateID:    evt.PrevLastUpdateID,
-			FirstUpdateID:   evt.FirstUpdateID,
-			Side:            "bid",
-			Price:           price,
-			Quantity:        qty,
-			ReceivedTime:    recv,
+			Symbol:        raw.Symbol,
+			EventTime:     evt.Time,
+			UpdateID:      evt.LastUpdateID,
+			PrevUpdateID:  evt.PrevLastUpdateID,
+			FirstUpdateID: evt.FirstUpdateID,
+			Side:          "bid",
+			Price:         price,
+			Quantity:      qty,
+			ReceivedTime:  recv,
 		})
 	}
 	for _, a := range evt.Asks {
@@ -156,19 +152,15 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 			continue
 		}
 		entries = append(entries, models.OrderbookDeltaEntry{
-			Exchange:        raw.Exchange,
-			Symbol:          raw.Symbol,
-			Market:          raw.Market,
-			EventType:       evt.Event,
-			EventTime:       evt.Time,
-			TransactionTime: evt.TransactionTime,
-			UpdateID:        evt.LastUpdateID,
-			PrevUpdateID:    evt.PrevLastUpdateID,
-			FirstUpdateID:   evt.FirstUpdateID,
-			Side:            "ask",
-			Price:           price,
-			Quantity:        qty,
-			ReceivedTime:    recv,
+			Symbol:        raw.Symbol,
+			EventTime:     evt.Time,
+			UpdateID:      evt.LastUpdateID,
+			PrevUpdateID:  evt.PrevLastUpdateID,
+			FirstUpdateID: evt.FirstUpdateID,
+			Side:          "ask",
+			Price:         price,
+			Quantity:      qty,
+			ReceivedTime:  recv,
 		})
 	}
 
