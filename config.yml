@@ -228,7 +228,7 @@ source:
 
 # Logging Configuration
 logging:
-  level: "info"
+  level: "warn"
   format: "json"
   output: "stdout"
   file_path: "logs/collector.log"
