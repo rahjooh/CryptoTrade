@@ -269,7 +269,7 @@ writer:
   buffer:
     max_size: 10
     snapshot_flush_interval: "5m"
-    delta_flush_interval: "3m"
+    delta_flush_interval: "9m"
     memory_threshold: 0.8
   partitioning:
     scheme: "time"
