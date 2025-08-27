@@ -38,7 +38,7 @@ source:
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 10000             #  Records per batch before writing
         delta:
-          enabled: false
+          enabled: true
           connection: websocket
           url: wss://fstream.binance.com/ws
           interval_ms: 100
