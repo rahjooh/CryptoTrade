@@ -128,8 +128,8 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 	entries := make([]models.OrderbookDeltaEntry, 0, len(evt.Bids)+len(evt.Asks))
 	ts := time.UnixMilli(evt.Time).UTC()
 	for _, b := range evt.Bids {
-		price, err1 := strconv.ParseFloat(b[0], 64)
-		qty, err2 := strconv.ParseFloat(b[1], 64)
+		price, err1 := strconv.ParseFloat(b.Price, 64)
+		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
 			continue
 		}
@@ -146,8 +146,8 @@ func (p *DeltaProcessor) handleMessage(raw models.RawOrderbookDelta) {
 		})
 	}
 	for _, a := range evt.Asks {
-		price, err1 := strconv.ParseFloat(a[0], 64)
-		qty, err2 := strconv.ParseFloat(a[1], 64)
+		price, err1 := strconv.ParseFloat(a.Price, 64)
+		qty, err2 := strconv.ParseFloat(a.Quantity, 64)
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
 			continue
 		}
