@@ -52,8 +52,8 @@ func (m *memFileWriter) Close() error                              { return nil 
 func (m *memFileWriter) Bytes() []byte                             { return m.buffer.Bytes() }
 
 // DeltaWriter consumes normalized delta batches and writes them to S3 in
-// parquet format. Data is buffered per symbol and flushed periodically or
-// when buffer size exceeds processor batch size.
+// parquet format. Data is buffered per symbol and flushed periodically based
+// on configured flush interval.
 type DeltaWriter struct {
 	cfg         *appconfig.Config
 	normChan    <-chan models.OrderbookDeltaBatch
@@ -136,7 +136,7 @@ func (w *DeltaWriter) Stop() {
 		w.flushTicker.Stop()
 	}
 	w.wg.Wait()
-	w.flushAll()
+	w.flushBuffers()
 	w.log.WithComponent("delta_writer").Info("delta writer stopped")
 }
 
@@ -150,16 +150,16 @@ func (w *DeltaWriter) worker() {
 			if !ok {
 				return
 			}
-			key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
-			w.mu.Lock()
-			w.buffer[key] = append(w.buffer[key], batch.Entries...)
-			shouldFlush := len(w.buffer[key]) >= w.cfg.Processor.BatchSize
-			w.mu.Unlock()
-			if shouldFlush {
-				w.flushBuffer(key)
-			}
+			w.addBatch(batch)
 		}
 	}
+}
+
+func (w *DeltaWriter) addBatch(batch models.OrderbookDeltaBatch) {
+	key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
+	w.mu.Lock()
+	w.buffer[key] = append(w.buffer[key], batch.Entries...)
+	w.mu.Unlock()
 }
 
 func (w *DeltaWriter) flushLoop() {
@@ -167,46 +167,40 @@ func (w *DeltaWriter) flushLoop() {
 	for {
 		select {
 		case <-w.ctx.Done():
+			w.flushBuffers()
 			return
 		case <-w.flushTicker.C:
-			w.flushAll()
+			w.flushBuffers()
 		}
 	}
 }
 
-func (w *DeltaWriter) flushAll() {
+func (w *DeltaWriter) flushBuffers() {
 	w.mu.Lock()
-	keys := make([]string, 0, len(w.buffer))
-	for k := range w.buffer {
-		keys = append(keys, k)
-	}
+	buffers := w.buffer
+	w.buffer = make(map[string][]models.OrderbookDeltaEntry)
 	w.mu.Unlock()
-	for _, k := range keys {
-		w.flushBuffer(k)
-	}
-}
 
-func (w *DeltaWriter) flushBuffer(key string) {
-	w.mu.Lock()
-	entries := w.buffer[key]
-	if len(entries) == 0 {
-		w.mu.Unlock()
+	if len(buffers) == 0 {
 		return
 	}
-	delete(w.buffer, key)
-	w.mu.Unlock()
 
-	parts := strings.SplitN(key, "|", 3)
-	batch := models.OrderbookDeltaBatch{
-		BatchID:     uuid.New().String(),
-		Exchange:    parts[0],
-		Market:      parts[1],
-		Symbol:      parts[2],
-		Entries:     entries,
-		RecordCount: len(entries),
-		Timestamp:   time.Now(),
+	for key, entries := range buffers {
+		if len(entries) == 0 {
+			continue
+		}
+		parts := strings.SplitN(key, "|", 3)
+		batch := models.OrderbookDeltaBatch{
+			BatchID:     uuid.New().String(),
+			Exchange:    parts[0],
+			Market:      parts[1],
+			Symbol:      parts[2],
+			Entries:     entries,
+			RecordCount: len(entries),
+			Timestamp:   time.Now(),
+		}
+		w.writeBatch(batch)
 	}
-	w.writeBatch(batch)
 }
 
 func (w *DeltaWriter) writeBatch(batch models.OrderbookDeltaBatch) {
