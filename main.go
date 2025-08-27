@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := log.Configure(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.Output); err != nil {
+	if err := log.Configure(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.Output, cfg.Logging.MaxAge); err != nil {
 		log.WithError(err).Error("Failed to configure logger")
 		os.Exit(1)
 	}

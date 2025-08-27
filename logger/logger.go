@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Fields type alias for logrus.Fields to maintain compatibility
@@ -144,7 +145,7 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, me
 }
 
 // Configure sets up the logger with the provided configuration
-func (l *Log) Configure(level string, format string, output string) error {
+func (l *Log) Configure(level string, format string, output string, maxAge int) error {
 	if env := os.Getenv("LOG_LEVEL"); env != "" {
 		level = env
 	}
@@ -194,11 +195,20 @@ func (l *Log) Configure(level string, format string, output string) error {
 		l.SetOutput(os.Stderr)
 	default:
 		// Assume it's a file path
-		file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			return fmt.Errorf("failed to open log file '%s': %w", output, err)
+		if maxAge > 0 {
+			l.SetOutput(&lumberjack.Logger{
+				Filename: output,
+				MaxAge:   maxAge,
+				MaxSize:  100,
+				Compress: true,
+			})
+		} else {
+			file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err != nil {
+				return fmt.Errorf("failed to open log file '%s': %w", output, err)
+			}
+			l.SetOutput(file)
 		}
-		l.SetOutput(file)
 	}
 
 	return nil
