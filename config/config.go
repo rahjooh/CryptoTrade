@@ -138,6 +138,7 @@ type BinanceFutureConfig struct {
 
 type BinanceFutureOrderbookConfig struct {
 	Snapshots BinanceSnapshotConfig `yaml:"snapshots"`
+	Delta     BinanceDeltaConfig    `yaml:"delta"`
 }
 
 type BinanceSnapshotConfig struct {
@@ -149,6 +150,14 @@ type BinanceSnapshotConfig struct {
 	Symbols           []string `yaml:"symbols"`
 	ConcurrentSymbols int      `yaml:"concurrent_symbols"`
 	BatchSize         int      `yaml:"batch_size"`
+}
+
+type BinanceDeltaConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
 }
 
 type StorageConfig struct {

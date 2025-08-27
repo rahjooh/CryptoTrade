@@ -59,8 +59,11 @@ func main() {
 
 	binanceReader := reader.NewBinanceReader(cfg, channels.RawMessageChan)
 	flattener := processor.NewFlattener(cfg, channels.RawMessageChan, channels.FlattenedChan)
+	deltaReader := reader.NewBinanceDeltaReader(cfg, channels.RawFOBDChan)
+	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.RawFOBDChan, channels.NormFOBDChan)
 
 	var s3Writer *writer.S3Writer
+	var deltaWriter *writer.DeltaWriter
 	if cfg.Storage.S3.Enabled {
 		var err error
 		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
@@ -68,8 +71,13 @@ func main() {
 			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
 		}
+		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.NormFOBDChan)
+		if err != nil {
+			log.WithError(err).Error("failed to create delta writer")
+			os.Exit(1)
+		}
 	} else {
-		log.WithComponent("main").Info("S3 storage disabled; skipping S3 writer")
+		log.WithComponent("main").Info("S3 storage disabled; skipping writers")
 	}
 
 	var wg sync.WaitGroup
@@ -90,12 +98,37 @@ func main() {
 		}
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := deltaReader.Start(ctx); err != nil {
+			log.WithError(err).Warn("delta reader failed to start")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := deltaProcessor.Start(ctx); err != nil {
+			log.WithError(err).Warn("delta processor failed to start")
+		}
+	}()
+
 	if s3Writer != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := s3Writer.Start(ctx); err != nil {
 				log.WithError(err).Warn("s3 writer failed to start")
+			}
+		}()
+	}
+	if deltaWriter != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := deltaWriter.Start(ctx); err != nil {
+				log.WithError(err).Warn("delta writer failed to start")
 			}
 		}()
 	}
@@ -116,9 +149,19 @@ func main() {
 		log.Info("stopping S3 writer")
 		s3Writer.Stop()
 	}
+	if deltaWriter != nil {
+		log.Info("stopping delta writer")
+		deltaWriter.Stop()
+	}
+
+	log.Info("stopping delta processor")
+	deltaProcessor.Stop()
 
 	log.Info("stopping flattener")
 	flattener.Stop()
+
+	log.Info("stopping delta reader")
+	deltaReader.Stop()
 
 	log.Info("stopping binance reader")
 	binanceReader.Stop()
