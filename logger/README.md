@@ -21,3 +21,6 @@ Logging level is controlled via the `LOG_LEVEL` environment variable. Supported 
 ## Format
 
 Logs are emitted in JSON with RFC3339 nanosecond timestamps and include the source file and line number for each entry.
+
+When outputting to a file, log rotation with time-based retention can be configured via the `max_age` field in the `logging`
+section of `config.yml`. The value represents the number of days to retain old log files.
