@@ -104,13 +104,19 @@ type OrderbookDeltaBatch struct {
 
 // BinanceDepthEvent mirrors Binance's depth websocket event structure
 type BinanceDepthEvent struct {
-	Event            string     `json:"e"`
-	Time             int64      `json:"E"`
-	TransactionTime  int64      `json:"T"`
-	Symbol           string     `json:"s"`
-	FirstUpdateID    int64      `json:"U"`
-	LastUpdateID     int64      `json:"u"`
-	PrevLastUpdateID int64      `json:"pu"`
-	Bids             [][]string `json:"b"`
-	Asks             [][]string `json:"a"`
+	Event            string         `json:"e"`
+	Time             int64          `json:"E"`
+	TransactionTime  int64          `json:"T"`
+	Symbol           string         `json:"s"`
+	FirstUpdateID    int64          `json:"U"`
+	LastUpdateID     int64          `json:"u"`
+	PrevLastUpdateID int64          `json:"pu"`
+	Bids             []BinanceLevel `json:"b"`
+	Asks             []BinanceLevel `json:"a"`
+}
+
+// BinanceLevel represents a single price level in Binance depth events.
+type BinanceLevel struct {
+	Price    string `json:"price"`
+	Quantity string `json:"quantity"`
 }
