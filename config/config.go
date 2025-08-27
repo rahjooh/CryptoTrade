@@ -90,9 +90,10 @@ type BatchConfig struct {
 }
 
 type BufferConfig struct {
-	MaxSize         int           `yaml:"max_size"`
-	FlushInterval   time.Duration `yaml:"flush_interval"`
-	MemoryThreshold float64       `yaml:"memory_threshold"`
+	MaxSize               int           `yaml:"max_size"`
+	SnapshotFlushInterval time.Duration `yaml:"snapshot_flush_interval"`
+	DeltaFlushInterval    time.Duration `yaml:"delta_flush_interval"`
+	MemoryThreshold       float64       `yaml:"memory_threshold"`
 }
 
 type PartitioningConfig struct {
@@ -286,8 +287,11 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("processor.batch_timeout must be greater than 0")
 	}
 
-	if cfg.Writer.Buffer.FlushInterval <= 0 {
-		return fmt.Errorf("writer.buffer.flush_interval must be greater than 0")
+	if cfg.Writer.Buffer.SnapshotFlushInterval <= 0 {
+		return fmt.Errorf("writer.buffer.snapshot_flush_interval must be greater than 0")
+	}
+	if cfg.Writer.Buffer.DeltaFlushInterval <= 0 {
+		return fmt.Errorf("writer.buffer.delta_flush_interval must be greater than 0")
 	}
 
 	if cfg.Storage.S3.Enabled {
