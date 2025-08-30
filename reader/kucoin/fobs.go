@@ -103,6 +103,12 @@ func (r *KucoinReader) stop() {
 	r.log.WithComponent("kucoin_reader").Info("kucoin reader stopped")
 }
 
+// Start exposes the start method for external callers.
+func (r *KucoinReader) Start(ctx context.Context) error { return r.start(ctx) }
+
+// Stop exposes the stop method for external callers.
+func (r *KucoinReader) Stop() { r.stop() }
+
 func (r *KucoinReader) fetchOrderbookWorker(symbol string, snapshotCfg config.KucoinSnapshotConfig) {
 	defer r.wg.Done()
 

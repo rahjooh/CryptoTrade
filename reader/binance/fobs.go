@@ -114,6 +114,12 @@ func (br *BinanceReader) stop() {
 	br.log.WithComponent("binance_reader").Info("binance reader stopped")
 }
 
+// Start exposes the start method for external callers.
+func (br *BinanceReader) Start(ctx context.Context) error { return br.start(ctx) }
+
+// Stop exposes the stop method for external callers.
+func (br *BinanceReader) Stop() { br.stop() }
+
 func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
 	defer br.wg.Done()
 
