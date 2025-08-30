@@ -15,7 +15,7 @@ import (
 	"cryptoflow/internal"
 	"cryptoflow/logger"
 	"cryptoflow/processor"
-	"cryptoflow/reader"
+	"cryptoflow/reader/binance"
 	"cryptoflow/writer"
 )
 
@@ -57,21 +57,22 @@ func main() {
 
 	go channels.StartMetricsReporting(ctx)
 
-	binanceReader := reader.NewBinanceReader(cfg, channels.RawMessageChan)
-	flattener := processor.NewFlattener(cfg, channels.RawMessageChan, channels.FlattenedChan)
-	deltaReader := reader.NewBinanceDeltaReader(cfg, channels.RawFOBDChan)
-	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.RawFOBDChan, channels.NormFOBDChan)
+	binanceReader := binance.NewBinanceReader(cfg, channels.RawFOBSch)
+	flattener := processor.NewFlattener(cfg, channels.RawFOBSch, channels.NormFOBSch)
+
+	deltaReader := binance.BinanceDeltaReader(cfg, channels.RawFOBDch)
+	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.RawFOBDch, channels.NormFOBDch)
 
 	var s3Writer *writer.S3Writer
 	var deltaWriter *writer.DeltaWriter
 	if cfg.Storage.S3.Enabled {
 		var err error
-		s3Writer, err = writer.NewS3Writer(cfg, channels.FlattenedChan)
+		s3Writer, err = writer.NewS3Writer(cfg, channels.NormFOBSch)
 		if err != nil {
 			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
 		}
-		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.NormFOBDChan)
+		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.NormFOBDch)
 		if err != nil {
 			log.WithError(err).Error("failed to create delta writer")
 			os.Exit(1)
