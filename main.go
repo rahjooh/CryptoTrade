@@ -61,7 +61,7 @@ func main() {
 	)
 	defer channels.Close()
 
-	go channels.startMetricsReporting(ctx)
+	go channels.StartMetricsReporting(ctx)
 
 	binanceReader := binance.NewBinanceReader(cfg, channels.FOBS.Raw)
 	kucoinReader := kucoin.NewKucoinReader(cfg, channels.FOBS.Raw)
