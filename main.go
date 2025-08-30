@@ -17,6 +17,7 @@ import (
 	"cryptoflow/logger"
 	"cryptoflow/processor"
 	"cryptoflow/reader/binance"
+	"cryptoflow/reader/kucoin"
 	"cryptoflow/writer"
 )
 
@@ -63,9 +64,11 @@ func main() {
 	go channels.StartMetricsReporting(ctx)
 
 	binanceReader := binance.NewBinanceReader(cfg, channels.FOBS.Raw)
+	kucoinReader := kucoin.NewKucoinReader(cfg, channels.FOBS.Raw)
 	flattener := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 
 	deltaReader := binance.BinanceDeltaReader(cfg, channels.FOBD.Raw)
+	kucoinDeltaReader := kucoin.KucoinDeltaReader(cfg, channels.FOBD.Raw)
 	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
 	var s3Writer *writer.S3Writer
@@ -99,6 +102,14 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if err := kucoinReader.Start(ctx); err != nil {
+			log.WithError(err).Warn("kucoin reader failed to start")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		if err := flattener.Start(ctx); err != nil {
 			log.WithError(err).Warn("flattener failed to start")
 		}
@@ -109,6 +120,14 @@ func main() {
 		defer wg.Done()
 		if err := deltaReader.Start(ctx); err != nil {
 			log.WithError(err).Warn("delta reader failed to start")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := kucoinDeltaReader.Start(ctx); err != nil {
+			log.WithError(err).Warn("kucoin delta reader failed to start")
 		}
 	}()
 
@@ -169,8 +188,13 @@ func main() {
 	log.Info("stopping delta reader")
 	deltaReader.Stop()
 
+	log.Info("stopping kucoin delta reader")
+	kucoinDeltaReader.Stop()
+
 	log.Info("stopping binance reader")
 	binanceReader.Stop()
+	log.Info("stopping kucoin reader")
+	kucoinReader.Stop()
 
 	done := make(chan struct{})
 	go func() {
