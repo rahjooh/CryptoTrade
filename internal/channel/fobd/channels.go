@@ -51,7 +51,7 @@ func (c *Channels) StartMetricsReporting(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				c.metricsReportticker.Stop()
+				c.metricsReportTicker.Stop()
 				return
 			case <-c.metricsReportTicker.C:
 				c.logChannelStats(c.log)
@@ -79,7 +79,7 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 
 func (c *Channels) Close() {
 	if c.metricsReportTicker != nil {
-		c.metricsReportticker.Stop()
+		c.metricsReportTicker.Stop()
 	}
 	close(c.Raw)
 	close(c.Norm)
