@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"cryptoflow/config"
-	"cryptoflow/internal"
+	"cryptoflow/internal/channel"
 	"cryptoflow/logger"
 	"cryptoflow/processor"
 	"cryptoflow/reader/binance"
@@ -49,7 +49,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	channels := internal.NewChannels(
+	channels := channel.NewChannels(
 		cfg.Channels.RawBuffer,
 		cfg.Channels.ProcessedBuffer,
 	)
@@ -57,22 +57,22 @@ func main() {
 
 	go channels.StartMetricsReporting(ctx)
 
-	binanceReader := binance.NewBinanceReader(cfg, channels.RawFOBSch)
-	flattener := processor.NewFlattener(cfg, channels.RawFOBSch, channels.NormFOBSch)
+	binanceReader := binance.NewBinanceReader(cfg, channels.FOBS.Raw)
+	flattener := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 
-	deltaReader := binance.BinanceDeltaReader(cfg, channels.RawFOBDch)
-	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.RawFOBDch, channels.NormFOBDch)
+	deltaReader := binance.BinanceDeltaReader(cfg, channels.FOBD.Raw)
+	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
 	var s3Writer *writer.S3Writer
 	var deltaWriter *writer.DeltaWriter
 	if cfg.Storage.S3.Enabled {
 		var err error
-		s3Writer, err = writer.NewS3Writer(cfg, channels.NormFOBSch)
+		s3Writer, err = writer.NewS3Writer(cfg, channels.FOBS.Norm)
 		if err != nil {
 			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
 		}
-		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.NormFOBDch)
+		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.FOBD.Norm)
 		if err != nil {
 			log.WithError(err).Error("failed to create delta writer")
 			os.Exit(1)
