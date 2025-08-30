@@ -270,15 +270,27 @@ func (w *DeltaWriter) upload(key string, data []byte) error {
 
 func (w *DeltaWriter) s3Key(batch models.RawFOBDbatchModel) string {
 	timestamp := batch.Timestamp
-	parts := []string{
-		fmt.Sprintf("exchange=%s", batch.Exchange),
-		fmt.Sprintf("market=%s", batch.Market),
-		fmt.Sprintf("symbol=%s", batch.Symbol),
-		fmt.Sprintf("year=%04d", timestamp.Year()),
-		fmt.Sprintf("month=%02d", int(timestamp.Month())),
-		fmt.Sprintf("day=%02d", timestamp.Day()),
-		fmt.Sprintf("hour=%02d", timestamp.Hour()),
+
+	var parts []string
+	for _, k := range w.cfg.Writer.Partitioning.AdditionalKeys {
+		switch k {
+		case "exchange":
+			parts = append(parts, fmt.Sprintf("exchange=%s", batch.Exchange))
+		case "market":
+			parts = append(parts, fmt.Sprintf("market=%s", batch.Market))
+		case "symbol":
+			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
+		}
 	}
+
+	timePath := w.cfg.Writer.Partitioning.TimeFormat
+	timePath = strings.ReplaceAll(timePath, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", int(timestamp.Month())))
+	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
+
+	parts = append(parts, timePath)
+
 	filename := fmt.Sprintf("delta_%s_%s_%d.parquet", batch.Exchange, batch.Symbol, timestamp.UnixNano())
 	return filepath.ToSlash(filepath.Join(append(parts, filename)...))
 }
