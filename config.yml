@@ -175,6 +175,10 @@ source:
         symbols: [ BTC-USDT ]
 
   kucoin:
+    connection_pool:
+      max_idle_conns: 10
+      max_conns_per_host: 10
+      idle_conn_timeout: 90s
     spot:
       orderbook:
         snapshots:
@@ -190,6 +194,21 @@ source:
           url: wss://ws-api.kucoin.com/endpoint
           interval_ms: 100
           symbols: [ BTC-USDT, ETH-USDT ]
+    future:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api-futures.kucoin.com/api/v1/level2/snapshot
+          limit: 100
+          interval_ms: 1000
+          symbols: [ XBTUSDTM, ETHUSDTM ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://api-futures.kucoin.com/endpoint
+          interval_ms: 100
+          symbols: [ XBTUSDTM, ETHUSDTM ]
 
   coinbase:
     spot:

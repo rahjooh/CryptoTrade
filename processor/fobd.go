@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -38,6 +39,9 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDmodel
 	symSet := make(map[string]struct{})
 	for _, s := range cfg.Source.Binance.Future.Orderbook.Delta.Symbols {
 		symSet[s] = struct{}{}
+	}
+	for _, s := range cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols {
+		symSet[symbols.NormalizeKucoinSymbol(s)] = struct{}{}
 	}
 	return &DeltaProcessor{
 		config:    cfg,
