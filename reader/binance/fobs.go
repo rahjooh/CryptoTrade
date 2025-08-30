@@ -210,6 +210,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 	case br.rawChannel <- rawData:
 		log.Info("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "binance_api", "raw_channel", len(binanceResp.Bids)+len(binanceResp.Asks), "orderbook_entries")
+		logger.IncrementSnapshotRead(len(payload))
 	case <-br.ctx.Done():
 		return
 	default:

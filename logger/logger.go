@@ -41,10 +41,15 @@ func Logger() *Log {
 	if levelStr == "" {
 		levelStr = "info"
 	}
-	if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
-		logger.SetLevel(lvl)
-	} else {
+	switch strings.ToLower(levelStr) {
+	case "report":
 		logger.SetLevel(logrus.InfoLevel)
+	default:
+		if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
+			logger.SetLevel(lvl)
+		} else {
+			logger.SetLevel(logrus.InfoLevel)
+		}
 	}
 
 	callerPrettyfier := func(f *runtime.Frame) (string, string) {
@@ -118,6 +123,9 @@ func (e *Entry) Info(args ...interface{}) {
 }
 
 func (e *Entry) Warn(args ...interface{}) {
+	if component, ok := e.Entry.Data["component"].(string); ok {
+		recordWarn(component)
+	}
 	e.Entry.Warn(args...)
 }
 
@@ -126,6 +134,9 @@ func (e *Entry) Debug(args ...interface{}) {
 }
 
 func (e *Entry) Error(args ...interface{}) {
+	if component, ok := e.Entry.Data["component"].(string); ok {
+		recordError(component)
+	}
 	e.Entry.Error(args...)
 }
 
@@ -151,10 +162,15 @@ func (l *Log) Configure(level string, format string, output string, maxAge int) 
 	}
 
 	level = strings.ToLower(level)
-	if lvl, err := logrus.ParseLevel(level); err == nil {
-		l.SetLevel(lvl)
-	} else {
-		return fmt.Errorf("invalid log level '%s'", level)
+	switch level {
+	case "report":
+		l.SetLevel(logrus.InfoLevel)
+	default:
+		if lvl, err := logrus.ParseLevel(level); err == nil {
+			l.SetLevel(lvl)
+		} else {
+			return fmt.Errorf("invalid log level '%s'", level)
+		}
 	}
 
 	// Ensure caller info is included

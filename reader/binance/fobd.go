@@ -107,6 +107,7 @@ func (r *Delta) streamSymbol(symbol string, interval time.Duration) {
 			if log.Logger.IsLevelEnabled(logrus.DebugLevel) {
 				logger.LogDataFlowEntry(log, "binance_ws", "rawfobd", len(event.Bids)+len(event.Asks), "delta_entries")
 			}
+			logger.IncrementDeltaRead(len(payload))
 		case <-r.ctx.Done():
 		default:
 			log.Warn("raw delta channel full, dropping message")
