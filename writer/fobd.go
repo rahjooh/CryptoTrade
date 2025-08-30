@@ -226,6 +226,7 @@ func (w *DeltaWriter) writeBatch(batch models.RawFOBDbatchModel) {
 		fields["throughput_bytes_per_sec"] = float64(size) / duration.Seconds()
 	}
 	w.log.WithComponent("delta_writer").WithFields(fields).Info("delta batch uploaded")
+	logger.IncrementS3WriteDelta(size)
 }
 
 func (w *DeltaWriter) createParquet(entries []models.RawFOBDentryModel) ([]byte, int64, error) {
