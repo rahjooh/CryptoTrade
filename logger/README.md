@@ -17,6 +17,7 @@ Logging level is controlled via the `LOG_LEVEL` environment variable. Supported 
 - `info` *(default)*
 - `warn`
 - `error`
+- `report` - prints WARN/ERROR logs and periodic runtime reports
 
 ## Format
 
