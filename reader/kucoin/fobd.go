@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -139,7 +140,7 @@ func (r *Delta) streamSymbol(symbol string) {
 			}
 
 			evt := models.BinanceDepthEvent{
-				Symbol:           data.Symbol,
+				Symbol:           symbols.NormalizeKucoinSymbol(data.Symbol),
 				Time:             data.Timestamp,
 				FirstUpdateID:    data.Sequence,
 				LastUpdateID:     data.Sequence,
@@ -168,7 +169,7 @@ func (r *Delta) streamSymbol(symbol string) {
 
 			msgOut := models.RawFOBDmodel{
 				Exchange:  "kucoin",
-				Symbol:    data.Symbol,
+				Symbol:    symbols.NormalizeKucoinSymbol(data.Symbol),
 				Market:    "future-orderbook-delta",
 				Data:      payload,
 				Timestamp: time.Now(),
