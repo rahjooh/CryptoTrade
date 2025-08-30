@@ -10,19 +10,21 @@ import (
 )
 
 type ChannelStats struct {
-	RawMessagesSent         int64
-	FlattenedBatchesSent    int64
-	RawMessagesDropped      int64
-	FlattenedBatchesDropped int64
-	RawFOBDSent             int64
-	NormFOBDSent            int64
+	RawFOBSchSent     int64
+	NormFOBSchSent    int64
+	RawFOBSchDropped  int64
+	NormFOBSchDropped int64
+	RawFOBDchSent     int64
+	NormFOBDchSent    int64
+	RawFOBDchDropped  int64
+	NormFOBDchDropped int64
 }
 
 type Channels struct {
-	RawMessageChan chan models.RawOrderbookMessage
-	FlattenedChan  chan models.FlattenedOrderbookBatch
-	RawFOBDChan    chan models.RawOrderbookDelta
-	NormFOBDChan   chan models.OrderbookDeltaBatch
+	RawFOBSch  chan models.RawOrderbookMessage
+	NormFOBSch chan models.FlattenedOrderbookBatch
+	RawFOBDch  chan models.RawFOBDmodel
+	NormFOBDch chan models.RawFOBDbatchModel
 
 	stats               ChannelStats
 	statsMutex          sync.RWMutex
@@ -35,11 +37,11 @@ func NewChannels(rawBufferSize, flattenedBufferSize int) *Channels {
 	log := logger.GetLogger()
 
 	c := &Channels{
-		RawMessageChan: make(chan models.RawOrderbookMessage, rawBufferSize),
-		FlattenedChan:  make(chan models.FlattenedOrderbookBatch, flattenedBufferSize),
-		RawFOBDChan:    make(chan models.RawOrderbookDelta, rawBufferSize),
-		NormFOBDChan:   make(chan models.OrderbookDeltaBatch, flattenedBufferSize),
-		log:            log,
+		RawFOBSch:  make(chan models.RawOrderbookMessage, rawBufferSize),
+		NormFOBSch: make(chan models.FlattenedOrderbookBatch, flattenedBufferSize),
+		RawFOBDch:  make(chan models.RawFOBDmodel, rawBufferSize),
+		NormFOBDch: make(chan models.RawFOBDbatchModel, flattenedBufferSize),
+		log:        log,
 	}
 
 	log.WithComponent("channels").WithFields(logger.Fields{
@@ -73,18 +75,22 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 	c.statsMutex.RUnlock()
 
 	log.WithComponent("channels").WithFields(logger.Fields{
-		"raw_messages_sent":         stats.RawMessagesSent,
-		"flattened_batches_sent":    stats.FlattenedBatchesSent,
-		"raw_messages_dropped":      stats.RawMessagesDropped,
-		"flattened_batches_dropped": stats.FlattenedBatchesDropped,
-		"raw_channel_len":           len(c.RawMessageChan),
-		"raw_channel_cap":           cap(c.RawMessageChan),
-		"flattened_channel_len":     len(c.FlattenedChan),
-		"flattened_channel_cap":     cap(c.FlattenedChan),
-		"raw_fobd_channel_len":      len(c.RawFOBDChan),
-		"raw_fobd_channel_cap":      cap(c.RawFOBDChan),
-		"norm_fobd_channel_len":     len(c.NormFOBDChan),
-		"norm_fobd_channel_cap":     cap(c.NormFOBDChan),
+		"raw_FOBS_sent":         stats.RawFOBSchSent,
+		"norm_FOBS_sent":        stats.NormFOBSchSent,
+		"raw_FOBS_dropped":      stats.RawFOBSchDropped,
+		"norm_FOBS_dropped":     stats.NormFOBSchDropped,
+		"raw_FOBD_sent":         stats.RawFOBDchSent,
+		"norm_FOBD_sent":        stats.NormFOBDchSent,
+		"raw_FOBD_dropped":      stats.RawFOBDchDropped,
+		"norm_FOBD_dropped":     stats.NormFOBDchDropped,
+		"raw_channel_len":       len(c.RawFOBSch),
+		"raw_channel_cap":       cap(c.RawFOBSch),
+		"flattened_channel_len": len(c.NormFOBSch),
+		"flattened_channel_cap": cap(c.NormFOBSch),
+		"raw_fobd_channel_len":  len(c.RawFOBDch),
+		"raw_fobd_channel_cap":  cap(c.RawFOBDch),
+		"norm_fobd_channel_len": len(c.NormFOBDch),
+		"norm_fobd_channel_cap": cap(c.NormFOBDch),
 	}).Info("channel statistics")
 }
 
@@ -93,35 +99,59 @@ func (c *Channels) Close() {
 		c.metricsReportTicker.Stop()
 	}
 
-	close(c.RawMessageChan)
-	close(c.FlattenedChan)
-	close(c.RawFOBDChan)
-	close(c.NormFOBDChan)
+	close(c.RawFOBSch)
+	close(c.NormFOBSch)
+	close(c.RawFOBDch)
+	close(c.NormFOBDch)
 
 	c.log.WithComponent("channels").Info("all channels closed")
 }
 
-func (c *Channels) IncrementRawMessagesSent() {
+func (c *Channels) IncrementRawFOBSchSent() {
 	c.statsMutex.Lock()
-	c.stats.RawMessagesSent++
+	c.stats.RawFOBSchSent++
 	c.statsMutex.Unlock()
 }
 
-func (c *Channels) IncrementFlattenedBatchesSent() {
+func (c *Channels) IncrementNormFOBSchSent() {
 	c.statsMutex.Lock()
-	c.stats.FlattenedBatchesSent++
+	c.stats.NormFOBSchSent++
 	c.statsMutex.Unlock()
 }
 
-func (c *Channels) IncrementRawMessagesDropped() {
+func (c *Channels) IncrementRawFOBSchDropped() {
 	c.statsMutex.Lock()
-	c.stats.RawMessagesDropped++
+	c.stats.RawFOBSchDropped++
 	c.statsMutex.Unlock()
 }
 
-func (c *Channels) IncrementFlattenedBatchesDropped() {
+func (c *Channels) IncrementNormFOBSchDropped() {
 	c.statsMutex.Lock()
-	c.stats.FlattenedBatchesDropped++
+	c.stats.NormFOBSchDropped++
+	c.statsMutex.Unlock()
+}
+
+func (c *Channels) IncrementRawFOBDchSent() {
+	c.statsMutex.Lock()
+	c.stats.RawFOBDchSent++
+	c.statsMutex.Unlock()
+}
+
+func (c *Channels) IncrementNormFOBDchSent() {
+	c.statsMutex.Lock()
+	c.stats.NormFOBDchSent++
+	c.statsMutex.Unlock()
+}
+
+func (c *Channels) IncrementRawFOBDchDropped() {
+	c.statsMutex.Lock()
+	c.stats.RawFOBDchDropped++
+	c.statsMutex.Unlock()
+}
+
+func (c *Channels) IncrementNormFOBDchDropped() {
+	c.statsMutex.Lock()
+	c.stats.NormFOBDchDropped++
 	c.statsMutex.Unlock()
 }
 
