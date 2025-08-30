@@ -8,7 +8,14 @@ import "strings"
 func ToBinance(exchange, sym string) string {
 	switch strings.ToLower(exchange) {
 	case "kucoin":
-		return NormalizeKucoinSymbol(sym)
+		// remove dashes
+		sym = strings.ReplaceAll(sym, "-", "")
+		// trim trailing 'M' denoting futures
+		sym = strings.TrimSuffix(sym, "M")
+		// map XBT to BTC for compatibility
+		if strings.HasPrefix(sym, "XBT") {
+			sym = "BTC" + sym[3:]
+		}
 	case "coinbase":
 		sym = strings.ReplaceAll(sym, "-", "")
 	case "kraken":
