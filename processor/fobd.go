@@ -55,8 +55,8 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDmodel
 	}
 }
 
-// Start begins processing messages from the raw delta channel.
-func (p *DeltaProcessor) Start(ctx context.Context) error {
+// start begins processing messages from the raw delta channel.
+func (p *DeltaProcessor) start(ctx context.Context) error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
@@ -86,7 +86,7 @@ func (p *DeltaProcessor) Start(ctx context.Context) error {
 }
 
 // Stop signals all workers and flushes remaining batches.
-func (p *DeltaProcessor) Stop() {
+func (p *DeltaProcessor) stop() {
 	p.mu.Lock()
 	p.running = false
 	p.mu.Unlock()

@@ -60,7 +60,7 @@ func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookMe
 }
 
 // Start begins fetching order book snapshots for configured symbols.
-func (r *KucoinReader) Start(ctx context.Context) error {
+func (r *KucoinReader) start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -93,7 +93,7 @@ func (r *KucoinReader) Start(ctx context.Context) error {
 }
 
 // Stop signals all workers to stop and waits for completion.
-func (r *KucoinReader) Stop() {
+func (r *KucoinReader) stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()

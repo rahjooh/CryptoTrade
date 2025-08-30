@@ -19,12 +19,12 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	}
 }
 
-func (c *Channels) StartMetricsReporting(ctx context.Context) {
+func (c *Channels) startMetricsReporting(ctx context.Context) {
 	if c.FOBS != nil {
-		c.FOBS.StartMetricsReporting(ctx)
+		c.FOBS.startMetricsReporting(ctx)
 	}
 	if c.FOBD != nil {
-		c.FOBD.StartMetricsReporting(ctx)
+		c.FOBD.startMetricsReporting(ctx)
 	}
 }
 

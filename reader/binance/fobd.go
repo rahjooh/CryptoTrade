@@ -39,7 +39,7 @@ func BinanceDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDmode
 }
 
 // Start subscribes to diff depth streams for configured symbols.
-func (r *Delta) Start(ctx context.Context) error {
+func (r *Delta) start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -69,7 +69,7 @@ func (r *Delta) Start(ctx context.Context) error {
 }
 
 // Stop terminates all websocket subscriptions.
-func (r *Delta) Stop() {
+func (r *Delta) stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()

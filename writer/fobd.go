@@ -101,7 +101,7 @@ type DeltaWriter struct {
 }
 
 // Start launches workers and flush ticker.
-func (w *DeltaWriter) Start(ctx context.Context) error {
+func (w *DeltaWriter) start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
 		w.mu.Unlock()
@@ -123,7 +123,7 @@ func (w *DeltaWriter) Start(ctx context.Context) error {
 }
 
 // Stop waits for workers and flushes remaining data.
-func (w *DeltaWriter) Stop() {
+func (w *DeltaWriter) stop() {
 	w.mu.Lock()
 	if !w.running {
 		w.mu.Unlock()
@@ -133,7 +133,7 @@ func (w *DeltaWriter) Stop() {
 	w.mu.Unlock()
 
 	if w.flushTicker != nil {
-		w.flushTicker.Stop()
+		w.flushticker.Stop()
 	}
 	w.wg.Wait()
 	w.flushBuffers()
@@ -252,7 +252,7 @@ func (w *DeltaWriter) createParquet(entries []models.RawFOBDentryModel) ([]byte,
 			return nil, 0, err
 		}
 	}
-	if err := pw.WriteStop(); err != nil {
+	if err := pw.Writestop(); err != nil {
 		return nil, 0, err
 	}
 	return mw.Bytes(), int64(len(mw.Bytes())), nil

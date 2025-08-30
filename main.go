@@ -52,7 +52,7 @@ func main() {
 	defer cancel()
 
 	if strings.ToLower(cfg.Logging.Level) == "report" {
-		logger.StartReport(ctx, log, 30*time.Second)
+		logger.startReport(ctx, log, 30*time.Second)
 	}
 
 	channels := channel.NewChannels(
@@ -61,7 +61,7 @@ func main() {
 	)
 	defer channels.Close()
 
-	go channels.StartMetricsReporting(ctx)
+	go channels.startMetricsReporting(ctx)
 
 	binanceReader := binance.NewBinanceReader(cfg, channels.FOBS.Raw)
 	kucoinReader := kucoin.NewKucoinReader(cfg, channels.FOBS.Raw)
@@ -71,11 +71,11 @@ func main() {
 	kucoinDeltaReader := kucoin.KucoinDeltaReader(cfg, channels.FOBD.Raw)
 	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
-	var s3Writer *writer.S3Writer
+	var snapshotWriter *writer.snapshotWriter
 	var deltaWriter *writer.DeltaWriter
 	if cfg.Storage.S3.Enabled {
 		var err error
-		s3Writer, err = writer.NewS3Writer(cfg, channels.FOBS.Norm)
+		snapshotWriter, err = writer.newSnapshotWriter(cfg, channels.FOBS.Norm)
 		if err != nil {
 			log.WithError(err).Error("failed to create S3 writer")
 			os.Exit(1)
@@ -94,7 +94,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := binanceReader.Start(ctx); err != nil {
+		if err := binanceReader.start(ctx); err != nil {
 			log.WithError(err).Warn("binance reader failed to start")
 		}
 	}()
@@ -102,7 +102,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := kucoinReader.Start(ctx); err != nil {
+		if err := kucoinReader.start(ctx); err != nil {
 			log.WithError(err).Warn("kucoin reader failed to start")
 		}
 	}()
@@ -110,7 +110,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := flattener.Start(ctx); err != nil {
+		if err := flattener.start(ctx); err != nil {
 			log.WithError(err).Warn("flattener failed to start")
 		}
 	}()
@@ -118,7 +118,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := deltaReader.Start(ctx); err != nil {
+		if err := deltaReader.start(ctx); err != nil {
 			log.WithError(err).Warn("delta reader failed to start")
 		}
 	}()
@@ -126,7 +126,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := kucoinDeltaReader.Start(ctx); err != nil {
+		if err := kucoinDeltaReader.start(ctx); err != nil {
 			log.WithError(err).Warn("kucoin delta reader failed to start")
 		}
 	}()
@@ -134,16 +134,16 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := deltaProcessor.Start(ctx); err != nil {
+		if err := deltaProcessor.start(ctx); err != nil {
 			log.WithError(err).Warn("delta processor failed to start")
 		}
 	}()
 
-	if s3Writer != nil {
+	if snapshotWriter != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := s3Writer.Start(ctx); err != nil {
+			if err := snapshotWriter.start(ctx); err != nil {
 				log.WithError(err).Warn("s3 writer failed to start")
 			}
 		}()
@@ -152,7 +152,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := deltaWriter.Start(ctx); err != nil {
+			if err := deltaWriter.start(ctx); err != nil {
 				log.WithError(err).Warn("delta writer failed to start")
 			}
 		}()
@@ -170,9 +170,9 @@ func main() {
 	log.Info("starting graceful shutdown")
 	cancel()
 
-	if s3Writer != nil {
+	if snapshotWriter != nil {
 		log.Info("stopping S3 writer")
-		s3Writer.Stop()
+		snapshotWriter.Stop()
 	}
 	if deltaWriter != nil {
 		log.Info("stopping delta writer")

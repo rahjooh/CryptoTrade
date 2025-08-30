@@ -292,7 +292,7 @@ writer:
     memory_threshold: 0.8
   partitioning:
     scheme: "time"
-    time_format: "year={year}/month={month}/day={day}"
+    time_format: "year={year}/month={month}/day={day}/hour={hour}"
     additional_keys: ["exchange", "market", "symbol"]
   formats:
     parquet:
