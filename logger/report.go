@@ -92,6 +92,12 @@ func startReport(ctx context.Context, log *Log, interval time.Duration) {
 	}()
 }
 
+// StartReport begins periodic logging of system and channel statistics.
+// It exposes the internal startReport function for use by other packages.
+func StartReport(ctx context.Context, log *Log, interval time.Duration) {
+	startReport(ctx, log, interval)
+}
+
 func logReport(log *Log) {
 	cpuPercent, _ := cpu.Percent(0, false)
 	memStats, _ := mem.VirtualMemory()
