@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cryptoflow/config"
+	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -191,7 +192,7 @@ func (r *KucoinReader) fetchOrderbook(symbol string) {
 
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "kucoin",
-		Symbol:      symbol,
+		Symbol:      symbols.NormalizeKucoinSymbol(symbol),
 		Market:      market,
 		Timestamp:   time.Now().UTC(),
 		Data:        payload,
