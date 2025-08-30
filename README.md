@@ -26,8 +26,10 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 
 | Channel | Direction | Data Type | Description |
 |---------|-----------|-----------|-------------|
-| `RawFOBSch` | Reader ▶ Flattener | `models.RawOrderbookMessage` | Full order‑book snapshot including timestamp, last update ID, bids and asks. |
-| `NormFOBSch` | Flattener ▶ S3 Writer | `models.FlattenedOrderbookBatch` | Batch of flattened entries (`Exchange`, `Market`, `Symbol`, `Timestamp`, `LastUpdateID`, `Side`, `Price`, `Quantity`, `Level`). |
+| `RawFOBSch` | Reader ▶ Flattener | `models.RawOrderbookMessage` | Snapshot channel (`internal/channel/fobs`). Full order‑book snapshot including timestamp, last update ID, bids and asks. |
+| `NormFOBSch` | Flattener ▶ S3 Writer | `models.FlattenedOrderbookBatch` | Normalized snapshot channel (`internal/channel/fobs`). Batch of flattened entries (`Exchange`, `Market`, `Symbol`, `Timestamp`, `LastUpdateID`, `Side`, `Price`, `Quantity`, `Level`). |
+| `RawFOBDch` | Delta Reader ▶ Delta Processor | `models.RawFOBDmodel` | Delta channel (`internal/channel/fobd`). Order‑book diff messages describing incremental updates. |
+| `NormFOBDch` | Delta Processor ▶ Delta Writer | `models.RawFOBDbatchModel` | Normalized delta channel (`internal/channel/fobd`). Batches of processed delta updates ready for persistence. |
 
 ---
 
@@ -36,7 +38,9 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 ```
 CryptoFlow/
 ├── config/                # configuration loading and validation
-├── internal/              # channel definitions and monitoring
+├── internal/channel/      # channel definitions and monitoring
+│   ├── fobs/              # snapshot channels
+│   └── fobd/              # delta channels
 ├── logger/                # zerolog wrapper
 ├── models/                # order book message and batch structs
 ├── processor/             # flattener implementation
