@@ -71,7 +71,7 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookM
 }
 
 // Start begins fetching order book snapshots for configured symbols.
-func (br *BinanceReader) Start(ctx context.Context) error {
+func (br *BinanceReader) start(ctx context.Context) error {
 	br.mu.Lock()
 	if br.running {
 		br.mu.Unlock()
@@ -104,7 +104,7 @@ func (br *BinanceReader) Start(ctx context.Context) error {
 }
 
 // Stop signals all workers to stop and waits for completion.
-func (br *BinanceReader) Stop() {
+func (br *BinanceReader) stop() {
 	br.mu.Lock()
 	br.running = false
 	br.mu.Unlock()

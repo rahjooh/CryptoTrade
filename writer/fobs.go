@@ -79,7 +79,7 @@ func (mfw *memoryFileWriter) Bytes() []byte {
 	return mfw.buffer.Bytes()
 }
 
-type S3Writer struct {
+type snapshotWriter struct {
 	config      *appconfig.Config
 	NormFOBSch  <-chan models.FlattenedOrderbookBatch
 	s3Client    *s3.Client
@@ -99,18 +99,18 @@ type S3Writer struct {
 	errorsCount    int64
 }
 
-func (w *S3Writer) addBatch(batch models.FlattenedOrderbookBatch) {
+func (w *snapshotWriter) addBatch(batch models.FlattenedOrderbookBatch) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
 	w.mu.Unlock()
 }
 
-func (w *S3Writer) bufferKey(exchange, market, symbol string) string {
+func (w *snapshotWriter) bufferKey(exchange, market, symbol string) string {
 	return fmt.Sprintf("%s|%s|%s", exchange, market, symbol)
 }
 
-func (w *S3Writer) flushWorker() {
+func (w *snapshotWriter) flushWorker() {
 	defer w.wg.Done()
 
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"worker": "flush"})
@@ -128,7 +128,7 @@ func (w *S3Writer) flushWorker() {
 	}
 }
 
-func (w *S3Writer) flushBuffers(reason string) {
+func (w *snapshotWriter) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
 	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
@@ -160,7 +160,7 @@ func (w *S3Writer) flushBuffers(reason string) {
 		w.processBatch(batch)
 	}
 }
-func NewS3Writer(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderbookBatch) (*S3Writer, error) {
+func newSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderbookBatch) (*snapshotWriter, error) {
 	log := logger.GetLogger()
 
 	ctx := context.Background()
@@ -206,7 +206,7 @@ func NewS3Writer(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderb
 
 	gen := metadata.NewGenerator(metaDir, fmt.Sprintf("s3://%s", cfg.Storage.S3.Bucket), cfg.Storage.S3.Bucket, "", cfg.Cryptoflow.Name, s3Client)
 
-	s3Writer := &S3Writer{
+	snapshotWriter := &snapshotWriter{
 		config:     cfg,
 		NormFOBSch: NormFOBSch,
 		s3Client:   s3Client,
@@ -222,10 +222,10 @@ func NewS3Writer(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderb
 		"path_style": cfg.Storage.S3.PathStyle,
 	}).Info("s3 writer initialized")
 
-	return s3Writer, nil
+	return snapshotWriter, nil
 }
 
-func (w *S3Writer) Start(ctx context.Context) error {
+func (w *snapshotWriter) start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
 		w.mu.Unlock()
@@ -264,13 +264,13 @@ func (w *S3Writer) Start(ctx context.Context) error {
 	return nil
 }
 
-func (w *S3Writer) Stop() {
+func (w *snapshotWriter) stop() {
 	w.mu.Lock()
 	w.running = false
 	w.mu.Unlock()
 
 	if w.flushTicker != nil {
-		w.flushTicker.Stop()
+		w.flushticker.Stop()
 	}
 
 	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
@@ -278,7 +278,7 @@ func (w *S3Writer) Stop() {
 	w.log.WithComponent("s3_writer").Info("s3 writer stopped")
 }
 
-func (w *S3Writer) worker(workerID int) {
+func (w *snapshotWriter) worker(workerID int) {
 	defer w.wg.Done()
 
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
@@ -305,7 +305,7 @@ func (w *S3Writer) worker(workerID int) {
 	}
 }
 
-func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
+func (w *snapshotWriter) processBatch(batch models.FlattenedOrderbookBatch) {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"batch_id":     batch.BatchID,
 		"exchange":     batch.Exchange,
@@ -382,7 +382,7 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 	}
 }
 
-func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
+func (w *snapshotWriter) generateS3Key(batch models.FlattenedOrderbookBatch) string {
 	timestamp := batch.Timestamp
 
 	// Build key parts from additional keys in order
@@ -421,7 +421,7 @@ func (w *S3Writer) generateS3Key(batch models.FlattenedOrderbookBatch) string {
 	return filepath.ToSlash(key)
 }
 
-func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
+func (w *snapshotWriter) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
 	// Filter out any entries that are missing critical fields to avoid
 	// producing placeholder rows in the resulting parquet file. Some
 	// upstream components may pass along entries with zero values when
@@ -475,13 +475,13 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 		}
 
 		if err := pw.Write(record); err != nil {
-			pw.WriteStop()
+			pw.Writestop()
 			return nil, 0, fmt.Errorf("failed to write parquet record: %w", err)
 		}
 	}
 
 	// Finalize writing
-	if err := pw.WriteStop(); err != nil {
+	if err := pw.Writestop(); err != nil {
 		return nil, 0, fmt.Errorf("failed to finalize parquet writing: %w", err)
 	}
 
@@ -496,7 +496,7 @@ func (w *S3Writer) createParquetFile(entries []models.FlattenedOrderbookEntry) (
 	return data, int64(len(data)), nil
 }
 
-func (w *S3Writer) uploadToS3(key string, data []byte) error {
+func (w *snapshotWriter) uploadToS3(key string, data []byte) error {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"operation": "upload_to_s3",
 		"data_size": len(data),
@@ -524,7 +524,7 @@ func (w *S3Writer) uploadToS3(key string, data []byte) error {
 	return nil
 }
 
-func (w *S3Writer) metricsReporter(ctx context.Context) {
+func (w *snapshotWriter) metricsReporter(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -538,7 +538,7 @@ func (w *S3Writer) metricsReporter(ctx context.Context) {
 	}
 }
 
-func (w *S3Writer) reportMetrics() {
+func (w *snapshotWriter) reportMetrics() {
 	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
 	filesWritten := atomic.LoadInt64(&w.filesWritten)
 	bytesWritten := atomic.LoadInt64(&w.bytesWritten)

@@ -48,7 +48,7 @@ func NewFlattener(cfg *appconfig.Config, rawChan <-chan models.RawOrderbookMessa
 	}
 }
 
-func (f *Flattener) Start(ctx context.Context) error {
+func (f *Flattener) start(ctx context.Context) error {
 	f.mu.Lock()
 	if f.running {
 		f.mu.Unlock()
@@ -85,7 +85,7 @@ func (f *Flattener) Start(ctx context.Context) error {
 	return nil
 }
 
-func (f *Flattener) Stop() {
+func (f *Flattener) stop() {
 	f.mu.Lock()
 	f.running = false
 	f.mu.Unlock()

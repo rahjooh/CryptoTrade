@@ -77,7 +77,7 @@ func recordChannel(name string, size int) {
 	atomic.AddInt64(&cs.bytes, int64(size))
 }
 
-func StartReport(ctx context.Context, log *Log, interval time.Duration) {
+func startReport(ctx context.Context, log *Log, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
 		for {

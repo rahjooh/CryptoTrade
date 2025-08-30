@@ -43,7 +43,7 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	return c
 }
 
-func (c *Channels) StartMetricsReporting(ctx context.Context) {
+func (c *Channels) startMetricsReporting(ctx context.Context) {
 	c.ctx = ctx
 	c.metricsReportTicker = time.NewTicker(30 * time.Second)
 
@@ -51,7 +51,7 @@ func (c *Channels) StartMetricsReporting(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				c.metricsReportTicker.Stop()
+				c.metricsReportticker.Stop()
 				return
 			case <-c.metricsReportTicker.C:
 				c.logChannelStats(c.log)
@@ -79,7 +79,7 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 
 func (c *Channels) Close() {
 	if c.metricsReportTicker != nil {
-		c.metricsReportTicker.Stop()
+		c.metricsReportticker.Stop()
 	}
 	close(c.Raw)
 	close(c.Norm)
