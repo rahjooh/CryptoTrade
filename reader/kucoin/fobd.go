@@ -140,7 +140,7 @@ func (r *Delta) streamSymbol(symbol string) {
 			}
 
 			evt := models.BinanceDepthEvent{
-				Symbol:           symbols.NormalizeKucoinSymbol(data.Symbol),
+				Symbol:           symbols.ToBinance("kucoin", data.Symbol),
 				Time:             data.Timestamp,
 				FirstUpdateID:    data.Sequence,
 				LastUpdateID:     data.Sequence,
@@ -169,7 +169,7 @@ func (r *Delta) streamSymbol(symbol string) {
 
 			msgOut := models.RawFOBDmodel{
 				Exchange:  "kucoin",
-				Symbol:    symbols.NormalizeKucoinSymbol(data.Symbol),
+				Symbol:    symbols.ToBinance("kucoin", data.Symbol),
 				Market:    "future-orderbook-delta",
 				Data:      payload,
 				Timestamp: time.Now(),
