@@ -39,6 +39,9 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDmodel
 	for _, s := range cfg.Source.Binance.Future.Orderbook.Delta.Symbols {
 		symSet[s] = struct{}{}
 	}
+	for _, s := range cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols {
+		symSet[s] = struct{}{}
+	}
 	return &DeltaProcessor{
 		config:    cfg,
 		rawChan:   rawChan,

@@ -27,6 +27,19 @@ type BinanceDepthEvent struct {
 	Asks             []BinanceLevel `json:"a"`
 }
 
+// KucoinLevel2Event represents a level2 delta update from KuCoin futures
+// WebSocket. The event contains sequence identifiers and bid/ask changes.
+// Bids and asks are represented as arrays of [price, size] strings.
+type KucoinLevel2Event struct {
+	Sequence  int64  `json:"sequence"`
+	Symbol    string `json:"symbol"`
+	Timestamp int64  `json:"timestamp"`
+	Changes   struct {
+		Bids [][]string `json:"bids"`
+		Asks [][]string `json:"asks"`
+	} `json:"changes"`
+}
+
 // RawFOBDmodel represents a raw order book delta message
 type RawFOBDmodel struct {
 	Exchange  string
