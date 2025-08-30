@@ -99,6 +99,10 @@ type snapshotWriter struct {
 	errorsCount    int64
 }
 
+// SnapshotWriter is an exported alias for snapshotWriter allowing external packages
+// to interact with the writer while keeping the underlying implementation private.
+type SnapshotWriter = snapshotWriter
+
 func (w *snapshotWriter) addBatch(batch models.FlattenedOrderbookBatch) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
@@ -225,6 +229,11 @@ func newSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.Flattened
 	return snapshotWriter, nil
 }
 
+// NewSnapshotWriter constructs a new SnapshotWriter instance.
+func NewSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderbookBatch) (*SnapshotWriter, error) {
+	return newSnapshotWriter(cfg, NormFOBSch)
+}
+
 func (w *snapshotWriter) start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
@@ -270,7 +279,7 @@ func (w *snapshotWriter) stop() {
 	w.mu.Unlock()
 
 	if w.flushTicker != nil {
-		w.flushticker.Stop()
+		w.flushTicker.Stop()
 	}
 
 	w.log.WithComponent("s3_writer").Info("stopping s3 writer")
@@ -475,13 +484,13 @@ func (w *snapshotWriter) createParquetFile(entries []models.FlattenedOrderbookEn
 		}
 
 		if err := pw.Write(record); err != nil {
-			pw.Writestop()
+			pw.WriteStop()
 			return nil, 0, fmt.Errorf("failed to write parquet record: %w", err)
 		}
 	}
 
 	// Finalize writing
-	if err := pw.Writestop(); err != nil {
+	if err := pw.WriteStop(); err != nil {
 		return nil, 0, fmt.Errorf("failed to finalize parquet writing: %w", err)
 	}
 
@@ -571,3 +580,9 @@ func (w *snapshotWriter) reportMetrics() {
 		"avg_bytes_per_file": avgBytesPerFile,
 	}).Info("s3 writer metrics")
 }
+
+// Start exposes the start method of snapshotWriter.
+func (w *SnapshotWriter) Start(ctx context.Context) error { return w.start(ctx) }
+
+// Stop exposes the stop method of snapshotWriter.
+func (w *SnapshotWriter) Stop() { w.stop() }

@@ -133,7 +133,7 @@ func (w *DeltaWriter) stop() {
 	w.mu.Unlock()
 
 	if w.flushTicker != nil {
-		w.flushticker.Stop()
+		w.flushTicker.Stop()
 	}
 	w.wg.Wait()
 	w.flushBuffers()
@@ -252,7 +252,7 @@ func (w *DeltaWriter) createParquet(entries []models.RawFOBDentryModel) ([]byte,
 			return nil, 0, err
 		}
 	}
-	if err := pw.Writestop(); err != nil {
+	if err := pw.WriteStop(); err != nil {
 		return nil, 0, err
 	}
 	return mw.Bytes(), int64(len(mw.Bytes())), nil
@@ -267,6 +267,12 @@ func (w *DeltaWriter) upload(key string, data []byte) error {
 	_, err := w.s3Client.PutObject(w.ctx, input)
 	return err
 }
+
+// Start exposes the internal start method for external packages.
+func (w *DeltaWriter) Start(ctx context.Context) error { return w.start(ctx) }
+
+// Stop exposes the internal stop method for external packages.
+func (w *DeltaWriter) Stop() { w.stop() }
 
 func (w *DeltaWriter) s3Key(batch models.RawFOBDbatchModel) string {
 	timestamp := batch.Timestamp

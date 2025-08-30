@@ -99,6 +99,12 @@ func (f *Flattener) stop() {
 	f.log.WithComponent("flattener").Info("flattener stopped")
 }
 
+// Start exposes the start method for external callers.
+func (f *Flattener) Start(ctx context.Context) error { return f.start(ctx) }
+
+// Stop exposes the stop method for external callers.
+func (f *Flattener) Stop() { f.stop() }
+
 func (f *Flattener) worker(workerID int) {
 	defer f.wg.Done()
 
