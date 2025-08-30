@@ -360,6 +360,7 @@ func (w *S3Writer) processBatch(batch models.FlattenedOrderbookBatch) {
 		"file_size":    fileSize,
 		"record_count": batch.RecordCount,
 	})
+	logger.IncrementS3WriteSnapshot(fileSize)
 
 	df := metadata.DataFile{
 		Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),

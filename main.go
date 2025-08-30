@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -48,6 +49,10 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if strings.ToLower(cfg.Logging.Level) == "report" {
+		logger.StartReport(ctx, log, 30*time.Second)
+	}
 
 	channels := channel.NewChannels(
 		cfg.Channels.RawBuffer,
