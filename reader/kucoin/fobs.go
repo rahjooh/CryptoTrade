@@ -198,7 +198,7 @@ func (r *KucoinReader) fetchOrderbook(symbol string) {
 
 	rawData := models.RawOrderbookMessage{
 		Exchange:    "kucoin",
-		Symbol:      symbols.NormalizeKucoinSymbol(symbol),
+		Symbol:      symbols.ToBinance("kucoin", symbol),
 		Market:      market,
 		Timestamp:   time.Now().UTC(),
 		Data:        payload,
