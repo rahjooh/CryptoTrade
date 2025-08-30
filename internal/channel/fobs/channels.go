@@ -43,7 +43,7 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	return c
 }
 
-func (c *Channels) startMetricsReporting(ctx context.Context) {
+func (c *Channels) StartMetricsReporting(ctx context.Context) {
 	c.ctx = ctx
 	c.metricsReportTicker = time.NewTicker(30 * time.Second)
 
