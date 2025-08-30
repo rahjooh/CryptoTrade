@@ -97,6 +97,12 @@ func (p *DeltaProcessor) stop() {
 	p.log.WithComponent("delta_processor").Info("delta processor stopped")
 }
 
+// Start exposes the start method for external callers.
+func (p *DeltaProcessor) Start(ctx context.Context) error { return p.start(ctx) }
+
+// Stop exposes the stop method for external callers.
+func (p *DeltaProcessor) Stop() { p.stop() }
+
 func (p *DeltaProcessor) worker(id int) {
 	defer p.wg.Done()
 

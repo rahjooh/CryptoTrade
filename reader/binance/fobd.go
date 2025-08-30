@@ -79,6 +79,12 @@ func (r *Delta) stop() {
 	r.log.WithComponent("binance_delta_reader").Info("delta reader stopped")
 }
 
+// Start exposes the start method for external callers.
+func (r *Delta) Start(ctx context.Context) error { return r.start(ctx) }
+
+// Stop exposes the stop method for external callers.
+func (r *Delta) Stop() { r.stop() }
+
 func (r *Delta) streamSymbol(symbol string, interval time.Duration) {
 	defer r.wg.Done()
 
