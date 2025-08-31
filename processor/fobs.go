@@ -17,8 +17,8 @@ import (
 
 type Flattener struct {
 	config     *appconfig.Config
-	rawChan    <-chan models.RawOrderbookMessage
-	NormFOBSch chan<- models.FlattenedOrderbookBatch
+	rawChan    <-chan models.RawFOBSMessage
+	NormFOBSch chan<- models.BatchFOBSMessage
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	mu         sync.RWMutex
@@ -26,7 +26,7 @@ type Flattener struct {
 	log        *logger.Log
 
 	// Batching
-	batches   map[string]*models.FlattenedOrderbookBatch
+	batches   map[string]*models.BatchFOBSMessage
 	lastFlush map[string]time.Time
 
 	// Metrics
@@ -36,14 +36,14 @@ type Flattener struct {
 	entriesProcessed  int64
 }
 
-func NewFlattener(cfg *appconfig.Config, rawChan <-chan models.RawOrderbookMessage, NormFOBSch chan<- models.FlattenedOrderbookBatch) *Flattener {
+func NewFlattener(cfg *appconfig.Config, rawChan <-chan models.RawFOBSMessage, NormFOBSch chan<- models.BatchFOBSMessage) *Flattener {
 	return &Flattener{
 		config:     cfg,
 		rawChan:    rawChan,
 		NormFOBSch: NormFOBSch,
 		wg:         &sync.WaitGroup{},
 		log:        logger.GetLogger(),
-		batches:    make(map[string]*models.FlattenedOrderbookBatch),
+		batches:    make(map[string]*models.BatchFOBSMessage),
 		lastFlush:  make(map[string]time.Time),
 	}
 }
@@ -144,7 +144,7 @@ func (f *Flattener) worker(workerID int) {
 	}
 }
 
-func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
+func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 	log := f.log.WithComponent("flattener").WithFields(logger.Fields{
 		"exchange":     rawMsg.Exchange,
 		"symbol":       rawMsg.Symbol,
@@ -156,7 +156,7 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 	log.Info("processing raw message")
 
 	// Parse the raw orderbook data
-	var binanceResp models.BinanceFOBSresponceModel
+	var binanceResp models.BinanceFOBSresp
 	err := json.Unmarshal(rawMsg.Data, &binanceResp)
 	if err != nil {
 		f.errorsCount++
@@ -185,8 +185,8 @@ func (f *Flattener) processMessage(rawMsg models.RawOrderbookMessage) int {
 	return len(entries)
 }
 
-func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderbook models.BinanceFOBSresponceModel) []models.FlattenedOrderbookEntry {
-	var entries []models.FlattenedOrderbookEntry
+func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook models.BinanceFOBSresp) []models.NormFOBSMessage {
+	var entries []models.NormFOBSMessage
 
 	// Process bids (buy orders) - highest price first
 	for level, bid := range orderbook.Bids {
@@ -220,7 +220,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 			continue
 		}
 
-		entries = append(entries, models.FlattenedOrderbookEntry{
+		entries = append(entries, models.NormFOBSMessage{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
 			Market:       rawMsg.Market,
@@ -265,7 +265,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 			continue
 		}
 
-		entries = append(entries, models.FlattenedOrderbookEntry{
+		entries = append(entries, models.NormFOBSMessage{
 			Exchange:     rawMsg.Exchange,
 			Symbol:       rawMsg.Symbol,
 			Market:       rawMsg.Market,
@@ -281,7 +281,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawOrderbookMessage, orderboo
 	return entries
 }
 
-func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []models.FlattenedOrderbookEntry) {
+func (f *Flattener) addToBatch(rawMsg models.RawFOBSMessage, entries []models.NormFOBSMessage) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -289,12 +289,12 @@ func (f *Flattener) addToBatch(rawMsg models.RawOrderbookMessage, entries []mode
 
 	batch, exists := f.batches[batchKey]
 	if !exists {
-		batch = &models.FlattenedOrderbookBatch{
+		batch = &models.BatchFOBSMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    rawMsg.Exchange,
 			Symbol:      rawMsg.Symbol,
 			Market:      rawMsg.Market,
-			Entries:     make([]models.FlattenedOrderbookEntry, 0, f.config.Processor.BatchSize),
+			Entries:     make([]models.NormFOBSMessage, 0, f.config.Processor.BatchSize),
 			RecordCount: 0,
 			Timestamp:   rawMsg.Timestamp,
 			ProcessedAt: time.Now(),

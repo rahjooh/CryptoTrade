@@ -17,8 +17,8 @@ type ChannelStats struct {
 }
 
 type Channels struct {
-	Raw  chan models.RawOrderbookMessage
-	Norm chan models.FlattenedOrderbookBatch
+	Raw  chan models.RawFOBSMessage
+	Norm chan models.BatchFOBSMessage
 
 	stats               ChannelStats
 	statsMutex          sync.RWMutex
@@ -30,8 +30,8 @@ type Channels struct {
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	log := logger.GetLogger()
 	c := &Channels{
-		Raw:  make(chan models.RawOrderbookMessage, rawBufferSize),
-		Norm: make(chan models.FlattenedOrderbookBatch, normBufferSize),
+		Raw:  make(chan models.RawFOBSMessage, rawBufferSize),
+		Norm: make(chan models.BatchFOBSMessage, normBufferSize),
 		log:  log,
 	}
 

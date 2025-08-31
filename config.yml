@@ -34,7 +34,7 @@ source:
           url: https://fapi.binance.com/fapi/v1/depth
           limit: 1000                   # Number of price levels
           interval_ms: 1000             # Collect every 1000 mili seconds
-          symbols: [ BTCUSDT, ETHUSDT ]
+          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 10000             #  Records per batch before writing
         delta:
@@ -42,7 +42,7 @@ source:
           connection: websocket
           url: wss://fstream.binance.com/ws
           interval_ms: 100
-          symbols: [ BTCUSDT, ETHUSDT ]
+          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
       contracts:
         enabled: false
         connection: rest

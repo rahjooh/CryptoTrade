@@ -39,7 +39,7 @@ type deltaRecord struct {
 }
 
 // NewDeltaWriter initializes a delta writer with AWS credentials.
-func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.RawFOBDbatchModel) (*DeltaWriter, error) {
+func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.BatchFOBDMessage) (*DeltaWriter, error) {
 	log := logger.GetLogger()
 	ctx := context.Background()
 	loadOpts := []func(*config.LoadOptions) error{config.WithRegion(cfg.Storage.S3.Region)}
@@ -65,7 +65,7 @@ func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.RawFOBDbatchMo
 		cfg:      cfg,
 		normChan: normChan,
 		s3Client: s3Client,
-		buffer:   make(map[string][]models.RawFOBDentryModel),
+		buffer:   make(map[string][]models.NormFOBDMessage),
 		wg:       &sync.WaitGroup{},
 		log:      log,
 	}, nil
@@ -89,9 +89,9 @@ func (m *memFileWriter) Bytes() []byte                             { return m.bu
 // on configured flush interval.
 type DeltaWriter struct {
 	cfg         *appconfig.Config
-	normChan    <-chan models.RawFOBDbatchModel
+	normChan    <-chan models.BatchFOBDMessage
 	s3Client    *s3.Client
-	buffer      map[string][]models.RawFOBDentryModel
+	buffer      map[string][]models.NormFOBDMessage
 	mu          sync.Mutex
 	flushTicker *time.Ticker
 	ctx         context.Context
@@ -155,7 +155,7 @@ func (w *DeltaWriter) worker() {
 	}
 }
 
-func (w *DeltaWriter) addBatch(batch models.RawFOBDbatchModel) {
+func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
@@ -178,7 +178,7 @@ func (w *DeltaWriter) flushLoop() {
 func (w *DeltaWriter) flushBuffers() {
 	w.mu.Lock()
 	buffers := w.buffer
-	w.buffer = make(map[string][]models.RawFOBDentryModel)
+	w.buffer = make(map[string][]models.NormFOBDMessage)
 	w.mu.Unlock()
 
 	if len(buffers) == 0 {
@@ -190,7 +190,7 @@ func (w *DeltaWriter) flushBuffers() {
 			continue
 		}
 		parts := strings.SplitN(key, "|", 3)
-		batch := models.RawFOBDbatchModel{
+		batch := models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    parts[0],
 			Market:      parts[1],
@@ -203,7 +203,7 @@ func (w *DeltaWriter) flushBuffers() {
 	}
 }
 
-func (w *DeltaWriter) writeBatch(batch models.RawFOBDbatchModel) {
+func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
@@ -229,7 +229,7 @@ func (w *DeltaWriter) writeBatch(batch models.RawFOBDbatchModel) {
 	logger.IncrementS3WriteDelta(size)
 }
 
-func (w *DeltaWriter) createParquet(entries []models.RawFOBDentryModel) ([]byte, int64, error) {
+func (w *DeltaWriter) createParquet(entries []models.NormFOBDMessage) ([]byte, int64, error) {
 	mw := newMemFileWriter()
 	pw, err := writer.NewParquetWriter(mw, new(deltaRecord), 4)
 	if err != nil {
@@ -274,7 +274,7 @@ func (w *DeltaWriter) Start(ctx context.Context) error { return w.start(ctx) }
 // Stop exposes the internal stop method for external packages.
 func (w *DeltaWriter) Stop() { w.stop() }
 
-func (w *DeltaWriter) s3Key(batch models.RawFOBDbatchModel) string {
+func (w *DeltaWriter) s3Key(batch models.BatchFOBDMessage) string {
 	timestamp := batch.Timestamp
 
 	var parts []string

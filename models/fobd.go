@@ -2,46 +2,18 @@ package models
 
 import "time"
 
-//// BinanceWebSocketMessage represents a websocket message from Binance
-//type BinanceWebSocketMessage struct {
-//	Stream string      `json:"stream"`
-//	Data   interface{} `json:"data"`
-//}
+/////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// GENERAL ///////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
 
-// BinanceLevel represents a single price level in Binance depth events.
-type BinanceLevel struct {
+// FOBDEntry represents a single price level in Binance depth events.
+type FOBDEntry struct {
 	Price    string `json:"price"`
 	Quantity string `json:"quantity"`
 }
 
-// BinanceDepthEvent mirrors Binance's depth websocket event structure
-type BinanceDepthEvent struct {
-	Event            string         `json:"e"`
-	Time             int64          `json:"E"`
-	TransactionTime  int64          `json:"T"`
-	Symbol           string         `json:"s"`
-	FirstUpdateID    int64          `json:"U"`
-	LastUpdateID     int64          `json:"u"`
-	PrevLastUpdateID int64          `json:"pu"`
-	Bids             []BinanceLevel `json:"b"`
-	Asks             []BinanceLevel `json:"a"`
-}
-
-// KucoinLevel2Event represents a level2 delta update from KuCoin futures
-// WebSocket. The event contains sequence identifiers and bid/ask changes.
-// Bids and asks are represented as arrays of [price, size] strings.
-type KucoinLevel2Event struct {
-	Sequence  int64  `json:"sequence"`
-	Symbol    string `json:"symbol"`
-	Timestamp int64  `json:"timestamp"`
-	Changes   struct {
-		Bids [][]string `json:"bids"`
-		Asks [][]string `json:"asks"`
-	} `json:"changes"`
-}
-
-// RawFOBDmodel represents a raw order book delta message
-type RawFOBDmodel struct {
+// RawFOBDMessage represents a raw order book delta message. Wraps raw order-book delta messages from any exchange
+type RawFOBDMessage struct {
 	Exchange  string
 	Symbol    string
 	Market    string
@@ -49,8 +21,8 @@ type RawFOBDmodel struct {
 	Timestamp time.Time
 }
 
-// RawFOBDentryModel represents a single order book delta entry
-type RawFOBDentryModel struct {
+// NormFOBDMessage represents a single order book delta entry
+type NormFOBDMessage struct {
 	Symbol        string  `json:"symbol"`
 	EventTime     int64   `json:"event_time"`
 	UpdateID      int64   `json:"update_id"`
@@ -62,14 +34,55 @@ type RawFOBDentryModel struct {
 	ReceivedTime  int64   `json:"received_time"`
 }
 
-// RawFOBDbatchModel represents a batch of order book delta entries
-type RawFOBDbatchModel struct {
-	BatchID     string              `json:"batch_id"`
-	Exchange    string              `json:"exchange"`
-	Symbol      string              `json:"symbol"`
-	Market      string              `json:"market"`
-	Entries     []RawFOBDentryModel `json:"entries"`
-	RecordCount int                 `json:"record_count"`
-	Timestamp   time.Time           `json:"timestamp"`
-	ProcessedAt time.Time           `json:"processed_at"`
+// BatchFOBDMessage represents a batch of order book delta entries
+type BatchFOBDMessage struct {
+	BatchID     string            `json:"batch_id"`
+	Exchange    string            `json:"exchange"`
+	Symbol      string            `json:"symbol"`
+	Market      string            `json:"market"`
+	Entries     []NormFOBDMessage `json:"entries"`
+	RecordCount int               `json:"record_count"`
+	Timestamp   time.Time         `json:"timestamp"`
+	ProcessedAt time.Time         `json:"processed_at"`
 }
+
+/////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// BINANCE ///////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+//// BinanceWebSocketMessage represents a websocket message from Binance
+//type BinanceWebSocketMessage struct {
+//	Stream string      `json:"stream"`
+//	Data   interface{} `json:"data"`
+//}
+
+// BinanceFOBDResp mirrors Binance's depth websocket event structure
+type BinanceFOBDResp struct {
+	Event            string      `json:"e"`
+	Time             int64       `json:"E"`
+	TransactionTime  int64       `json:"T"`
+	Symbol           string      `json:"s"`
+	FirstUpdateID    int64       `json:"U"`
+	LastUpdateID     int64       `json:"u"`
+	PrevLastUpdateID int64       `json:"pu"`
+	Bids             []FOBDEntry `json:"b"`
+	Asks             []FOBDEntry `json:"a"`
+}
+
+/////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// KUCOIN ////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+// KucoinLevel2Event represents a level2 delta update from KuCoin futures
+// WebSocket. The event contains sequence identifiers and bid/ask changes.
+// Bids and asks are represented as arrays of [price, size] strings.
+
+//type KucoinLevel2Event struct {
+//	Sequence  int64  `json:"sequence"`
+//	Symbol    string `json:"symbol"`
+//	Timestamp int64  `json:"timestamp"`
+//	Changes   struct {
+//		Bids [][]string `json:"bids"`
+//		Asks [][]string `json:"asks"`
+//	} `json:"changes"`
+//}

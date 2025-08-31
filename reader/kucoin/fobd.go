@@ -18,7 +18,7 @@ import (
 // Delta streams futures order book deltas from KuCoin.
 type Delta struct {
 	config  *appconfig.Config
-	rawChan chan<- models.RawFOBDmodel
+	rawChan chan<- models.RawFOBDMessage
 	ctx     context.Context
 	wg      *sync.WaitGroup
 	mu      sync.RWMutex
@@ -27,7 +27,7 @@ type Delta struct {
 }
 
 // KucoinDeltaReader creates a new delta reader.
-func KucoinDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDmodel) *Delta {
+func KucoinDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Delta {
 	return &Delta{
 		config:  cfg,
 		rawChan: rawChan,
@@ -139,26 +139,26 @@ func (r *Delta) streamSymbol(symbol string) {
 				continue
 			}
 
-			evt := models.BinanceDepthEvent{
+			evt := models.BinanceFOBDResp{
 				Symbol:           symbols.ToBinance("kucoin", data.Symbol),
 				Time:             data.Timestamp,
 				FirstUpdateID:    data.Sequence,
 				LastUpdateID:     data.Sequence,
 				PrevLastUpdateID: data.Sequence - 1,
 			}
-			evt.Bids = make([]models.BinanceLevel, len(data.Changes.Bids))
+			evt.Bids = make([]models.FOBDEntry, len(data.Changes.Bids))
 			for i, b := range data.Changes.Bids {
 				if len(b) < 2 {
 					continue
 				}
-				evt.Bids[i] = models.BinanceLevel{Price: b[0], Quantity: b[1]}
+				evt.Bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
 			}
-			evt.Asks = make([]models.BinanceLevel, len(data.Changes.Asks))
+			evt.Asks = make([]models.FOBDEntry, len(data.Changes.Asks))
 			for i, a := range data.Changes.Asks {
 				if len(a) < 2 {
 					continue
 				}
-				evt.Asks[i] = models.BinanceLevel{Price: a[0], Quantity: a[1]}
+				evt.Asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
 			}
 
 			payload, err := json.Marshal(evt)
@@ -167,7 +167,7 @@ func (r *Delta) streamSymbol(symbol string) {
 				continue
 			}
 
-			msgOut := models.RawFOBDmodel{
+			msgOut := models.RawFOBDMessage{
 				Exchange:  "kucoin",
 				Symbol:    symbols.ToBinance("kucoin", data.Symbol),
 				Market:    "future-orderbook-delta",

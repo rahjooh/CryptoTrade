@@ -15,12 +15,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// BinanceDeltaReader streams futures order book deltas from Binance.
+// Delta streams futures order book deltas from Binance.
 // It uses the websocket diff depth stream with a configurable interval
 // and forwards raw messages to the provided channel.
 type Delta struct {
 	config  *appconfig.Config
-	rawChan chan<- models.RawFOBDmodel
+	rawChan chan<- models.RawFOBDMessage
 	ctx     context.Context
 	wg      *sync.WaitGroup
 	mu      sync.RWMutex
@@ -29,7 +29,7 @@ type Delta struct {
 }
 
 // BinanceDeltaReader creates a new delta reader using binance-go client.
-func BinanceDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDmodel) *Delta {
+func BinanceDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Delta {
 	return &Delta{
 		config:  cfg,
 		rawChan: rawChan,
@@ -100,7 +100,7 @@ func (r *Delta) streamSymbol(symbol string, interval time.Duration) {
 			return
 		}
 
-		msg := models.RawFOBDmodel{
+		msg := models.RawFOBDMessage{
 			Exchange:  "binance",
 			Symbol:    event.Symbol,
 			Market:    "future-orderbook-delta",

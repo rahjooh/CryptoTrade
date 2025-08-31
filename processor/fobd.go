@@ -20,22 +20,22 @@ import (
 // before forwarding to the next stage.
 type DeltaProcessor struct {
 	config   *appconfig.Config
-	rawChan  <-chan models.RawFOBDmodel
-	normChan chan<- models.RawFOBDbatchModel
+	rawChan  <-chan models.RawFOBDMessage
+	normChan chan<- models.BatchFOBDMessage
 	ctx      context.Context
 	wg       *sync.WaitGroup
 	mu       sync.RWMutex
 	running  bool
 	log      *logger.Log
 
-	batches   map[string]*models.RawFOBDbatchModel
+	batches   map[string]*models.BatchFOBDMessage
 	lastFlush map[string]time.Time
 
 	symbols map[string]struct{}
 }
 
 // NewDeltaProcessor creates a new processor instance.
-func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDmodel, normChan chan<- models.RawFOBDbatchModel) *DeltaProcessor {
+func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessage, normChan chan<- models.BatchFOBDMessage) *DeltaProcessor {
 	symSet := make(map[string]struct{})
 	for _, s := range cfg.Source.Binance.Future.Orderbook.Delta.Symbols {
 		symSet[s] = struct{}{}
@@ -49,7 +49,7 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDmodel
 		normChan:  normChan,
 		wg:        &sync.WaitGroup{},
 		log:       logger.GetLogger(),
-		batches:   make(map[string]*models.RawFOBDbatchModel),
+		batches:   make(map[string]*models.BatchFOBDMessage),
 		lastFlush: make(map[string]time.Time),
 		symbols:   symSet,
 	}
@@ -123,19 +123,19 @@ func (p *DeltaProcessor) worker(id int) {
 	}
 }
 
-func (p *DeltaProcessor) handleMessage(raw models.RawFOBDmodel) {
+func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 	log := p.log.WithComponent("delta_processor").WithFields(logger.Fields{
 		"symbol":   raw.Symbol,
 		"exchange": raw.Exchange,
 	})
 
-	var evt models.BinanceDepthEvent
+	var evt models.BinanceFOBDResp
 	if err := json.Unmarshal(raw.Data, &evt); err != nil {
 		log.WithError(err).Warn("failed to unmarshal delta message")
 		return
 	}
 
-	entries := make([]models.RawFOBDentryModel, 0, len(evt.Bids)+len(evt.Asks))
+	entries := make([]models.NormFOBDMessage, 0, len(evt.Bids)+len(evt.Asks))
 	recv := raw.Timestamp.UnixMilli()
 	for _, b := range evt.Bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
@@ -143,7 +143,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDmodel) {
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
 			continue
 		}
-		entries = append(entries, models.RawFOBDentryModel{
+		entries = append(entries, models.NormFOBDMessage{
 			Symbol:        raw.Symbol,
 			EventTime:     evt.Time,
 			UpdateID:      evt.LastUpdateID,
@@ -161,7 +161,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDmodel) {
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
 			continue
 		}
-		entries = append(entries, models.RawFOBDentryModel{
+		entries = append(entries, models.NormFOBDMessage{
 			Symbol:        raw.Symbol,
 			EventTime:     evt.Time,
 			UpdateID:      evt.LastUpdateID,
@@ -181,19 +181,19 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDmodel) {
 	p.addToBatch(raw, entries)
 }
 
-func (p *DeltaProcessor) addToBatch(raw models.RawFOBDmodel, entries []models.RawFOBDentryModel) {
+func (p *DeltaProcessor) addToBatch(raw models.RawFOBDMessage, entries []models.NormFOBDMessage) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, raw.Symbol)
 	batch, ok := p.batches[key]
 	if !ok {
-		batch = &models.RawFOBDbatchModel{
+		batch = &models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    raw.Exchange,
 			Symbol:      raw.Symbol,
 			Market:      raw.Market,
-			Entries:     make([]models.RawFOBDentryModel, 0, p.config.Processor.BatchSize),
+			Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
 			Timestamp:   raw.Timestamp,
 			ProcessedAt: time.Now(),
 		}
