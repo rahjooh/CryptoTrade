@@ -74,7 +74,7 @@ jobs:
     name: Deploy (main)
     runs-on: ubuntu-latest
     # This job now depends on a successful build.
-    needs: [test-build]
+    needs: [test-build, test-ssh]
     if: ${{ github.ref_name == 'main' }}
     env:
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
