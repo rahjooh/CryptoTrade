@@ -21,7 +21,7 @@ import (
 type KucoinReader struct {
 	config     *config.Config
 	client     *kumex.ApiService
-	rawChannel chan<- models.RawOrderbookMessage
+	rawChannel chan<- models.RawFOBSMessage
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	mu         sync.RWMutex
@@ -30,7 +30,7 @@ type KucoinReader struct {
 }
 
 // NewKucoinReader creates a new KucoinReader using the KuCoin futures SDK.
-func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookMessage) *KucoinReader {
+func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *KucoinReader {
 	log := logger.GetLogger()
 
 	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
@@ -184,7 +184,7 @@ func (r *KucoinReader) fetchOrderbook(symbol string) {
 		}
 	}
 
-	kucoinResp := models.BinanceFOBSresponceModel{
+	kucoinResp := models.BinanceFOBSresp{
 		LastUpdateID: int64(snap.Sequence),
 		Bids:         bids,
 		Asks:         asks,
@@ -196,7 +196,7 @@ func (r *KucoinReader) fetchOrderbook(symbol string) {
 		return
 	}
 
-	rawData := models.RawOrderbookMessage{
+	rawData := models.RawFOBSMessage{
 		Exchange:    "kucoin",
 		Symbol:      symbols.ToBinance("kucoin", symbol),
 		Market:      market,

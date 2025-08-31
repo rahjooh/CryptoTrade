@@ -81,14 +81,14 @@ func (mfw *memoryFileWriter) Bytes() []byte {
 
 type snapshotWriter struct {
 	config      *appconfig.Config
-	NormFOBSch  <-chan models.FlattenedOrderbookBatch
+	NormFOBSch  <-chan models.BatchFOBSMessage
 	s3Client    *s3.Client
 	ctx         context.Context
 	wg          *sync.WaitGroup
 	mu          sync.RWMutex
 	running     bool
 	log         *logger.Log
-	buffer      map[string][]models.FlattenedOrderbookEntry
+	buffer      map[string][]models.NormFOBSMessage
 	flushTicker *time.Ticker
 	metaGen     *metadata.Generator
 
@@ -103,7 +103,7 @@ type snapshotWriter struct {
 // to interact with the writer while keeping the underlying implementation private.
 type SnapshotWriter = snapshotWriter
 
-func (w *snapshotWriter) addBatch(batch models.FlattenedOrderbookBatch) {
+func (w *snapshotWriter) addBatch(batch models.BatchFOBSMessage) {
 	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
@@ -135,7 +135,7 @@ func (w *snapshotWriter) flushWorker() {
 func (w *snapshotWriter) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
-	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
+	w.buffer = make(map[string][]models.NormFOBSMessage)
 	w.mu.Unlock()
 
 	if len(buffers) == 0 {
@@ -152,7 +152,7 @@ func (w *snapshotWriter) flushBuffers(reason string) {
 			continue
 		}
 		parts := strings.SplitN(key, "|", 3)
-		batch := models.FlattenedOrderbookBatch{
+		batch := models.BatchFOBSMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    parts[0],
 			Market:      parts[1],
@@ -164,7 +164,7 @@ func (w *snapshotWriter) flushBuffers(reason string) {
 		w.processBatch(batch)
 	}
 }
-func newSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderbookBatch) (*snapshotWriter, error) {
+func newSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.BatchFOBSMessage) (*snapshotWriter, error) {
 	log := logger.GetLogger()
 
 	ctx := context.Background()
@@ -230,7 +230,7 @@ func newSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.Flattened
 }
 
 // NewSnapshotWriter constructs a new SnapshotWriter instance.
-func NewSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.FlattenedOrderbookBatch) (*SnapshotWriter, error) {
+func NewSnapshotWriter(cfg *appconfig.Config, NormFOBSch <-chan models.BatchFOBSMessage) (*SnapshotWriter, error) {
 	return newSnapshotWriter(cfg, NormFOBSch)
 }
 
@@ -247,7 +247,7 @@ func (w *snapshotWriter) start(ctx context.Context) error {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{"operation": "start"})
 	log.Info("starting s3 writer")
 
-	w.buffer = make(map[string][]models.FlattenedOrderbookEntry)
+	w.buffer = make(map[string][]models.NormFOBSMessage)
 	w.flushTicker = time.NewTicker(w.config.Writer.Buffer.SnapshotFlushInterval)
 
 	// Start multiple workers for parallel processing
@@ -314,7 +314,7 @@ func (w *snapshotWriter) worker(workerID int) {
 	}
 }
 
-func (w *snapshotWriter) processBatch(batch models.FlattenedOrderbookBatch) {
+func (w *snapshotWriter) processBatch(batch models.BatchFOBSMessage) {
 	log := w.log.WithComponent("s3_writer").WithFields(logger.Fields{
 		"batch_id":     batch.BatchID,
 		"exchange":     batch.Exchange,
@@ -391,7 +391,7 @@ func (w *snapshotWriter) processBatch(batch models.FlattenedOrderbookBatch) {
 	}
 }
 
-func (w *snapshotWriter) generateS3Key(batch models.FlattenedOrderbookBatch) string {
+func (w *snapshotWriter) generateS3Key(batch models.BatchFOBSMessage) string {
 	timestamp := batch.Timestamp
 
 	// Build key parts from additional keys in order
@@ -430,12 +430,12 @@ func (w *snapshotWriter) generateS3Key(batch models.FlattenedOrderbookBatch) str
 	return filepath.ToSlash(key)
 }
 
-func (w *snapshotWriter) createParquetFile(entries []models.FlattenedOrderbookEntry) ([]byte, int64, error) {
+func (w *snapshotWriter) createParquetFile(entries []models.NormFOBSMessage) ([]byte, int64, error) {
 	// Filter out any entries that are missing critical fields to avoid
 	// producing placeholder rows in the resulting parquet file. Some
 	// upstream components may pass along entries with zero values when
 	// an order book level is absent; we ignore those here.
-	validEntries := make([]models.FlattenedOrderbookEntry, 0, len(entries))
+	validEntries := make([]models.NormFOBSMessage, 0, len(entries))
 	for _, e := range entries {
 		if e.Timestamp.IsZero() || e.Price == 0 || e.Quantity == 0 || e.Side == "" || e.Level == 0 {
 			continue

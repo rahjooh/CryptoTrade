@@ -20,7 +20,7 @@ import (
 type BinanceReader struct {
 	config     *config.Config
 	client     *futures.Client
-	rawChannel chan<- models.RawOrderbookMessage
+	rawChannel chan<- models.RawFOBSMessage
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	mu         sync.RWMutex
@@ -29,7 +29,7 @@ type BinanceReader struct {
 }
 
 // NewBinanceReader creates a new BinanceReader using the binance-go client.
-func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawOrderbookMessage) *BinanceReader {
+func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *BinanceReader {
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
@@ -191,7 +191,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		asks[i] = []string{a.Price, a.Quantity}
 	}
 
-	binanceResp := models.BinanceFOBSresponceModel{
+	binanceResp := models.BinanceFOBSresp{
 		LastUpdateID: res.LastUpdateID,
 		Bids:         bids,
 		Asks:         asks,
@@ -203,7 +203,7 @@ func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.Binanc
 		return
 	}
 
-	rawData := models.RawOrderbookMessage{
+	rawData := models.RawFOBSMessage{
 		Exchange:    "binance",
 		Symbol:      symbol,
 		Market:      market,
