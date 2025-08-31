@@ -15,10 +15,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Delta streams futures order book deltas from Binance.
+// Binance_FOBD_Reader streams futures order book deltas from Binance.
 // It uses the websocket diff depth stream with a configurable interval
 // and forwards raw messages to the provided channel.
-type Delta struct {
+type Binance_FOBD_Reader struct {
 	config  *appconfig.Config
 	rawChan chan<- models.RawFOBDMessage
 	ctx     context.Context
@@ -28,9 +28,9 @@ type Delta struct {
 	log     *logger.Log
 }
 
-// BinanceDeltaReader creates a new delta reader using binance-go client.
-func BinanceDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Delta {
-	return &Delta{
+// Binance_FOBD_NewReader creates a new delta reader using binance-go client.
+func Binance_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Binance_FOBD_Reader {
+	return &Binance_FOBD_Reader{
 		config:  cfg,
 		rawChan: rawChan,
 		wg:      &sync.WaitGroup{},
@@ -38,19 +38,19 @@ func BinanceDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMess
 	}
 }
 
-// Start subscribes to diff depth streams for configured symbols.
-func (r *Delta) start(ctx context.Context) error {
+// Binance_FOBD_Start subscribes to diff depth streams for configured symbols.
+func (r *Binance_FOBD_Reader) Binance_FOBD_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
-		return fmt.Errorf("delta reader already running")
+		return fmt.Errorf("Binance_FOBD_Reader reader already running")
 	}
 	r.running = true
 	r.ctx = ctx
 	r.mu.Unlock()
 
 	cfg := r.config.Source.Binance.Future.Orderbook.Delta
-	log := r.log.WithComponent("binance_delta_reader").WithFields(logger.Fields{"operation": "start"})
+	log := r.log.WithComponent("binance_delta_reader").WithFields(logger.Fields{"operation": "Binance_FOBD_Start"})
 
 	if !cfg.Enabled {
 		log.Warn("binance futures orderbook delta is disabled")
@@ -61,15 +61,15 @@ func (r *Delta) start(ctx context.Context) error {
 
 	for _, symbol := range cfg.Symbols {
 		r.wg.Add(1)
-		go r.streamSymbol(symbol, time.Duration(cfg.IntervalMs)*time.Millisecond)
+		go r.Binance_FOBD_streamSymbol(symbol, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	}
 
 	log.Info("binance delta reader started successfully")
 	return nil
 }
 
-// Stop terminates all websocket subscriptions.
-func (r *Delta) stop() {
+// Binance_FOBD_Stop terminates all websocket subscriptions.
+func (r *Binance_FOBD_Reader) Binance_FOBD_Stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()
@@ -79,13 +79,7 @@ func (r *Delta) stop() {
 	r.log.WithComponent("binance_delta_reader").Info("delta reader stopped")
 }
 
-// Start exposes the start method for external callers.
-func (r *Delta) Start(ctx context.Context) error { return r.start(ctx) }
-
-// Stop exposes the stop method for external callers.
-func (r *Delta) Stop() { r.stop() }
-
-func (r *Delta) streamSymbol(symbol string, interval time.Duration) {
+func (r *Binance_FOBD_Reader) Binance_FOBD_streamSymbol(symbol string, interval time.Duration) {
 	defer r.wg.Done()
 
 	log := r.log.WithComponent("binance_delta_reader").WithFields(logger.Fields{

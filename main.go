@@ -63,13 +63,13 @@ func main() {
 
 	go channels.StartMetricsReporting(ctx)
 
-	binanceReader := binance.NewBinanceReader(cfg, channels.FOBS.Raw)
-	kucoinReader := kucoin.NewKucoinReader(cfg, channels.FOBS.Raw)
-	flattener := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
+	binance_FOBS_reader := binance.Binance_FOBS_NewReader(cfg, channels.FOBS.Raw)
+	kucoin_FOBS_reader := kucoin.Kucoin_FOBS_NewReader(cfg, channels.FOBS.Raw)
+	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 
-	deltaReader := binance.BinanceDeltaReader(cfg, channels.FOBD.Raw)
-	kucoinDeltaReader := kucoin.KucoinDeltaReader(cfg, channels.FOBD.Raw)
-	deltaProcessor := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
+	binance_FOBD_reader := binance.Binance_FOBD_NewReader(cfg, channels.FOBD.Raw)
+	kucoin_FOBD_reader := kucoin.Kucoin_FOBD_NewReader(cfg, channels.FOBD.Raw)
+	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
 	var snapshotWriter *writer.SnapshotWriter
 	var deltaWriter *writer.DeltaWriter
@@ -94,7 +94,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := binanceReader.Start(ctx); err != nil {
+		if err := binance_FOBS_reader.Start(ctx); err != nil {
 			log.WithError(err).Warn("binance reader failed to start")
 		}
 	}()
@@ -102,7 +102,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := kucoinReader.Start(ctx); err != nil {
+		if err := kucoin_FOBS_reader.Kucoin_FOBS_Start(ctx); err != nil {
 			log.WithError(err).Warn("kucoin reader failed to start")
 		}
 	}()
@@ -110,15 +110,15 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := flattener.Start(ctx); err != nil {
-			log.WithError(err).Warn("flattener failed to start")
+		if err := norm_FOBS_reader.Start(ctx); err != nil {
+			log.WithError(err).Warn("norm_FOBS_reader failed to start")
 		}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := deltaReader.Start(ctx); err != nil {
+		if err := binance_FOBD_reader.Start(ctx); err != nil {
 			log.WithError(err).Warn("delta reader failed to start")
 		}
 	}()
@@ -126,7 +126,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := kucoinDeltaReader.Start(ctx); err != nil {
+		if err := kucoin_FOBD_reader.Start(ctx); err != nil {
 			log.WithError(err).Warn("kucoin delta reader failed to start")
 		}
 	}()
@@ -134,8 +134,8 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := deltaProcessor.Start(ctx); err != nil {
-			log.WithError(err).Warn("delta processor failed to start")
+		if err := norm_FOBD_reader.Start(ctx); err != nil {
+			log.WithError(err).Warn("norm_FOBD_readerfailed to start")
 		}
 	}()
 
@@ -179,22 +179,23 @@ func main() {
 		deltaWriter.Stop()
 	}
 
-	log.Info("stopping delta processor")
-	deltaProcessor.Stop()
+	log.Info("stopping norm_FOBD_reader")
+	norm_FOBD_reader.Stop()
 
-	log.Info("stopping flattener")
-	flattener.Stop()
+	log.Info("stopping norm_FOBS_reader")
+	norm_FOBS_reader.Stop()
 
-	log.Info("stopping delta reader")
-	deltaReader.Stop()
+	log.Info("stopping binance_FOBD_reader reader")
+	binance_FOBD_reader.Binance_FOBD_Stop()
 
 	log.Info("stopping kucoin delta reader")
-	kucoinDeltaReader.Stop()
+	kucoin_FOBD_reader.Kucoin_FOBD_Stop()
 
 	log.Info("stopping binance reader")
-	binanceReader.Stop()
+	binance_FOBS_reader.Binance_FOBS_Stop()
+
 	log.Info("stopping kucoin reader")
-	kucoinReader.Stop()
+	kucoin_FOBS_reader.Kucoin_FOBS_Stop()
 
 	done := make(chan struct{})
 	go func() {

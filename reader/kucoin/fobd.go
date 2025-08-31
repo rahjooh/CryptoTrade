@@ -15,8 +15,8 @@ import (
 	kumex "github.com/Kucoin/kucoin-futures-go-sdk"
 )
 
-// Delta streams futures order book deltas from KuCoin.
-type Delta struct {
+// Kucoin_FOBD_Reader streams futures order book deltas from KuCoin.
+type Kucoin_FOBD_Reader struct {
 	config  *appconfig.Config
 	rawChan chan<- models.RawFOBDMessage
 	ctx     context.Context
@@ -26,9 +26,9 @@ type Delta struct {
 	log     *logger.Log
 }
 
-// KucoinDeltaReader creates a new delta reader.
-func KucoinDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Delta {
-	return &Delta{
+// Kucoin_FOBD_NewReader creates a new delta reader.
+func Kucoin_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Kucoin_FOBD_Reader {
+	return &Kucoin_FOBD_Reader{
 		config:  cfg,
 		rawChan: rawChan,
 		wg:      &sync.WaitGroup{},
@@ -36,8 +36,8 @@ func KucoinDeltaReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessa
 	}
 }
 
-// Start subscribes to level2 streams for configured symbols.
-func (r *Delta) Start(ctx context.Context) error {
+// Kucoin_FOBD_Start subscribes to level2 streams for configured symbols.
+func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -48,7 +48,7 @@ func (r *Delta) Start(ctx context.Context) error {
 	r.mu.Unlock()
 
 	cfg := r.config.Source.Kucoin.Future.Orderbook.Delta
-	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{"operation": "start"})
+	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{"operation": "Kucoin_FOBD_Start"})
 
 	if !cfg.Enabled {
 		log.Warn("kucoin futures orderbook delta is disabled")
@@ -59,15 +59,15 @@ func (r *Delta) Start(ctx context.Context) error {
 
 	for _, symbol := range cfg.Symbols {
 		r.wg.Add(1)
-		go r.streamSymbol(symbol)
+		go r.Kucoin_FOBD_streamSymbol(symbol)
 	}
 
 	log.Info("kucoin delta reader started successfully")
 	return nil
 }
 
-// Stop terminates all websocket subscriptions.
-func (r *Delta) Stop() {
+// Kucoin_FOBD_Stop terminates all websocket subscriptions.
+func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()
@@ -77,7 +77,7 @@ func (r *Delta) Stop() {
 	r.log.WithComponent("kucoin_delta_reader").Info("delta reader stopped")
 }
 
-func (r *Delta) streamSymbol(symbol string) {
+func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_streamSymbol(symbol string) {
 	defer r.wg.Done()
 
 	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{

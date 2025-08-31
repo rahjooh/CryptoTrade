@@ -48,7 +48,7 @@ func NewFlattener(cfg *appconfig.Config, rawChan <-chan models.RawFOBSMessage, N
 	}
 }
 
-func (f *Flattener) start(ctx context.Context) error {
+func (f *Flattener) Start(ctx context.Context) error {
 	f.mu.Lock()
 	if f.running {
 		f.mu.Unlock()
@@ -85,7 +85,7 @@ func (f *Flattener) start(ctx context.Context) error {
 	return nil
 }
 
-func (f *Flattener) stop() {
+func (f *Flattener) Stop() {
 	f.mu.Lock()
 	f.running = false
 	f.mu.Unlock()
@@ -98,12 +98,6 @@ func (f *Flattener) stop() {
 	f.wg.Wait()
 	f.log.WithComponent("flattener").Info("flattener stopped")
 }
-
-// Start exposes the start method for external callers.
-func (f *Flattener) Start(ctx context.Context) error { return f.start(ctx) }
-
-// Stop exposes the stop method for external callers.
-func (f *Flattener) Stop() { f.stop() }
 
 func (f *Flattener) worker(workerID int) {
 	defer f.wg.Done()
