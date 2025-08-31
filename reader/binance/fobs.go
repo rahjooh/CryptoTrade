@@ -16,8 +16,8 @@ import (
 	futures "github.com/adshao/go-binance/v2/futures"
 )
 
-// BinanceReader fetches futures order book snapshots from Binance.
-type BinanceReader struct {
+// Binance_FOBS_Reader fetches futures order book snapshots from Binance.
+type Binance_FOBS_Reader struct {
 	config     *config.Config
 	client     *futures.Client
 	rawChannel chan<- models.RawFOBSMessage
@@ -28,8 +28,8 @@ type BinanceReader struct {
 	log        *logger.Log
 }
 
-// NewBinanceReader creates a new BinanceReader using the binance-go client.
-func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *BinanceReader {
+// Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
+func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *Binance_FOBS_Reader {
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
@@ -53,7 +53,7 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessag
 		client.SetApiEndpoint(base)
 	}
 
-	reader := &BinanceReader{
+	reader := &Binance_FOBS_Reader{
 		config:     cfg,
 		client:     client,
 		rawChannel: rawChannel,
@@ -70,8 +70,8 @@ func NewBinanceReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessag
 	return reader
 }
 
-// Start begins fetching order book snapshots for configured symbols.
-func (br *BinanceReader) start(ctx context.Context) error {
+// Binance_FOBS_Start begins fetching order book snapshots for configured symbols.
+func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 	br.mu.Lock()
 	if br.running {
 		br.mu.Unlock()
@@ -81,7 +81,7 @@ func (br *BinanceReader) start(ctx context.Context) error {
 	br.ctx = ctx
 	br.mu.Unlock()
 
-	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{"operation": "start"})
+	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{"operation": "Binance_FOBS_Start"})
 
 	snapshotCfg := br.config.Source.Binance.Future.Orderbook.Snapshots
 	if !snapshotCfg.Enabled {
@@ -103,8 +103,8 @@ func (br *BinanceReader) start(ctx context.Context) error {
 	return nil
 }
 
-// Stop signals all workers to stop and waits for completion.
-func (br *BinanceReader) stop() {
+// Binance_FOBS_Stop signals all workers to stop and waits for completion.
+func (br *Binance_FOBS_Reader) Binance_FOBS_Stop() {
 	br.mu.Lock()
 	br.running = false
 	br.mu.Unlock()
@@ -114,13 +114,7 @@ func (br *BinanceReader) stop() {
 	br.log.WithComponent("binance_reader").Info("binance reader stopped")
 }
 
-// Start exposes the start method for external callers.
-func (br *BinanceReader) Start(ctx context.Context) error { return br.start(ctx) }
-
-// Stop exposes the stop method for external callers.
-func (br *BinanceReader) Stop() { br.stop() }
-
-func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
+func (br *Binance_FOBS_Reader) fetchOrderbookWorker(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
 	defer br.wg.Done()
 
 	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{
@@ -160,7 +154,7 @@ func (br *BinanceReader) fetchOrderbookWorker(symbol string, snapshotCfg config.
 	}
 }
 
-func (br *BinanceReader) fetchOrderbook(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
+func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.BinanceSnapshotConfig) {
 	log := br.log.WithComponent("binance_reader").WithFields(logger.Fields{
 		"symbol":    symbol,
 		"operation": "fetch_orderbook",

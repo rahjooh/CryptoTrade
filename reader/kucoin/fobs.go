@@ -17,8 +17,8 @@ import (
 	kumex "github.com/Kucoin/kucoin-futures-go-sdk"
 )
 
-// KucoinReader fetches futures order book snapshots from KuCoin.
-type KucoinReader struct {
+// Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
+type Kucoin_FOBS_Reader struct {
 	config     *config.Config
 	client     *kumex.ApiService
 	rawChannel chan<- models.RawFOBSMessage
@@ -29,8 +29,8 @@ type KucoinReader struct {
 	log        *logger.Log
 }
 
-// NewKucoinReader creates a new KucoinReader using the KuCoin futures SDK.
-func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *KucoinReader {
+// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin futures SDK.
+func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *Kucoin_FOBS_Reader {
 	log := logger.GetLogger()
 
 	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
@@ -44,7 +44,7 @@ func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage
 		kumex.ApiBaseURIOption(baseURL),
 	)
 
-	reader := &KucoinReader{
+	reader := &Kucoin_FOBS_Reader{
 		config:     cfg,
 		client:     client,
 		rawChannel: rawChannel,
@@ -59,8 +59,8 @@ func NewKucoinReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage
 	return reader
 }
 
-// Start begins fetching order book snapshots for configured symbols.
-func (r *KucoinReader) start(ctx context.Context) error {
+// Kucoin_FOBS_Start begins fetching order book snapshots for configured symbols.
+func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -70,7 +70,7 @@ func (r *KucoinReader) start(ctx context.Context) error {
 	r.ctx = ctx
 	r.mu.Unlock()
 
-	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{"operation": "start"})
+	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{"operation": "Kucoin_FOBS_Start"})
 
 	snapshotCfg := r.config.Source.Kucoin.Future.Orderbook.Snapshots
 	if !snapshotCfg.Enabled {
@@ -85,15 +85,15 @@ func (r *KucoinReader) start(ctx context.Context) error {
 
 	for _, symbol := range snapshotCfg.Symbols {
 		r.wg.Add(1)
-		go r.fetchOrderbookWorker(symbol, snapshotCfg)
+		go r.Kucoin_FOBS_FetchWorker(symbol, snapshotCfg)
 	}
 
 	log.Info("kucoin reader started successfully")
 	return nil
 }
 
-// Stop signals all workers to stop and waits for completion.
-func (r *KucoinReader) stop() {
+// Kucoin_FOBS_Stop signals all workers to stop and waits for completion.
+func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()
@@ -103,13 +103,7 @@ func (r *KucoinReader) stop() {
 	r.log.WithComponent("kucoin_reader").Info("kucoin reader stopped")
 }
 
-// Start exposes the start method for external callers.
-func (r *KucoinReader) Start(ctx context.Context) error { return r.start(ctx) }
-
-// Stop exposes the stop method for external callers.
-func (r *KucoinReader) Stop() { r.stop() }
-
-func (r *KucoinReader) fetchOrderbookWorker(symbol string, snapshotCfg config.KucoinSnapshotConfig) {
+func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_FetchWorker(symbol string, snapshotCfg config.KucoinSnapshotConfig) {
 	defer r.wg.Done()
 
 	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{
@@ -133,7 +127,7 @@ func (r *KucoinReader) fetchOrderbookWorker(symbol string, snapshotCfg config.Ku
 			return
 		case <-timer.C:
 			start := time.Now()
-			r.fetchOrderbook(symbol)
+			r.Kucoin_FOBS_Fetcher(symbol)
 			duration := time.Since(start)
 
 			if duration > interval {
@@ -149,7 +143,7 @@ func (r *KucoinReader) fetchOrderbookWorker(symbol string, snapshotCfg config.Ku
 	}
 }
 
-func (r *KucoinReader) fetchOrderbook(symbol string) {
+func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{
 		"symbol":    symbol,
 		"operation": "fetch_orderbook",
