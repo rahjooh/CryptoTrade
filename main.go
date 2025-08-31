@@ -73,6 +73,7 @@ func main() {
 
 	var snapshotWriter *writer.SnapshotWriter
 	var deltaWriter *writer.DeltaWriter
+
 	if cfg.Storage.S3.Enabled {
 		var err error
 		snapshotWriter, err = writer.NewSnapshotWriter(cfg, channels.FOBS.Norm)
@@ -94,7 +95,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := binance_FOBS_reader.Start(ctx); err != nil {
+		if err := binance_FOBS_reader.Binance_FOBS_Start(ctx); err != nil {
 			log.WithError(err).Warn("binance reader failed to start")
 		}
 	}()
@@ -118,7 +119,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := binance_FOBD_reader.Start(ctx); err != nil {
+		if err := binance_FOBD_reader.Binance_FOBD_Start(ctx); err != nil {
 			log.WithError(err).Warn("delta reader failed to start")
 		}
 	}()
@@ -126,7 +127,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := kucoin_FOBD_reader.Start(ctx); err != nil {
+		if err := kucoin_FOBD_reader.Kucoin_FOBD_Start(ctx); err != nil {
 			log.WithError(err).Warn("kucoin delta reader failed to start")
 		}
 	}()
