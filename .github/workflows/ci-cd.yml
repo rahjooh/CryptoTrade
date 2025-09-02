@@ -102,7 +102,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "cryptoflow,docker-compose.yml" # Comma-separated list of files
+          source: ".,cryptoflow" # This will copy all files from root and the cryptoflow binary
           target: "/home/${{ secrets.EC2_USER }}/cryptoflow"
 
       - name: Deploy on EC2 via SSH
