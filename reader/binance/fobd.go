@@ -124,17 +124,32 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 		}
 	}
 
-	doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
-	if err != nil {
-		log.WithError(err).Error("failed to subscribe to combined diff depth stream")
-		return
-	}
+	for {
+		doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
+		if err != nil {
+			log.WithError(err).Error("failed to subscribe to combined diff depth stream")
+			select {
+			case <-r.ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+				continue
+			}
+		}
 
-	select {
-	case <-r.ctx.Done():
-		close(stopC)
-		<-doneC
-	case <-doneC:
-		// stream ended
+		select {
+		case <-r.ctx.Done():
+			close(stopC)
+			<-doneC
+			return
+		case <-doneC:
+			log.Warn("delta stream closed, reconnecting")
+			close(stopC)
+			select {
+			case <-r.ctx.Done():
+				<-doneC
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
 	}
 }
