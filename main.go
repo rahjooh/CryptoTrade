@@ -29,8 +29,10 @@ func main() {
 		log.WithError(err).Warn("Error loading .env file")
 	}
 
-	configPath := flag.String("config", "config.yml", "Path to configuration file")
-	shardPath := flag.String("shards", "ip_shards.yml", "Path to IP shard configuration file")
+
+  configPath := flag.String("config", "config/config.yml", "Path to configuration file")
+  shardPath := flag.String("shards", "config/ip_shards.yml", "Path to IP shard configuration file")
+
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(*configPath)
