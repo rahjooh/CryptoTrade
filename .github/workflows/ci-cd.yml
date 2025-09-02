@@ -31,6 +31,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      # This step configures git to use the private Go module PAT.
       - name: Configure Git PAT token for private modules
         run: git config --global url.https://${{ secrets.GO_PAT }}@github.com.insteadOf https://github.com
 
