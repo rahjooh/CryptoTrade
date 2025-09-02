@@ -1,12 +1,12 @@
 shards:
-  - ip: 172.31.1.88
+  - ip: 172.31.9.173
     binance_symbols:
       - BTCUSDT
       - ETHUSDT
       - BNBUSDT
       - XRPUSDT
     kucoin_symbols:
-      - BTCUSDTM
+      - XBTUSDTM
       - ETHUSDTM
       - BNBUSDTM
       - XRPUSDTM
