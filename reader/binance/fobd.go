@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,10 +65,8 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_Start(ctx context.Context) error {
 
 	log.WithFields(logger.Fields{"symbols": r.symbols, "interval": cfg.IntervalMs}).Info("starting delta reader")
 
-	for _, symbol := range r.symbols {
-		r.wg.Add(1)
-		go r.Binance_FOBD_streamSymbol(symbol, time.Duration(cfg.IntervalMs)*time.Millisecond)
-	}
+	r.wg.Add(1)
+	go r.Binance_FOBD_stream(r.symbols)
 
 	log.Info("binance delta reader started successfully")
 	return nil
@@ -84,12 +83,12 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_Stop() {
 	r.log.WithComponent("binance_delta_reader").Info("delta reader stopped")
 }
 
-func (r *Binance_FOBD_Reader) Binance_FOBD_streamSymbol(symbol string, interval time.Duration) {
+func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 	defer r.wg.Done()
 
 	log := r.log.WithComponent("binance_delta_reader").WithFields(logger.Fields{
-		"symbol": symbol,
-		"worker": "delta_stream",
+		"symbols": strings.Join(symbols, ","),
+		"worker":  "delta_stream",
 	})
 
 	handler := func(event *futures.WsDepthEvent) {
@@ -125,9 +124,9 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_streamSymbol(symbol string, interval 
 		}
 	}
 
-	doneC, stopC, err := futures.WsDiffDepthServeWithRate(symbol, interval, handler, errHandler)
+	doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
 	if err != nil {
-		log.WithError(err).Error("failed to subscribe to diff depth stream")
+		log.WithError(err).Error("failed to subscribe to combined diff depth stream")
 		return
 	}
 
