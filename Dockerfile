@@ -11,4 +11,4 @@ COPY . .
 RUN go build -o cryptoflow .
 
 VOLUME ["/app/data"]
-CMD ["./CryptoFlow"]
+CMD ["./cryptoflow"]
