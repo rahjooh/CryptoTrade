@@ -9,7 +9,7 @@ shards:
   - ip: 172.31.14.157
     binance_symbols:
       - DOTUSDT
-      - DOGEUSDT
+      - XRPUSDT
     kucoin_symbols:
       - DOTUSDTM
-      - DOGEUSDTM
+      - XRPUSDTM
