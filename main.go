@@ -30,6 +30,7 @@ func main() {
 	}
 
 	configPath := flag.String("config", "config.yml", "Path to configuration file")
+	shardPath := flag.String("shards", "ip_shards.yml", "Path to IP shard configuration file")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(*configPath)
@@ -63,12 +64,31 @@ func main() {
 
 	go channels.StartMetricsReporting(ctx)
 
-	binance_FOBS_reader := binance.Binance_FOBS_NewReader(cfg, channels.FOBS.Raw)
-	kucoin_FOBS_reader := kucoin.Kucoin_FOBS_NewReader(cfg, channels.FOBS.Raw)
-	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
+	shardCfg, err := config.LoadIPShards(*shardPath)
+	if err != nil {
+		log.WithError(err).Error("failed to load shard configuration")
+		os.Exit(1)
+	}
 
-	binance_FOBD_reader := binance.Binance_FOBD_NewReader(cfg, channels.FOBD.Raw)
-	kucoin_FOBD_reader := kucoin.Kucoin_FOBD_NewReader(cfg, channels.FOBD.Raw)
+	binanceFOBSReaders := make([]*binance.Binance_FOBS_Reader, 0, len(shardCfg.Shards))
+	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(shardCfg.Shards))
+	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(shardCfg.Shards))
+	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(shardCfg.Shards))
+
+	for _, shard := range shardCfg.Shards {
+		sc := *cfg
+		sc.Source.Binance.Future.Orderbook.Snapshots.Symbols = shard.BinanceSymbols
+		sc.Source.Binance.Future.Orderbook.Delta.Symbols = shard.BinanceSymbols
+		sc.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = shard.KucoinSymbols
+		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
+
+		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.BinanceSymbols, shard.IP))
+		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw))
+		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.BinanceSymbols, shard.IP))
+		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw))
+	}
+
+	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
 	var snapshotWriter *writer.SnapshotWriter
@@ -92,21 +112,25 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := binance_FOBS_reader.Binance_FOBS_Start(ctx); err != nil {
-			log.WithError(err).Warn("binance reader failed to start")
-		}
-	}()
+	for _, r := range binanceFOBSReaders {
+		wg.Add(1)
+		go func(reader *binance.Binance_FOBS_Reader) {
+			defer wg.Done()
+			if err := reader.Binance_FOBS_Start(ctx); err != nil {
+				log.WithError(err).Warn("binance reader failed to start")
+			}
+		}(r)
+	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := kucoin_FOBS_reader.Kucoin_FOBS_Start(ctx); err != nil {
-			log.WithError(err).Warn("kucoin reader failed to start")
-		}
-	}()
+	for _, r := range kucoinFOBSReaders {
+		wg.Add(1)
+		go func(reader *kucoin.Kucoin_FOBS_Reader) {
+			defer wg.Done()
+			if err := reader.Kucoin_FOBS_Start(ctx); err != nil {
+				log.WithError(err).Warn("kucoin reader failed to start")
+			}
+		}(r)
+	}
 
 	wg.Add(1)
 	go func() {
@@ -116,21 +140,25 @@ func main() {
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := binance_FOBD_reader.Binance_FOBD_Start(ctx); err != nil {
-			log.WithError(err).Warn("delta reader failed to start")
-		}
-	}()
+	for _, r := range binanceFOBDReaders {
+		wg.Add(1)
+		go func(reader *binance.Binance_FOBD_Reader) {
+			defer wg.Done()
+			if err := reader.Binance_FOBD_Start(ctx); err != nil {
+				log.WithError(err).Warn("delta reader failed to start")
+			}
+		}(r)
+	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := kucoin_FOBD_reader.Kucoin_FOBD_Start(ctx); err != nil {
-			log.WithError(err).Warn("kucoin delta reader failed to start")
-		}
-	}()
+	for _, r := range kucoinFOBDReaders {
+		wg.Add(1)
+		go func(reader *kucoin.Kucoin_FOBD_Reader) {
+			defer wg.Done()
+			if err := reader.Kucoin_FOBD_Start(ctx); err != nil {
+				log.WithError(err).Warn("kucoin delta reader failed to start")
+			}
+		}(r)
+	}
 
 	wg.Add(1)
 	go func() {
@@ -186,17 +214,25 @@ func main() {
 	log.Info("stopping norm_FOBS_reader")
 	norm_FOBS_reader.Stop()
 
-	log.Info("stopping binance_FOBD_reader reader")
-	binance_FOBD_reader.Binance_FOBD_Stop()
+	log.Info("stopping binance_FOBD_readers")
+	for _, r := range binanceFOBDReaders {
+		r.Binance_FOBD_Stop()
+	}
 
-	log.Info("stopping kucoin delta reader")
-	kucoin_FOBD_reader.Kucoin_FOBD_Stop()
+	log.Info("stopping kucoin delta readers")
+	for _, r := range kucoinFOBDReaders {
+		r.Kucoin_FOBD_Stop()
+	}
 
-	log.Info("stopping binance reader")
-	binance_FOBS_reader.Binance_FOBS_Stop()
+	log.Info("stopping binance readers")
+	for _, r := range binanceFOBSReaders {
+		r.Binance_FOBS_Stop()
+	}
 
-	log.Info("stopping kucoin reader")
-	kucoin_FOBS_reader.Kucoin_FOBS_Stop()
+	log.Info("stopping kucoin readers")
+	for _, r := range kucoinFOBSReaders {
+		r.Kucoin_FOBS_Stop()
+	}
 
 	done := make(chan struct{})
 	go func() {
