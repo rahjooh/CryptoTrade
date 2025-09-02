@@ -585,7 +585,7 @@ func (w *snapshotWriter) reportMetrics() {
 		"avg_bytes_per_file": avgBytesPerFile,
 		"norm_channel_len":   normLen,
 		"norm_channel_cap":   normCap,
-	}).warn("s3 writer metrics")
+	}).Warn("s3 writer metrics")
 }
 
 // Start exposes the start method of snapshotWriter.
