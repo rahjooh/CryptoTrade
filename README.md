@@ -93,6 +93,9 @@ go test  ./...
 go run main.go
 ```
 
+
+When running in Docker and sharding traffic across multiple Elastic IPs, ensure the container uses the host network so the secondary private addresses are available. The provided `docker-compose.yml` sets `network_mode: host`, allowing the application to bind each symbol to the IP defined in `config/ip_shards.yml`.
+
 On startup CryptoFlow will:
 
 1. Load environment variables from `.env`.
