@@ -26,15 +26,20 @@ type Binance_FOBD_Reader struct {
 	mu      sync.RWMutex
 	running bool
 	log     *logger.Log
+	symbols []string
 }
 
 // Binance_FOBD_NewReader creates a new delta reader using binance-go client.
-func Binance_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Binance_FOBD_Reader {
+// Symbols defines the set of markets this reader will subscribe to. The localIP
+// parameter is reserved for future use when websocket dialers support binding to
+// specific interfaces.
+func Binance_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage, symbols []string, localIP string) *Binance_FOBD_Reader {
 	return &Binance_FOBD_Reader{
 		config:  cfg,
 		rawChan: rawChan,
 		wg:      &sync.WaitGroup{},
 		log:     logger.GetLogger(),
+		symbols: symbols,
 	}
 }
 
@@ -57,9 +62,9 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_Start(ctx context.Context) error {
 		return fmt.Errorf("binance futures orderbook delta is disabled")
 	}
 
-	log.WithFields(logger.Fields{"symbols": cfg.Symbols, "interval": cfg.IntervalMs}).Info("starting delta reader")
+	log.WithFields(logger.Fields{"symbols": r.symbols, "interval": cfg.IntervalMs}).Info("starting delta reader")
 
-	for _, symbol := range cfg.Symbols {
+	for _, symbol := range r.symbols {
 		r.wg.Add(1)
 		go r.Binance_FOBD_streamSymbol(symbol, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	}

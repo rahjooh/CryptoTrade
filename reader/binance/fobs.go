@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -26,10 +27,13 @@ type Binance_FOBS_Reader struct {
 	mu         sync.RWMutex
 	running    bool
 	log        *logger.Log
+	symbols    []string
 }
 
 // Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
-func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *Binance_FOBS_Reader {
+// The reader will bind outbound connections to the provided localIP if not empty
+// and fetch snapshots only for the supplied symbols.
+func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Binance_FOBS_Reader {
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
@@ -37,6 +41,13 @@ func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBS
 		MaxConnsPerHost:    cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
 		IdleConnTimeout:    cfg.Source.Binance.ConnectionPool.IdleConnTimeout,
 		DisableCompression: false,
+	}
+
+	if localIP != "" {
+		if ip := net.ParseIP(localIP); ip != nil {
+			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+			transport.DialContext = dialer.DialContext
+		}
 	}
 
 	httpClient := &http.Client{
@@ -59,6 +70,7 @@ func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBS
 		rawChannel: rawChannel,
 		wg:         &sync.WaitGroup{},
 		log:        log,
+		symbols:    symbols,
 	}
 
 	log.WithComponent("binance_reader").WithFields(logger.Fields{
@@ -90,11 +102,11 @@ func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 	}
 
 	log.WithFields(logger.Fields{
-		"symbols":  snapshotCfg.Symbols,
+		"symbols":  br.symbols,
 		"interval": snapshotCfg.IntervalMs,
 	}).Info("starting binance reader")
 
-	for _, symbol := range snapshotCfg.Symbols {
+	for _, symbol := range br.symbols {
 		br.wg.Add(1)
 		go br.fetchOrderbookWorker(symbol, snapshotCfg)
 	}
