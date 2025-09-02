@@ -419,6 +419,10 @@ func (f *Flattener) reportMetrics() {
 	if messagesProcessed > 0 {
 		avgEntriesPerMessage = float64(entriesProcessed) / float64(messagesProcessed)
 	}
+	rawLen := len(f.rawChan)
+	rawCap := cap(f.rawChan)
+	normLen := len(f.NormFOBSch)
+	normCap := cap(f.NormFOBSch)
 
 	log := f.log.WithComponent("flattener")
 	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
@@ -437,5 +441,9 @@ func (f *Flattener) reportMetrics() {
 		"error_rate":              errorRate,
 		"active_batches":          activeBatches,
 		"avg_entries_per_message": avgEntriesPerMessage,
+		"raw_channel_len":         rawLen,
+		"raw_channel_cap":         rawCap,
+		"norm_channel_len":        normLen,
+		"norm_channel_cap":        normCap,
 	}).Info("flattener metrics")
 }

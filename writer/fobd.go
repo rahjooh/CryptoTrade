@@ -118,6 +118,9 @@ func (w *DeltaWriter) start(ctx context.Context) error {
 	w.wg.Add(1)
 	go w.flushLoop()
 
+	w.wg.Add(1)
+	go w.metricsReporter()
+
 	w.log.WithComponent("delta_writer").Info("delta writer started")
 	return nil
 }
@@ -264,8 +267,32 @@ func (w *DeltaWriter) upload(key string, data []byte) error {
 		Key:    aws.String(key),
 		Body:   bytes.NewReader(data),
 	}
-	_, err := w.s3Client.PutObject(w.ctx, input)
+	ctx := context.WithoutCancel(w.ctx)
+	_, err := w.s3Client.PutObject(ctx, input)
 	return err
+}
+
+func (w *DeltaWriter) metricsReporter() {
+	defer w.wg.Done()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case <-ticker.C:
+			w.mu.Lock()
+			running := w.running
+			w.mu.Unlock()
+			if !running {
+				return
+			}
+			w.log.WithComponent("delta_writer").WithFields(logger.Fields{
+				"norm_channel_len": len(w.normChan),
+				"norm_channel_cap": cap(w.normChan),
+			}).Info("delta writer channel size")
+		}
+	}
 }
 
 // Start exposes the internal start method for external packages.

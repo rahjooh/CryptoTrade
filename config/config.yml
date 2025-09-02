@@ -34,7 +34,7 @@ source:
           url: https://fapi.binance.com/fapi/v1/depth
           limit: 1000                   # Number of price levels
           interval_ms: 1000             # Collect every 1000 mili seconds
-          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
+#          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 10000             #  Records per batch before writing
         delta:
@@ -42,7 +42,7 @@ source:
           connection: websocket
           url: wss://fstream.binance.com/ws
           interval_ms: 100
-          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
+#          symbols: [ BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, ADAUSDT]
       contracts:
         enabled: false
         connection: rest
@@ -187,13 +187,13 @@ source:
           url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
           limit: 100
           interval_ms: 1000
-          symbols: [ BTC-USDT, ETH-USDT ]
+#          symbols: [ BTC-USDT, ETH-USDT ]
         delta:
           enabled: false
           connection: websocket
           url: wss://ws-api.kucoin.com/endpoint
           interval_ms: 100
-          symbols: [ BTC-USDT, ETH-USDT ]
+#          symbols: [ BTC-USDT, ETH-USDT ]
     future:
       orderbook:
         snapshots:
@@ -202,13 +202,13 @@ source:
           url: https://api-futures.kucoin.com/api/v1/level2/snapshot
           limit: 100
           interval_ms: 1000
-          symbols: [ XBTUSDTM, ETHUSDTM ]
+#          symbols: [ XBTUSDTM, ETHUSDTM ]
         delta:
           enabled: true
           connection: websocket
           url: wss://api-futures.kucoin.com/endpoint
           interval_ms: 100
-          symbols: [ XBTUSDTM, ETHUSDTM ]
+#          symbols: [ XBTUSDTM, ETHUSDTM ]
 
   coinbase:
     spot:
@@ -260,8 +260,8 @@ cryptoflow:
   version: "1.0.0"
 
 channels:
-  raw_buffer: 100
-  processed_buffer: 100
+  raw_buffer: 1000
+  processed_buffer: 1000
 
 reader:
   max_workers: 1

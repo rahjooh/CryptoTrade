@@ -81,6 +81,9 @@ func (p *DeltaProcessor) start(ctx context.Context) error {
 	p.wg.Add(1)
 	go p.flusher()
 
+	p.wg.Add(1)
+	go p.metricsReporter(ctx)
+
 	log.Info("delta processor started successfully")
 	return nil
 }
@@ -258,5 +261,30 @@ func (p *DeltaProcessor) flushAll() {
 	defer p.mu.Unlock()
 	for k := range p.batches {
 		p.flush(k)
+	}
+}
+
+func (p *DeltaProcessor) metricsReporter(ctx context.Context) {
+	defer p.wg.Done()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.mu.RLock()
+			running := p.running
+			p.mu.RUnlock()
+			if !running {
+				return
+			}
+			p.log.WithComponent("delta_processor").WithFields(logger.Fields{
+				"raw_channel_len":  len(p.rawChan),
+				"raw_channel_cap":  cap(p.rawChan),
+				"norm_channel_len": len(p.normChan),
+				"norm_channel_cap": cap(p.normChan),
+			}).Info("delta processor channel sizes")
+		}
 	}
 }

@@ -524,7 +524,8 @@ func (w *snapshotWriter) uploadToS3(key string, data []byte) error {
 		},
 	}
 
-	_, err := w.s3Client.PutObject(w.ctx, input)
+	ctx := context.WithoutCancel(w.ctx)
+	_, err := w.s3Client.PutObject(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to upload to S3 bucket %s: %w", w.config.Storage.S3.Bucket, err)
 	}
@@ -563,6 +564,9 @@ func (w *snapshotWriter) reportMetrics() {
 		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
 	}
 
+	normLen := len(w.NormFOBSch)
+	normCap := cap(w.NormFOBSch)
+
 	log := w.log.WithComponent("s3_writer")
 	log.LogMetric("s3_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
 	log.LogMetric("s3_writer", "files_written", filesWritten, "counter", logger.Fields{})
@@ -570,6 +574,7 @@ func (w *snapshotWriter) reportMetrics() {
 	log.LogMetric("s3_writer", "errors_count", errorsCount, "counter", logger.Fields{})
 	log.LogMetric("s3_writer", "error_rate", errorRate, "gauge", logger.Fields{})
 	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
+	log.LogMetric("s3_writer", "norm_channel_len", normLen, "gauge", logger.Fields{})
 
 	log.WithFields(logger.Fields{
 		"batches_written":    batchesWritten,
@@ -578,7 +583,9 @@ func (w *snapshotWriter) reportMetrics() {
 		"errors_count":       errorsCount,
 		"error_rate":         errorRate,
 		"avg_bytes_per_file": avgBytesPerFile,
-	}).Info("s3 writer metrics")
+		"norm_channel_len":   normLen,
+		"norm_channel_cap":   normCap,
+	}).warn("s3 writer metrics")
 }
 
 // Start exposes the start method of snapshotWriter.

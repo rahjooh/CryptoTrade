@@ -37,10 +37,11 @@ func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBS
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
-		MaxIdleConns:       cfg.Source.Binance.ConnectionPool.MaxIdleConns,
-		MaxConnsPerHost:    cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
-		IdleConnTimeout:    cfg.Source.Binance.ConnectionPool.IdleConnTimeout,
-		DisableCompression: false,
+		MaxIdleConns:        cfg.Source.Binance.ConnectionPool.MaxIdleConns,
+		MaxIdleConnsPerHost: cfg.Source.Binance.ConnectionPool.MaxIdleConns,
+		MaxConnsPerHost:     cfg.Source.Binance.ConnectionPool.MaxConnsPerHost,
+		IdleConnTimeout:     cfg.Source.Binance.ConnectionPool.IdleConnTimeout,
+		DisableCompression:  false,
 	}
 
 	if localIP != "" {
