@@ -37,7 +37,9 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 
 ```
 CryptoFlow/
-├── config/                # configuration loading and validation
+├── config/                # configuration files and loaders
+│   ├── config.yml         # runtime configuration
+│   └── ip_shards.yml      # per-IP symbol mappings
 ├── internal/channel/      # channel definitions and monitoring
 │   ├── fobs/              # snapshot channels
 │   └── fobd/              # delta channels
@@ -47,7 +49,6 @@ CryptoFlow/
 ├── reader/                # Binance futures depth reader
 ├── writer/                # S3 parquet writer
 ├── main.go                # application entrypoint
-├── config.yml             # runtime configuration
 ├── .env.example           # sample AWS credentials
 └── ...
 ```
@@ -56,7 +57,7 @@ CryptoFlow/
 
 ## Configuration
 
-All runtime options live in `config.yml`.  Key sections:
+All runtime options live in `config/config.yml`.  Key sections:
 
 - `cryptoflow`: service name and version.
 - `channels`: buffer sizes for the raw and flattened channels.
@@ -88,14 +89,14 @@ Copy `.env.example` to `.env` and populate with your values before running the a
 go build ./...
 go test  ./...
 
-# Start the service (uses config.yml by default)
+# Start the service (uses config/config.yml by default)
 go run main.go
 ```
 
 On startup CryptoFlow will:
 
 1. Load environment variables from `.env`.
-2. Read `config.yml` and validate required fields.
+2. Read `config/config.yml` and validate required fields.
 3. Start the reader, flattener and (if enabled) the S3 writer.
 4. Begin streaming snapshots until interrupted (`Ctrl+C`).
 
@@ -124,7 +125,7 @@ go test ./...
 
 # Execute the service with a custom config
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... \
-  go run main.go -config config.yml
+  go run main.go -config config/config.yml
 ```
 
 Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.

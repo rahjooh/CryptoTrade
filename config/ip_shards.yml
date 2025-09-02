@@ -1,0 +1,23 @@
+shards:
+  - ip: 10.0.0.1
+    binance_symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - BNBUSDT
+      - XRPUSDT
+    kucoin_symbols:
+      - XBTUSDTM
+      - ETHUSDTM
+      - BNBUSDTM
+      - XRPUSDTM
+  - ip: 10.0.0.2
+    binance_symbols:
+      - LTCUSDT
+      - DOGEUSDT
+      - ADAUSDT
+      - SOLUSDT
+    kucoin_symbols:
+      - LTCUSDTM
+      - DOGEUSDTM
+      - ADAUSDTM
+      - SOLUSDTM
