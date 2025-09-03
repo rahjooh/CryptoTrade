@@ -399,6 +399,7 @@ func (w *DeltaWriter) s3Key(batch models.BatchFOBDMessage) string {
 
 	parts = append(parts, timePath)
 
-	filename := fmt.Sprintf("delta_%s_%s_%d.parquet", batch.Exchange, batch.Symbol, timestamp.UnixNano())
+	ts := "1" + timestamp.UTC().Format("20060102150405")
+	filename := fmt.Sprintf("%s_fobd_%s_%s.parquet", batch.Exchange, batch.Symbol, ts)
 	return filepath.ToSlash(filepath.Join(append(parts, filename)...))
 }
