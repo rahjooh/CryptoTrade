@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -98,6 +99,11 @@ type DeltaWriter struct {
 	wg          *sync.WaitGroup
 	running     bool
 	log         *logger.Log
+
+	batchesWritten int64
+	filesWritten   int64
+	bytesWritten   int64
+	errorsCount    int64
 }
 
 // Start launches workers and flush ticker.
@@ -116,7 +122,7 @@ func (w *DeltaWriter) start(ctx context.Context) error {
 	go w.worker()
 
 	w.wg.Add(1)
-	go w.flushLoop()
+	go w.flushWorker()
 
 	w.wg.Add(1)
 	go w.metricsReporter()
@@ -139,7 +145,7 @@ func (w *DeltaWriter) stop() {
 		w.flushTicker.Stop()
 	}
 	w.wg.Wait()
-	w.flushBuffers()
+	w.flushBuffers("stop")
 	w.log.WithComponent("delta_writer").Info("delta writer stopped")
 }
 
@@ -154,6 +160,7 @@ func (w *DeltaWriter) worker() {
 				return
 			}
 			w.addBatch(batch)
+			atomic.AddInt64(&w.batchesWritten, 1)
 		}
 	}
 }
@@ -193,30 +200,20 @@ func (w *DeltaWriter) flushKey(key string) {
 	w.writeBatch(batch)
 }
 
-func (w *DeltaWriter) flushLoop() {
+func (w *DeltaWriter) flushWorker() {
 	defer w.wg.Done()
 	for {
 		select {
 		case <-w.ctx.Done():
-			w.flushBuffers()
+			w.flushBuffers("shutdown")
 			return
 		case <-w.flushTicker.C:
-			w.mu.Lock()
-			keys := make([]string, 0, len(w.buffer))
-			for k, entries := range w.buffer {
-				if len(entries) > 0 {
-					keys = append(keys, k)
-				}
-			}
-			w.mu.Unlock()
-			for _, k := range keys {
-				w.flushKey(k)
-			}
+			w.flushBuffers("interval")
 		}
 	}
 }
 
-func (w *DeltaWriter) flushBuffers() {
+func (w *DeltaWriter) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
 	w.buffer = make(map[string][]models.NormFOBDMessage)
@@ -225,6 +222,11 @@ func (w *DeltaWriter) flushBuffers() {
 	if len(buffers) == 0 {
 		return
 	}
+
+	w.log.WithComponent("delta_writer").WithFields(logger.Fields{
+		"flushed_buffers": len(buffers),
+		"reason":          reason,
+	}).Info("flushing buffers")
 
 	for key, entries := range buffers {
 		if len(entries) == 0 {
@@ -248,14 +250,18 @@ func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
+		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("create parquet failed")
 		return
 	}
 	key := w.s3Key(batch)
 	if err := w.upload(key, data); err != nil {
+		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("upload to s3 failed")
 		return
 	}
+	atomic.AddInt64(&w.filesWritten, 1)
+	atomic.AddInt64(&w.bytesWritten, size)
 	duration := time.Since(start)
 	fields := logger.Fields{
 		"s3_key":      key,
@@ -319,18 +325,49 @@ func (w *DeltaWriter) metricsReporter() {
 		case <-w.ctx.Done():
 			return
 		case <-ticker.C:
-			w.mu.Lock()
-			running := w.running
-			w.mu.Unlock()
-			if !running {
-				return
-			}
-			w.log.WithComponent("delta_writer").WithFields(logger.Fields{
-				"norm_channel_len": len(w.normChan),
-				"norm_channel_cap": cap(w.normChan),
-			}).Info("delta writer channel size")
+			w.reportMetrics()
 		}
 	}
+}
+
+func (w *DeltaWriter) reportMetrics() {
+	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
+	filesWritten := atomic.LoadInt64(&w.filesWritten)
+	bytesWritten := atomic.LoadInt64(&w.bytesWritten)
+	errorsCount := atomic.LoadInt64(&w.errorsCount)
+
+	errorRate := float64(0)
+	if batchesWritten+errorsCount > 0 {
+		errorRate = float64(errorsCount) / float64(batchesWritten+errorsCount)
+	}
+
+	avgBytesPerFile := float64(0)
+	if filesWritten > 0 {
+		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
+	}
+
+	normLen := len(w.normChan)
+	normCap := cap(w.normChan)
+
+	log := w.log.WithComponent("delta_writer")
+	log.LogMetric("delta_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
+	log.LogMetric("delta_writer", "files_written", filesWritten, "counter", logger.Fields{})
+	log.LogMetric("delta_writer", "bytes_written", bytesWritten, "counter", logger.Fields{})
+	log.LogMetric("delta_writer", "errors_count", errorsCount, "counter", logger.Fields{})
+	log.LogMetric("delta_writer", "error_rate", errorRate, "gauge", logger.Fields{})
+	log.LogMetric("delta_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
+	log.LogMetric("delta_writer", "norm_channel_len", normLen, "gauge", logger.Fields{})
+
+	log.WithFields(logger.Fields{
+		"batches_written":    batchesWritten,
+		"files_written":      filesWritten,
+		"bytes_written":      bytesWritten,
+		"errors_count":       errorsCount,
+		"error_rate":         errorRate,
+		"avg_bytes_per_file": avgBytesPerFile,
+		"norm_channel_len":   normLen,
+		"norm_channel_cap":   normCap,
+	}).Warn("s3 writer metrics")
 }
 
 // Start exposes the internal start method for external packages.
