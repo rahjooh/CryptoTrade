@@ -106,6 +106,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_streamSymbol(symbol string) {
 	}
 
 	topic := fmt.Sprintf("/contractMarket/level2:%s", symbol)
+	fmt.Printf("#####", topic)
 	sub := kumex.NewSubscribeMessage(topic, false)
 	if err := c.Subscribe(sub); err != nil {
 		log.WithError(err).Warn("failed to subscribe")
