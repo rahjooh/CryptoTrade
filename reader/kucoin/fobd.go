@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sync"
 	"time"
 
@@ -58,7 +59,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Start(ctx context.Context) error {
 	log.WithFields(logger.Fields{"symbols": cfg.Symbols}).Info("starting delta reader")
 
 	r.wg.Add(1)
-	go r.Kucoin_FOBD_stream(cfg.Symbols)
+	go r.Kucoin_FOBD_stream(cfg.Symbols, cfg.URL)
 
 	log.Info("kucoin delta reader started successfully")
 	return nil
@@ -75,8 +76,17 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Stop() {
 	r.log.WithComponent("kucoin_delta_reader").Info("delta reader stopped")
 }
 
-func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string) {
+func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL string) {
 	defer r.wg.Done()
+
+	baseURL := wsURL
+	if parsed, err := url.Parse(wsURL); err == nil {
+		baseURL = fmt.Sprintf("https://%s", parsed.Host)
+	}
+
+	service := kumex.NewApiService(
+		kumex.ApiBaseURIOption(baseURL),
+	)
 
 	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{
 		"worker": "delta_stream",
@@ -89,7 +99,6 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string) {
 			return
 		}
 
-		service := kumex.NewApiService()
 		rsp, err := service.WebSocketPublicToken()
 		if err != nil {
 			log.WithError(err).Warn("failed to get websocket token")
