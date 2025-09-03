@@ -31,7 +31,8 @@ type DeltaProcessor struct {
 	batches   map[string]*models.BatchFOBDMessage
 	lastFlush map[string]time.Time
 
-	symbols map[string]struct{}
+	symbols       map[string]struct{}
+	filterSymbols bool
 }
 
 // NewDeltaProcessor creates a new processor instance.
@@ -44,14 +45,15 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessa
 		symSet[symbols.ToBinance("kucoin", s)] = struct{}{}
 	}
 	return &DeltaProcessor{
-		config:    cfg,
-		rawChan:   rawChan,
-		normChan:  normChan,
-		wg:        &sync.WaitGroup{},
-		log:       logger.GetLogger(),
-		batches:   make(map[string]*models.BatchFOBDMessage),
-		lastFlush: make(map[string]time.Time),
-		symbols:   symSet,
+		config:        cfg,
+		rawChan:       rawChan,
+		normChan:      normChan,
+		wg:            &sync.WaitGroup{},
+		log:           logger.GetLogger(),
+		batches:       make(map[string]*models.BatchFOBDMessage),
+		lastFlush:     make(map[string]time.Time),
+		symbols:       symSet,
+		filterSymbols: len(symSet) > 0,
 	}
 }
 
@@ -117,9 +119,11 @@ func (p *DeltaProcessor) worker(id int) {
 			if !ok {
 				return
 			}
-			if _, ok := p.symbols[msg.Symbol]; !ok {
-				// drop unneeded symbol
-				continue
+			if p.filterSymbols {
+				if _, ok := p.symbols[msg.Symbol]; !ok {
+					// drop unneeded symbol
+					continue
+				}
 			}
 			p.handleMessage(msg)
 		}
