@@ -63,12 +63,13 @@ func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.BatchFOBDMessa
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 	return &DeltaWriter{
-		cfg:      cfg,
-		normChan: normChan,
-		s3Client: s3Client,
-		buffer:   make(map[string][]models.NormFOBDMessage),
-		wg:       &sync.WaitGroup{},
-		log:      log,
+		cfg:       cfg,
+		normChan:  normChan,
+		s3Client:  s3Client,
+		buffer:    make(map[string][]models.NormFOBDMessage),
+		lastFlush: make(map[string]time.Time),
+		wg:        &sync.WaitGroup{},
+		log:       log,
 	}, nil
 }
 
@@ -93,6 +94,7 @@ type DeltaWriter struct {
 	normChan    <-chan models.BatchFOBDMessage
 	s3Client    *s3.Client
 	buffer      map[string][]models.NormFOBDMessage
+	lastFlush   map[string]time.Time
 	mu          sync.Mutex
 	flushTicker *time.Ticker
 	ctx         context.Context
@@ -115,7 +117,7 @@ func (w *DeltaWriter) start(ctx context.Context) error {
 	}
 	w.running = true
 	w.ctx = ctx
-	w.flushTicker = time.NewTicker(w.cfg.Writer.Buffer.DeltaFlushInterval)
+	w.flushTicker = time.NewTicker(time.Second)
 	w.mu.Unlock()
 
 	w.wg.Add(1)
@@ -170,9 +172,17 @@ func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
 	size := len(w.buffer[key])
+	if _, ok := w.lastFlush[key]; !ok {
+		w.lastFlush[key] = time.Now()
+	}
+	last := w.lastFlush[key]
 	w.mu.Unlock()
 
 	if w.cfg.Writer.Buffer.MaxSize > 0 && size >= w.cfg.Writer.Buffer.MaxSize {
+		w.flushKey(key)
+		return
+	}
+	if time.Since(last) >= w.cfg.Writer.Buffer.DeltaFlushInterval {
 		w.flushKey(key)
 	}
 }
@@ -185,6 +195,7 @@ func (w *DeltaWriter) flushKey(key string) {
 		return
 	}
 	delete(w.buffer, key)
+	delete(w.lastFlush, key)
 	w.mu.Unlock()
 
 	parts := strings.SplitN(key, "|", 3)
@@ -208,7 +219,7 @@ func (w *DeltaWriter) flushWorker() {
 			w.flushBuffers("shutdown")
 			return
 		case <-w.flushTicker.C:
-			w.flushBuffers("interval")
+			w.flushTimedOut()
 		}
 	}
 }
@@ -217,6 +228,7 @@ func (w *DeltaWriter) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
 	w.buffer = make(map[string][]models.NormFOBDMessage)
+	w.lastFlush = make(map[string]time.Time)
 	w.mu.Unlock()
 
 	if len(buffers) == 0 {
@@ -243,6 +255,22 @@ func (w *DeltaWriter) flushBuffers(reason string) {
 			Timestamp:   time.Now(),
 		}
 		w.writeBatch(batch)
+	}
+}
+
+func (w *DeltaWriter) flushTimedOut() {
+	w.mu.Lock()
+	now := time.Now()
+	var keys []string
+	for k, t := range w.lastFlush {
+		if now.Sub(t) >= w.cfg.Writer.Buffer.DeltaFlushInterval {
+			keys = append(keys, k)
+		}
+	}
+	w.mu.Unlock()
+
+	for _, k := range keys {
+		w.flushKey(k)
 	}
 }
 
