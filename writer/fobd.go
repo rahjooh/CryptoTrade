@@ -162,7 +162,35 @@ func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
+	size := len(w.buffer[key])
 	w.mu.Unlock()
+
+	if w.cfg.Writer.Buffer.MaxSize > 0 && size >= w.cfg.Writer.Buffer.MaxSize {
+		w.flushKey(key)
+	}
+}
+
+func (w *DeltaWriter) flushKey(key string) {
+	w.mu.Lock()
+	entries, ok := w.buffer[key]
+	if !ok || len(entries) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	delete(w.buffer, key)
+	w.mu.Unlock()
+
+	parts := strings.SplitN(key, "|", 3)
+	batch := models.BatchFOBDMessage{
+		BatchID:     uuid.New().String(),
+		Exchange:    parts[0],
+		Market:      parts[1],
+		Symbol:      parts[2],
+		Entries:     entries,
+		RecordCount: len(entries),
+		Timestamp:   time.Now(),
+	}
+	w.writeBatch(batch)
 }
 
 func (w *DeltaWriter) flushLoop() {
