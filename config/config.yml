@@ -185,7 +185,7 @@ source:
           enabled: false
           connection: rest
           url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
-          limit: 100
+          limit: 1000
           interval_ms: 1000
 #          symbols: [ BTC-USDT, ETH-USDT ]
         delta:
@@ -292,7 +292,7 @@ writer:
     memory_threshold: 0.8
   partitioning:
     scheme: "time"
-    time_format: "year={year}/month={month}/day={day}/hour={hour}"
+    time_format: "date={year}-{month}-{day}"
     additional_keys: ["exchange", "market", "symbol"]
   formats:
     parquet:

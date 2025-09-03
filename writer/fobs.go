@@ -379,10 +379,7 @@ func (w *snapshotWriter) processBatch(batch models.BatchFOBSMessage) {
 			"exchange": batch.Exchange,
 			"market":   batch.Market,
 			"symbol":   batch.Symbol,
-			"year":     batch.Timestamp.Year(),
-			"month":    int(batch.Timestamp.Month()),
-			"day":      batch.Timestamp.Day(),
-			"hour":     batch.Timestamp.Hour(),
+			"date":     batch.Timestamp.Format("2006-01-02"),
 		},
 		Timestamp: batch.Timestamp,
 	}
@@ -419,10 +416,11 @@ func (w *snapshotWriter) generateS3Key(batch models.BatchFOBSMessage) string {
 	parts = append(parts, timePath)
 
 	// Add filename
-	filename := fmt.Sprintf("orderbook_%s_%s_%d.parquet",
+	ts := "1" + timestamp.UTC().Format("20060102150405")
+	filename := fmt.Sprintf("%s_fobs_%s_%s.parquet",
 		batch.Exchange,
 		batch.Symbol,
-		timestamp.UnixNano())
+		ts)
 
 	key := filepath.Join(append(parts, filename)...)
 
