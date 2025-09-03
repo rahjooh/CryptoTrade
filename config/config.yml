@@ -200,8 +200,8 @@ source:
           enabled: true
           connection: rest
           url: https://api-futures.kucoin.com/api/v1/level2/snapshot
-          limit: 100
-          interval_ms: 1000
+          limit: 1000
+          interval_ms: 60000
 #          symbols: [ XBTUSDTM, ETHUSDTM ]
         delta:
           enabled: true

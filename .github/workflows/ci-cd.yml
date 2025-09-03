@@ -121,6 +121,6 @@ jobs:
             docker compose down || true
             
             # Start the container(s) with the newly transferred files
-            docker compose up -d
+            docker compose up -d --build
             
             echo "✅ Deploy complete"

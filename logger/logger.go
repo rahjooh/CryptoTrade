@@ -67,7 +67,7 @@ func Logger() *Log {
 		},
 		CallerPrettyfier: callerPrettyfier,
 	})
-
+	logger.AddHook(&callerHook{})
 	return &Log{Logger: logger}
 }
 
