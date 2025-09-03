@@ -100,6 +100,12 @@ type DeltaWriter struct {
 	wg          *sync.WaitGroup
 	running     bool
 	log         *logger.Log
+
+	// Metrics counters updated atomically
+	batchesWritten int64
+	filesWritten   int64
+	bytesWritten   int64
+	errorsCount    int64
 }
 
 // Start launches workers and flush ticker.
@@ -156,6 +162,7 @@ func (w *DeltaWriter) worker() {
 				return
 			}
 			w.addBatch(batch)
+			atomic.AddInt64(&w.batchesWritten, 1)
 		}
 	}
 }
@@ -217,14 +224,18 @@ func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
+		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("create parquet failed")
 		return
 	}
 	key := w.s3Key(batch)
 	if err := w.upload(key, data); err != nil {
+		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("upload to s3 failed")
 		return
 	}
+	atomic.AddInt64(&w.filesWritten, 1)
+	atomic.AddInt64(&w.bytesWritten, size)
 	duration := time.Since(start)
 	fields := logger.Fields{
 		"s3_key":      key,
@@ -353,6 +364,11 @@ func (w *DeltaWriter) s3Key(batch models.BatchFOBDMessage) string {
 			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
 		}
 	}
+	timeFormat := w.cfg.Writer.Partitioning.TimeFormat
+	timePath := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
+	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
 
 	parts = append(parts, timePath)
 

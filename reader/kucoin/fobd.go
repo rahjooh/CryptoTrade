@@ -63,10 +63,19 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Start(ctx context.Context) error {
 		return fmt.Errorf("kucoin futures orderbook delta is disabled")
 	}
 
-	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting delta reader")
+	symbols := r.symbols
+	if len(symbols) == 0 {
+		symbols = cfg.Symbols
+	}
+	if len(symbols) == 0 {
+		log.Warn("no symbols configured for kucoin futures orderbook delta")
+		return fmt.Errorf("no symbols configured for kucoin futures orderbook delta")
+	}
+
+	log.WithFields(logger.Fields{"symbols": symbols}).Info("starting delta reader")
 
 	r.wg.Add(1)
-	go r.Kucoin_FOBD_stream(r.symbols, cfg.URL)
+	go r.Kucoin_FOBD_stream(symbols, cfg.URL)
 
 	log.Info("kucoin delta reader started successfully")
 	return nil
