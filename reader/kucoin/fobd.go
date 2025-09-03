@@ -140,7 +140,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_streamSymbol(symbol string) {
 			}
 
 			evt := models.BinanceFOBDResp{
-				Symbol:           symbols.ToBinance("kucoin", data.Symbol),
+				Symbol:           data.Symbol,
 				Time:             data.Timestamp,
 				FirstUpdateID:    data.Sequence,
 				LastUpdateID:     data.Sequence,
