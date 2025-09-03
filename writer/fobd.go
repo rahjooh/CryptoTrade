@@ -201,7 +201,17 @@ func (w *DeltaWriter) flushLoop() {
 			w.flushBuffers()
 			return
 		case <-w.flushTicker.C:
-			w.flushBuffers()
+			w.mu.Lock()
+			keys := make([]string, 0, len(w.buffer))
+			for k, entries := range w.buffer {
+				if len(entries) > 0 {
+					keys = append(keys, k)
+				}
+			}
+			w.mu.Unlock()
+			for _, k := range keys {
+				w.flushKey(k)
+			}
 		}
 	}
 }
