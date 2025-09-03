@@ -29,9 +29,8 @@ func main() {
 		log.WithError(err).Warn("Error loading .env file")
 	}
 
-
-  configPath := flag.String("config", "config/config.yml", "Path to configuration file")
-  shardPath := flag.String("shards", "config/ip_shards.yml", "Path to IP shard configuration file")
+	configPath := flag.String("config", "config/config.yml", "Path to configuration file")
+	shardPath := flag.String("shards", "config/ip_shards.yml", "Path to IP shard configuration file")
 
 	flag.Parse()
 
@@ -85,9 +84,9 @@ func main() {
 		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
 
 		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.BinanceSymbols, shard.IP))
-		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw))
+		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.KucoinSymbols, shard.IP))
 		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.BinanceSymbols, shard.IP))
-		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw))
+		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.KucoinSymbols, shard.IP))
 	}
 
 	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
