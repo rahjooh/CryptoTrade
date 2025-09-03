@@ -63,13 +63,12 @@ func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.BatchFOBDMessa
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 	return &DeltaWriter{
-		cfg:       cfg,
-		normChan:  normChan,
-		s3Client:  s3Client,
-		buffer:    make(map[string][]models.NormFOBDMessage),
-		lastFlush: make(map[string]time.Time),
-		wg:        &sync.WaitGroup{},
-		log:       log,
+		cfg:      cfg,
+		normChan: normChan,
+		s3Client: s3Client,
+		buffer:   make(map[string][]models.NormFOBDMessage),
+		wg:       &sync.WaitGroup{},
+		log:      log,
 	}, nil
 }
 
@@ -101,11 +100,6 @@ type DeltaWriter struct {
 	wg          *sync.WaitGroup
 	running     bool
 	log         *logger.Log
-
-	batchesWritten int64
-	filesWritten   int64
-	bytesWritten   int64
-	errorsCount    int64
 }
 
 // Start launches workers and flush ticker.
@@ -117,7 +111,7 @@ func (w *DeltaWriter) start(ctx context.Context) error {
 	}
 	w.running = true
 	w.ctx = ctx
-	w.flushTicker = time.NewTicker(time.Second)
+	w.flushTicker = time.NewTicker(w.cfg.Writer.Buffer.DeltaFlushInterval)
 	w.mu.Unlock()
 
 	w.wg.Add(1)
@@ -147,7 +141,7 @@ func (w *DeltaWriter) stop() {
 		w.flushTicker.Stop()
 	}
 	w.wg.Wait()
-	w.flushBuffers("stop")
+	w.flushBuffers("writer/fobd/stop Stopping")
 	w.log.WithComponent("delta_writer").Info("delta writer stopped")
 }
 
@@ -162,7 +156,6 @@ func (w *DeltaWriter) worker() {
 				return
 			}
 			w.addBatch(batch)
-			atomic.AddInt64(&w.batchesWritten, 1)
 		}
 	}
 }
@@ -171,44 +164,7 @@ func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
-	size := len(w.buffer[key])
-	if _, ok := w.lastFlush[key]; !ok {
-		w.lastFlush[key] = time.Now()
-	}
-	last := w.lastFlush[key]
 	w.mu.Unlock()
-
-	if w.cfg.Writer.Buffer.MaxSize > 0 && size >= w.cfg.Writer.Buffer.MaxSize {
-		w.flushKey(key)
-		return
-	}
-	if time.Since(last) >= w.cfg.Writer.Buffer.DeltaFlushInterval {
-		w.flushKey(key)
-	}
-}
-
-func (w *DeltaWriter) flushKey(key string) {
-	w.mu.Lock()
-	entries, ok := w.buffer[key]
-	if !ok || len(entries) == 0 {
-		w.mu.Unlock()
-		return
-	}
-	delete(w.buffer, key)
-	delete(w.lastFlush, key)
-	w.mu.Unlock()
-
-	parts := strings.SplitN(key, "|", 3)
-	batch := models.BatchFOBDMessage{
-		BatchID:     uuid.New().String(),
-		Exchange:    parts[0],
-		Market:      parts[1],
-		Symbol:      parts[2],
-		Entries:     entries,
-		RecordCount: len(entries),
-		Timestamp:   time.Now(),
-	}
-	w.writeBatch(batch)
 }
 
 func (w *DeltaWriter) flushWorker() {
@@ -216,10 +172,10 @@ func (w *DeltaWriter) flushWorker() {
 	for {
 		select {
 		case <-w.ctx.Done():
-			w.flushBuffers("shutdown")
+			w.flushBuffers("writer/fobd/flushWorker shutdown")
 			return
 		case <-w.flushTicker.C:
-			w.flushTimedOut()
+			w.flushBuffers("writer/fobd/flushWorker Timeout flushing")
 		}
 	}
 }
@@ -228,7 +184,6 @@ func (w *DeltaWriter) flushBuffers(reason string) {
 	w.mu.Lock()
 	buffers := w.buffer
 	w.buffer = make(map[string][]models.NormFOBDMessage)
-	w.lastFlush = make(map[string]time.Time)
 	w.mu.Unlock()
 
 	if len(buffers) == 0 {
@@ -262,18 +217,14 @@ func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("create parquet failed")
 		return
 	}
 	key := w.s3Key(batch)
 	if err := w.upload(key, data); err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("upload to s3 failed")
 		return
 	}
-	atomic.AddInt64(&w.filesWritten, 1)
-	atomic.AddInt64(&w.bytesWritten, size)
 	duration := time.Since(start)
 	fields := logger.Fields{
 		"s3_key":      key,
@@ -402,12 +353,6 @@ func (w *DeltaWriter) s3Key(batch models.BatchFOBDMessage) string {
 			parts = append(parts, fmt.Sprintf("symbol=%s", batch.Symbol))
 		}
 	}
-
-	timePath := w.cfg.Writer.Partitioning.TimeFormat
-	timePath = strings.ReplaceAll(timePath, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
-	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", int(timestamp.Month())))
-	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
-	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
 
 	parts = append(parts, timePath)
 
