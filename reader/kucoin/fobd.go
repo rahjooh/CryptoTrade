@@ -57,10 +57,8 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Start(ctx context.Context) error {
 
 	log.WithFields(logger.Fields{"symbols": cfg.Symbols}).Info("starting delta reader")
 
-	for _, symbol := range cfg.Symbols {
-		r.wg.Add(1)
-		go r.Kucoin_FOBD_streamSymbol(symbol)
-	}
+	r.wg.Add(1)
+	go r.Kucoin_FOBD_stream(cfg.Symbols)
 
 	log.Info("kucoin delta reader started successfully")
 	return nil
@@ -77,114 +75,140 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Stop() {
 	r.log.WithComponent("kucoin_delta_reader").Info("delta reader stopped")
 }
 
-func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_streamSymbol(symbol string) {
+func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string) {
 	defer r.wg.Done()
 
 	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{
-		"symbol": symbol,
 		"worker": "delta_stream",
 	})
 
-	service := kumex.NewApiService()
-	rsp, err := service.WebSocketPublicToken()
-	if err != nil {
-		log.WithError(err).Warn("failed to get websocket token")
-		return
-	}
-
-	tk := &kumex.WebSocketTokenModel{}
-	if err := rsp.ReadData(tk); err != nil {
-		log.WithError(err).Warn("failed to read websocket token")
-		return
-	}
-
-	c := service.NewWebSocketClient(tk)
-	mc, ec, err := c.Connect()
-	if err != nil {
-		log.WithError(err).Warn("failed to connect websocket")
-		return
-	}
-
-	topic := fmt.Sprintf("/contractMarket/level2:%s", symbol)
-	log.WithFields(logger.Fields{"topic": topic}).Warn("subscribing to topic")
-	sub := kumex.NewSubscribeMessage(topic, false)
-	if err := c.Subscribe(sub); err != nil {
-		log.WithError(err).Warn("failed to subscribe")
-		return
-	}
+	reconnectDelay := 5 * time.Second
 
 	for {
-		select {
-		case <-r.ctx.Done():
-			c.Stop()
+		if r.ctx.Err() != nil {
 			return
-		case err := <-ec:
-			if err != nil {
-				log.WithError(err).Warn("websocket error")
-			}
-		case msg := <-mc:
-			if msg.Topic != topic {
-				continue
-			}
-			var data struct {
-				Sequence  int64  `json:"sequence"`
-				Symbol    string `json:"symbol"`
-				Timestamp int64  `json:"timestamp"`
-				Changes   struct {
-					Bids [][]string `json:"bids"`
-					Asks [][]string `json:"asks"`
-				} `json:"changes"`
-			}
-			if err := msg.ReadData(&data); err != nil {
-				log.WithError(err).Warn("failed to read level2 data")
-				continue
-			}
+		}
 
-			evt := models.BinanceFOBDResp{
-				Symbol:           data.Symbol,
-				Time:             data.Timestamp,
-				FirstUpdateID:    data.Sequence,
-				LastUpdateID:     data.Sequence,
-				PrevLastUpdateID: data.Sequence - 1,
-			}
-			evt.Bids = make([]models.FOBDEntry, len(data.Changes.Bids))
-			for i, b := range data.Changes.Bids {
-				if len(b) < 2 {
-					continue
-				}
-				evt.Bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
-			}
-			evt.Asks = make([]models.FOBDEntry, len(data.Changes.Asks))
-			for i, a := range data.Changes.Asks {
-				if len(a) < 2 {
-					continue
-				}
-				evt.Asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
-			}
+		service := kumex.NewApiService()
+		rsp, err := service.WebSocketPublicToken()
+		if err != nil {
+			log.WithError(err).Warn("failed to get websocket token")
+			time.Sleep(reconnectDelay)
+			continue
+		}
 
-			payload, err := json.Marshal(evt)
-			if err != nil {
-				log.WithError(err).Warn("failed to marshal event")
-				continue
-			}
+		tk := &kumex.WebSocketTokenModel{}
+		if err := rsp.ReadData(tk); err != nil {
+			log.WithError(err).Warn("failed to read websocket token")
+			time.Sleep(reconnectDelay)
+			continue
+		}
 
-			msgOut := models.RawFOBDMessage{
-				Exchange:  "kucoin",
-				Symbol:    symbols.ToBinance("kucoin", data.Symbol),
-				Market:    "future-orderbook-delta",
-				Data:      payload,
-				Timestamp: time.Now(),
-			}
+		c := service.NewWebSocketClient(tk)
+		mc, ec, err := c.Connect()
+		if err != nil {
+			log.WithError(err).Warn("failed to connect websocket")
+			time.Sleep(reconnectDelay)
+			continue
+		}
 
+		topics := make([]string, len(symbolList))
+		for i, symbol := range symbolList {
+			topic := fmt.Sprintf("/contractMarket/level2:%s", symbol)
+			topics[i] = topic
+			sub := kumex.NewSubscribeMessage(topic, false)
+			if err := c.Subscribe(sub); err != nil {
+				log.WithFields(logger.Fields{"topic": topic}).WithError(err).Warn("failed to subscribe")
+			}
+		}
+
+		log.WithFields(logger.Fields{"topics": topics}).Info("subscribed to topics")
+
+		// message loop
+		for {
 			select {
-			case r.rawChan <- msgOut:
-				logger.IncrementDeltaRead(len(payload))
 			case <-r.ctx.Done():
 				c.Stop()
 				return
-			default:
-				log.Warn("raw delta channel full, dropping message")
+			case err := <-ec:
+				if err != nil {
+					log.WithError(err).Warn("websocket error")
+				}
+				c.Stop()
+				time.Sleep(reconnectDelay)
+				goto reconnect
+			case msg, ok := <-mc:
+				if !ok {
+					c.Stop()
+					time.Sleep(reconnectDelay)
+					goto reconnect
+				}
+				var data struct {
+					Sequence  int64  `json:"sequence"`
+					Symbol    string `json:"symbol"`
+					Timestamp int64  `json:"timestamp"`
+					Changes   struct {
+						Bids [][]string `json:"bids"`
+						Asks [][]string `json:"asks"`
+					} `json:"changes"`
+				}
+				if err := msg.ReadData(&data); err != nil {
+					log.WithError(err).Warn("failed to read level2 data")
+					continue
+				}
+
+				evt := models.BinanceFOBDResp{
+					Symbol:           data.Symbol,
+					Time:             data.Timestamp,
+					FirstUpdateID:    data.Sequence,
+					LastUpdateID:     data.Sequence,
+					PrevLastUpdateID: data.Sequence - 1,
+				}
+				evt.Bids = make([]models.FOBDEntry, len(data.Changes.Bids))
+				for i, b := range data.Changes.Bids {
+					if len(b) < 2 {
+						continue
+					}
+					evt.Bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
+				}
+				evt.Asks = make([]models.FOBDEntry, len(data.Changes.Asks))
+				for i, a := range data.Changes.Asks {
+					if len(a) < 2 {
+						continue
+					}
+					evt.Asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
+				}
+
+				payload, err := json.Marshal(evt)
+				if err != nil {
+					log.WithError(err).Warn("failed to marshal event")
+					continue
+				}
+
+				msgOut := models.RawFOBDMessage{
+					Exchange:  "kucoin",
+					Symbol:    symbols.ToBinance("kucoin", data.Symbol),
+					Market:    "future-orderbook-delta",
+					Data:      payload,
+					Timestamp: time.Now(),
+				}
+
+				select {
+				case r.rawChan <- msgOut:
+					logger.IncrementDeltaRead(len(payload))
+				case <-r.ctx.Done():
+					c.Stop()
+					return
+				default:
+					log.Warn("raw delta channel full, dropping message")
+				}
 			}
 		}
+
+	reconnect:
+		if r.ctx.Err() != nil {
+			return
+		}
+		log.Warn("kucoin websocket disconnected, reconnecting")
 	}
 }
