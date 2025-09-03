@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -13,47 +15,62 @@ import (
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
-
-	kumex "github.com/Kucoin/kucoin-futures-go-sdk"
 )
 
 // Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
 type Kucoin_FOBS_Reader struct {
-	config     *config.Config
-	client     *kumex.ApiService
-	rawChannel chan<- models.RawFOBSMessage
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
+	config      *config.Config
+	client      *http.Client
+	rawChannel  chan<- models.RawFOBSMessage
+	ctx         context.Context
+	wg          *sync.WaitGroup
+	mu          sync.RWMutex
+	running     bool
+	log         *logger.Log
+	symbols     []string
+	snapshotURL string
 }
 
-// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin futures SDK.
-func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage) *Kucoin_FOBS_Reader {
+// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using a custom HTTP client.
+// The reader will bind outbound connections to the provided localIP if not empty
+// and fetch snapshots only for the supplied symbols.
+func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Kucoin_FOBS_Reader {
 	log := logger.GetLogger()
 
 	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
 
-	baseURL := snapshotCfg.URL
-	if parsed, err := url.Parse(snapshotCfg.URL); err == nil {
-		baseURL = fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+	transport := &http.Transport{
+		MaxIdleConns:        cfg.Source.Kucoin.ConnectionPool.MaxIdleConns,
+		MaxIdleConnsPerHost: cfg.Source.Kucoin.ConnectionPool.MaxIdleConns,
+		MaxConnsPerHost:     cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost,
+		IdleConnTimeout:     cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout,
+		DisableCompression:  false,
 	}
 
-	client := kumex.NewApiService(
-		kumex.ApiBaseURIOption(baseURL),
-	)
+	if localIP != "" {
+		if ip := net.ParseIP(localIP); ip != nil {
+			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+			transport.DialContext = dialer.DialContext
+		}
+	}
+
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   cfg.Reader.Timeout,
+	}
 
 	reader := &Kucoin_FOBS_Reader{
-		config:     cfg,
-		client:     client,
-		rawChannel: rawChannel,
-		wg:         &sync.WaitGroup{},
-		log:        log,
+		config:      cfg,
+		client:      httpClient,
+		rawChannel:  rawChannel,
+		wg:          &sync.WaitGroup{},
+		log:         log,
+		symbols:     symbols,
+		snapshotURL: snapshotCfg.URL,
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"base_url": baseURL,
+		"base_url": snapshotCfg.URL,
 	}).Info("kucoin reader initialized")
 
 	return reader
@@ -79,11 +96,11 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Start(ctx context.Context) error {
 	}
 
 	log.WithFields(logger.Fields{
-		"symbols":  snapshotCfg.Symbols,
+		"symbols":  r.symbols,
 		"interval": snapshotCfg.IntervalMs,
 	}).Info("starting kucoin reader")
 
-	for _, symbol := range snapshotCfg.Symbols {
+	for _, symbol := range r.symbols {
 		r.wg.Add(1)
 		go r.Kucoin_FOBS_FetchWorker(symbol, snapshotCfg)
 	}
@@ -149,37 +166,66 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		"operation": "fetch_orderbook",
 	})
 
-	market := "future-orderbook-snapshot"
+	reqURL, err := url.Parse(r.snapshotURL)
+	if err != nil {
+		log.WithError(err).Warn("invalid snapshot URL")
+		return
+	}
+	q := reqURL.Query()
+	q.Set("symbol", symbol)
+	reqURL.RawQuery = q.Encode()
 
-	res, err := r.client.Level2Snapshot(symbol)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, reqURL.String(), nil)
+	if err != nil {
+		log.WithError(err).Warn("failed to create request")
+		return
+	}
+
+	res, err := r.client.Do(req)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
+	defer res.Body.Close()
 
-	snap := kumex.Level2SnapshotModel{}
-	if err := res.ReadData(&snap); err != nil {
-		log.WithError(err).Warn("failed to read snapshot data")
+	var resp struct {
+		Code string `json:"code"`
+		Data struct {
+			Sequence int64       `json:"sequence"`
+			Bids     [][]float64 `json:"bids"`
+			Asks     [][]float64 `json:"asks"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		log.WithError(err).Warn("failed to decode snapshot data")
 		return
 	}
 
-	bids := make([][]string, len(snap.Bids))
-	for i, b := range snap.Bids {
+	bids := make([][]string, len(resp.Data.Bids))
+	for i, b := range resp.Data.Bids {
+		if len(b) < 2 {
+			continue
+		}
 		bids[i] = []string{
-			strconv.FormatFloat(float64(b[0]), 'f', -1, 32),
-			strconv.FormatFloat(float64(b[1]), 'f', -1, 32),
+			strconv.FormatFloat(b[0], 'f', -1, 64),
+			strconv.FormatFloat(b[1], 'f', -1, 64),
 		}
 	}
-	asks := make([][]string, len(snap.Asks))
-	for i, a := range snap.Asks {
+
+	asks := make([][]string, len(resp.Data.Asks))
+	for i, a := range resp.Data.Asks {
+		if len(a) < 2 {
+			continue
+		}
 		asks[i] = []string{
-			strconv.FormatFloat(float64(a[0]), 'f', -1, 32),
-			strconv.FormatFloat(float64(a[1]), 'f', -1, 32),
+			strconv.FormatFloat(a[0], 'f', -1, 64),
+			strconv.FormatFloat(a[1], 'f', -1, 64),
 		}
 	}
 
 	kucoinResp := models.BinanceFOBSresp{
-		LastUpdateID: int64(snap.Sequence),
+		LastUpdateID: resp.Data.Sequence,
 		Bids:         bids,
 		Asks:         asks,
 	}
@@ -193,7 +239,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	rawData := models.RawFOBSMessage{
 		Exchange:    "kucoin",
 		Symbol:      symbols.ToBinance("kucoin", symbol),
-		Market:      market,
+		Market:      "future-orderbook-snapshot",
 		Timestamp:   time.Now().UTC(),
 		Data:        payload,
 		MessageType: "snapshot",
@@ -202,7 +248,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	select {
 	case r.rawChannel <- rawData:
 		log.Info("orderbook data sent to raw channel")
-		logger.LogDataFlowEntry(log, "kucoin_api", "raw_channel", len(snap.Bids)+len(snap.Asks), "orderbook_entries")
+		logger.LogDataFlowEntry(log, "kucoin_api", "raw_channel", len(asks)+len(bids), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
 	case <-r.ctx.Done():
 		return

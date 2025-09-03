@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"cryptoflow/models"
 
 	kumex "github.com/Kucoin/kucoin-futures-go-sdk"
+	"github.com/gorilla/websocket"
 )
 
 // Kucoin_FOBD_Reader streams futures order book deltas from KuCoin.
@@ -25,15 +27,20 @@ type Kucoin_FOBD_Reader struct {
 	mu      sync.RWMutex
 	running bool
 	log     *logger.Log
+	symbols []string
+	localIP string
 }
 
 // Kucoin_FOBD_NewReader creates a new delta reader.
-func Kucoin_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage) *Kucoin_FOBD_Reader {
+// Symbols defines the markets this reader will subscribe to.
+func Kucoin_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage, symbols []string, localIP string) *Kucoin_FOBD_Reader {
 	return &Kucoin_FOBD_Reader{
 		config:  cfg,
 		rawChan: rawChan,
 		wg:      &sync.WaitGroup{},
 		log:     logger.GetLogger(),
+		symbols: symbols,
+		localIP: localIP,
 	}
 }
 
@@ -56,10 +63,10 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_Start(ctx context.Context) error {
 		return fmt.Errorf("kucoin futures orderbook delta is disabled")
 	}
 
-	log.WithFields(logger.Fields{"symbols": cfg.Symbols}).Info("starting delta reader")
+	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting delta reader")
 
 	r.wg.Add(1)
-	go r.Kucoin_FOBD_stream(cfg.Symbols, cfg.URL)
+	go r.Kucoin_FOBD_stream(r.symbols, cfg.URL)
 
 	log.Info("kucoin delta reader started successfully")
 	return nil
@@ -97,6 +104,13 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 	for {
 		if r.ctx.Err() != nil {
 			return
+		}
+
+		if r.localIP != "" {
+			if ip := net.ParseIP(r.localIP); ip != nil {
+				dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+				websocket.DefaultDialer.NetDialContext = dialer.DialContext
+			}
 		}
 
 		rsp, err := service.WebSocketPublicToken()
