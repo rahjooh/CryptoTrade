@@ -258,22 +258,6 @@ func (w *DeltaWriter) flushBuffers(reason string) {
 	}
 }
 
-func (w *DeltaWriter) flushTimedOut() {
-	w.mu.Lock()
-	now := time.Now()
-	var keys []string
-	for k, t := range w.lastFlush {
-		if now.Sub(t) >= w.cfg.Writer.Buffer.DeltaFlushInterval {
-			keys = append(keys, k)
-		}
-	}
-	w.mu.Unlock()
-
-	for _, k := range keys {
-		w.flushKey(k)
-	}
-}
-
 func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
