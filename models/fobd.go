@@ -73,16 +73,13 @@ type BinanceFOBDResp struct {
 ///////////////////////////////// KUCOIN ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-// KucoinLevel2Event represents a level2 delta update from KuCoin futures
-// WebSocket. The event contains sequence identifiers and bid/ask changes.
-// Bids and asks are represented as arrays of [price, size] strings.
-
-//type KucoinLevel2Event struct {
-//	Sequence  int64  `json:"sequence"`
-//	Symbol    string `json:"symbol"`
-//	Timestamp int64  `json:"timestamp"`
-//	Changes   struct {
-//		Bids [][]string `json:"bids"`
-//		Asks [][]string `json:"asks"`
-//	} `json:"changes"`
-//}
+// KucoinFOBDResp represents a level2 delta update from KuCoin futures
+// WebSocket. The event contains a sequence identifier, timestamp and bid/ask
+// changes represented as arrays of price and quantity strings.
+type KucoinFOBDResp struct {
+	Symbol    string      `json:"symbol"`
+	Sequence  int64       `json:"sequence"`
+	Timestamp int64       `json:"timestamp"`
+	Bids      []FOBDEntry `json:"bids"`
+	Asks      []FOBDEntry `json:"asks"`
+}

@@ -136,15 +136,45 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 		"exchange": raw.Exchange,
 	})
 
-	var evt models.BinanceFOBDResp
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		log.WithError(err).Warn("failed to unmarshal delta message")
-		return
+	var (
+		eventTime     int64
+		updateID      int64
+		prevUpdateID  int64
+		firstUpdateID int64
+		bids          []models.FOBDEntry
+		asks          []models.FOBDEntry
+	)
+
+	switch raw.Exchange {
+	case "kucoin":
+		var evt models.KucoinFOBDResp
+		if err := json.Unmarshal(raw.Data, &evt); err != nil {
+			log.WithError(err).Warn("failed to unmarshal delta message")
+			return
+		}
+		eventTime = evt.Timestamp
+		updateID = evt.Sequence
+		prevUpdateID = evt.Sequence - 1
+		firstUpdateID = evt.Sequence
+		bids = evt.Bids
+		asks = evt.Asks
+	default:
+		var evt models.BinanceFOBDResp
+		if err := json.Unmarshal(raw.Data, &evt); err != nil {
+			log.WithError(err).Warn("failed to unmarshal delta message")
+			return
+		}
+		eventTime = evt.Time
+		updateID = evt.LastUpdateID
+		prevUpdateID = evt.PrevLastUpdateID
+		firstUpdateID = evt.FirstUpdateID
+		bids = evt.Bids
+		asks = evt.Asks
 	}
 
-	entries := make([]models.NormFOBDMessage, 0, len(evt.Bids)+len(evt.Asks))
+	entries := make([]models.NormFOBDMessage, 0, len(bids)+len(asks))
 	recv := raw.Timestamp.UnixMilli()
-	for _, b := range evt.Bids {
+	for _, b := range bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
 		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
@@ -152,17 +182,17 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 		}
 		entries = append(entries, models.NormFOBDMessage{
 			Symbol:        raw.Symbol,
-			EventTime:     evt.Time,
-			UpdateID:      evt.LastUpdateID,
-			PrevUpdateID:  evt.PrevLastUpdateID,
-			FirstUpdateID: evt.FirstUpdateID,
+			EventTime:     eventTime,
+			UpdateID:      updateID,
+			PrevUpdateID:  prevUpdateID,
+			FirstUpdateID: firstUpdateID,
 			Side:          "bid",
 			Price:         price,
 			Quantity:      qty,
 			ReceivedTime:  recv,
 		})
 	}
-	for _, a := range evt.Asks {
+	for _, a := range asks {
 		price, err1 := strconv.ParseFloat(a.Price, 64)
 		qty, err2 := strconv.ParseFloat(a.Quantity, 64)
 		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
@@ -170,10 +200,10 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 		}
 		entries = append(entries, models.NormFOBDMessage{
 			Symbol:        raw.Symbol,
-			EventTime:     evt.Time,
-			UpdateID:      evt.LastUpdateID,
-			PrevUpdateID:  evt.PrevLastUpdateID,
-			FirstUpdateID: evt.FirstUpdateID,
+			EventTime:     eventTime,
+			UpdateID:      updateID,
+			PrevUpdateID:  prevUpdateID,
+			FirstUpdateID: firstUpdateID,
 			Side:          "ask",
 			Price:         price,
 			Quantity:      qty,
