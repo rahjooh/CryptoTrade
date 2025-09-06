@@ -175,13 +175,7 @@ func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	if _, ok := w.lastFlush[key]; !ok {
 		w.lastFlush[key] = time.Now()
 	}
-	count := len(w.buffer[key])
-	last := w.lastFlush[key]
 	w.mu.Unlock()
-
-	if count >= w.cfg.Writer.Batch.Size || time.Since(last) >= w.cfg.Writer.Batch.Timeout {
-		w.flushKey(key)
-	}
 }
 
 func (w *DeltaWriter) flushWorker() {
