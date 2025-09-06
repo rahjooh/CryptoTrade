@@ -14,6 +14,9 @@ func TestWithComponent(t *testing.T) {
 }
 
 func TestConfigureInvalidLevel(t *testing.T) {
+	// Ensure environment variables do not override the provided level
+	t.Setenv("LOG_LEVEL", "")
+
 	log := Logger()
 	if err := log.Configure("invalid", "json", "stdout", 0); err == nil {
 		t.Fatalf("expected error for invalid level")
