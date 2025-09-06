@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,9 +187,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					Sequence  int64  `json:"sequence"`
 					Symbol    string `json:"symbol"`
 					Timestamp int64  `json:"timestamp"`
-					Changes   struct {
-						Bids [][]string `json:"bids"`
-						Asks [][]string `json:"asks"`
+					Change    string `json:"change"`
 					} `json:"changes"`
 				}
 				if err := msg.ReadData(&data); err != nil {
@@ -203,19 +202,17 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					LastUpdateID:     data.Sequence,
 					PrevLastUpdateID: data.Sequence - 1,
 				}
-				evt.Bids = make([]models.FOBDEntry, len(data.Changes.Bids))
-				for i, b := range data.Changes.Bids {
-					if len(b) < 2 {
-						continue
+
+				parts := strings.Split(data.Change, ",")
+				if len(parts) >= 3 {
+					entry := models.FOBDEntry{Price: parts[0], Quantity: parts[1]}
+					switch parts[2] {
+					case "buy":
+						evt.Bids = []models.FOBDEntry{entry}
+					case "sell":
+						evt.Asks = []models.FOBDEntry{entry}
 					}
-					evt.Bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
-				}
-				evt.Asks = make([]models.FOBDEntry, len(data.Changes.Asks))
-				for i, a := range data.Changes.Asks {
-					if len(a) < 2 {
-						continue
-					}
-					evt.Asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
+
 				}
 
 				log.WithFields(logger.Fields{
