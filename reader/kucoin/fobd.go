@@ -194,12 +194,10 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					continue
 				}
 
-				evt := models.BinanceFOBDResp{
-					Symbol:           data.Symbol,
-					Time:             data.Timestamp,
-					FirstUpdateID:    data.Sequence,
-					LastUpdateID:     data.Sequence,
-					PrevLastUpdateID: data.Sequence - 1,
+				evt := models.KucoinFOBDResp{
+					Symbol:    data.Symbol,
+					Sequence:  data.Sequence,
+					Timestamp: data.Timestamp,
 				}
 
 				parts := strings.Split(data.Change, ",")
