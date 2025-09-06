@@ -14,6 +14,8 @@ import (
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
+	//kucoinapi "github.com/Kucoin/kucoin-futures-go-sdk"
+	kucoinapi "github.com/Kucoin/kucoin-go-sdk"
 	"github.com/gorilla/websocket"
 )
 
@@ -125,7 +127,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		}
 
 		//rsp, err := service.WebSocketPublicToken()
-		rsp, err := service.WebSocketPublicToken(r.ctx)
+		rsp, err := service.WebSocketPublicToken()
 		if err != nil {
 			log.WithError(err).Warn("failed to get websocket token")
 			time.Sleep(reconnectDelay)
