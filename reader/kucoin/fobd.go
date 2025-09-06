@@ -14,7 +14,6 @@ import (
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
-	kumex "github.com/Kucoin/kucoin-futures-go-sdk"
 	"github.com/gorilla/websocket"
 )
 
@@ -100,8 +99,11 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		baseURL = fmt.Sprintf("https://%s", parsed.Host)
 	}
 
-	service := kumex.NewApiService(
-		kumex.ApiBaseURIOption(baseURL),
+	//service := kumex.NewApiService(
+	//	kumex.ApiBaseURIOption(baseURL),
+	//)
+	service := kucoinapi.NewApiService(
+		kucoinapi.ApiBaseURIOption(baseURL),
 	)
 
 	log := r.log.WithComponent("kucoin_delta_reader").WithFields(logger.Fields{
@@ -122,14 +124,16 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 			}
 		}
 
-		rsp, err := service.WebSocketPublicToken()
+		//rsp, err := service.WebSocketPublicToken()
+		rsp, err := service.WebSocketPublicToken(r.ctx)
 		if err != nil {
 			log.WithError(err).Warn("failed to get websocket token")
 			time.Sleep(reconnectDelay)
 			continue
 		}
 
-		tk := &kumex.WebSocketTokenModel{}
+		//tk := &kumex.WebSocketTokenModel{}
+		tk := &kucoinapi.WebSocketTokenModel{}
 		if err := rsp.ReadData(tk); err != nil {
 			log.WithError(err).Warn("failed to read websocket token")
 			time.Sleep(reconnectDelay)
@@ -148,7 +152,8 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		for i, symbol := range symbolList {
 			topic := fmt.Sprintf("/contractMarket/level2:%s", symbol)
 			topics[i] = topic
-			sub := kumex.NewSubscribeMessage(topic, false)
+			//sub := kumex.NewSubscribeMessage(topic, false)
+			sub := kucoinapi.NewSubscribeMessage(topic, false)
 			if err := c.Subscribe(sub); err != nil {
 				log.WithFields(logger.Fields{"topic": topic}).WithError(err).Warn("failed to subscribe")
 			}

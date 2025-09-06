@@ -4,12 +4,14 @@ go 1.22
 
 require (
 	github.com/Kucoin/kucoin-futures-go-sdk v1.1.4
+	github.com/Kucoin/kucoin-go-sdk v1.2.18
 	github.com/adshao/go-binance/v2 v2.8.5
 	github.com/aws/aws-sdk-go-v2 v1.37.2
 	github.com/aws/aws-sdk-go-v2/config v1.30.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.86.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.3
