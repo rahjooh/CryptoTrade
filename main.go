@@ -76,6 +76,9 @@ func main() {
 	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(shardCfg.Shards))
 	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(shardCfg.Shards))
 
+	binanceSymbolSet := make(map[string]struct{})
+	kucoinSymbolSet := make(map[string]struct{})
+
 	for _, shard := range shardCfg.Shards {
 		sc := *cfg
 		sc.Source.Binance.Future.Orderbook.Snapshots.Symbols = shard.BinanceSymbols
@@ -87,7 +90,29 @@ func main() {
 		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.KucoinSymbols, shard.IP))
 		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.BinanceSymbols, shard.IP))
 		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.KucoinSymbols, shard.IP))
+
+		for _, s := range shard.BinanceSymbols {
+			binanceSymbolSet[s] = struct{}{}
+		}
+		for _, s := range shard.KucoinSymbols {
+			kucoinSymbolSet[s] = struct{}{}
+		}
 	}
+
+	// Aggregate symbols for processor filtering
+	binanceAll := make([]string, 0, len(binanceSymbolSet))
+	for s := range binanceSymbolSet {
+		binanceAll = append(binanceAll, s)
+	}
+	kucoinAll := make([]string, 0, len(kucoinSymbolSet))
+	for s := range kucoinSymbolSet {
+		kucoinAll = append(kucoinAll, s)
+	}
+
+	cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols = binanceAll
+	cfg.Source.Binance.Future.Orderbook.Delta.Symbols = binanceAll
+	cfg.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = kucoinAll
+	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
 
 	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
