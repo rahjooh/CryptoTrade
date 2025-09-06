@@ -63,12 +63,13 @@ func NewDeltaWriter(cfg *appconfig.Config, normChan <-chan models.BatchFOBDMessa
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 	return &DeltaWriter{
-		cfg:      cfg,
-		normChan: normChan,
-		s3Client: s3Client,
-		buffer:   make(map[string][]models.NormFOBDMessage),
-		wg:       &sync.WaitGroup{},
-		log:      log,
+		cfg:       cfg,
+		normChan:  normChan,
+		s3Client:  s3Client,
+		buffer:    make(map[string][]models.NormFOBDMessage),
+		lastFlush: make(map[string]time.Time),
+		wg:        &sync.WaitGroup{},
+		log:       log,
 	}, nil
 }
 
@@ -147,7 +148,7 @@ func (w *DeltaWriter) stop() {
 		w.flushTicker.Stop()
 	}
 	w.wg.Wait()
-	w.flushBuffers("writer/fobd/stop Stopping")
+	w.flushAll("writer/fobd/stop Stopping")
 	w.log.WithComponent("delta_writer").Info("delta writer stopped")
 }
 
@@ -171,7 +172,16 @@ func (w *DeltaWriter) addBatch(batch models.BatchFOBDMessage) {
 	key := fmt.Sprintf("%s|%s|%s", batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
 	w.buffer[key] = append(w.buffer[key], batch.Entries...)
+	if _, ok := w.lastFlush[key]; !ok {
+		w.lastFlush[key] = time.Now()
+	}
+	count := len(w.buffer[key])
+	last := w.lastFlush[key]
 	w.mu.Unlock()
+
+	if count >= w.cfg.Writer.Batch.Size || time.Since(last) >= w.cfg.Writer.Batch.Timeout {
+		w.flushKey(key)
+	}
 }
 
 func (w *DeltaWriter) flushWorker() {
@@ -179,44 +189,73 @@ func (w *DeltaWriter) flushWorker() {
 	for {
 		select {
 		case <-w.ctx.Done():
-			w.flushBuffers("writer/fobd/flushWorker shutdown")
+			w.flushAll("writer/fobd/flushWorker shutdown")
 			return
 		case <-w.flushTicker.C:
-			w.flushBuffers("writer/fobd/flushWorker Timeout flushing")
+			w.flushTimedOut()
 		}
 	}
 }
 
-func (w *DeltaWriter) flushBuffers(reason string) {
+func (w *DeltaWriter) flushTimedOut() {
 	w.mu.Lock()
-	buffers := w.buffer
-	w.buffer = make(map[string][]models.NormFOBDMessage)
+	now := time.Now()
+	keys := make([]string, 0, len(w.lastFlush))
+	for k, t := range w.lastFlush {
+		if now.Sub(t) >= w.cfg.Writer.Buffer.DeltaFlushInterval {
+			keys = append(keys, k)
+		}
+	}
 	w.mu.Unlock()
 
-	if len(buffers) == 0 {
+	for _, k := range keys {
+		w.flushKey(k)
+	}
+}
+
+func (w *DeltaWriter) flushKey(key string) {
+	w.mu.Lock()
+	entries := w.buffer[key]
+	if len(entries) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	delete(w.buffer, key)
+	delete(w.lastFlush, key)
+	w.mu.Unlock()
+
+	parts := strings.SplitN(key, "|", 3)
+	batch := models.BatchFOBDMessage{
+		BatchID:     uuid.New().String(),
+		Exchange:    parts[0],
+		Market:      parts[1],
+		Symbol:      parts[2],
+		Entries:     entries,
+		RecordCount: len(entries),
+		Timestamp:   time.Now(),
+	}
+	w.writeBatch(batch)
+}
+
+func (w *DeltaWriter) flushAll(reason string) {
+	w.mu.Lock()
+	keys := make([]string, 0, len(w.buffer))
+	for k := range w.buffer {
+		keys = append(keys, k)
+	}
+	w.mu.Unlock()
+
+	if len(keys) == 0 {
 		return
 	}
 
 	w.log.WithComponent("delta_writer").WithFields(logger.Fields{
-		"flushed_buffers": len(buffers),
+		"flushed_buffers": len(keys),
 		"reason":          reason,
 	}).Info("flushing buffers")
 
-	for key, entries := range buffers {
-		if len(entries) == 0 {
-			continue
-		}
-		parts := strings.SplitN(key, "|", 3)
-		batch := models.BatchFOBDMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    parts[0],
-			Market:      parts[1],
-			Symbol:      parts[2],
-			Entries:     entries,
-			RecordCount: len(entries),
-			Timestamp:   time.Now(),
-		}
-		w.writeBatch(batch)
+	for _, k := range keys {
+		w.flushKey(k)
 	}
 }
 
