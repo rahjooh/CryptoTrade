@@ -4,7 +4,6 @@ shards:
      - BTCUSDT
      - XRPUSDT
      - BNBUSDT
-     - ONDOUSDT
     kucoin_symbols:
       - XBTUSDTM
       - XRPUSDTM
@@ -15,7 +14,6 @@ shards:
     binance_symbols:
       - SEIUSDT
       - ETHUSDT
-      - SUIUSDT
       - 1000SHIBUSDT
     kucoin_symbols:
       - ETHUSDTM
@@ -91,3 +89,5 @@ shards:
     binance_symbols:
       - INJUSDT
       - FARTCOINUSDT
+      - ONDOUSDT
+      - SUIUSDT
