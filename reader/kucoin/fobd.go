@@ -238,7 +238,6 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 						evt.Bids = []models.FOBDEntry{entry}
 					case "sell":
 						evt.Asks = []models.FOBDEntry{entry}
-						}
 					}
 				} else {
 					for _, bid := range data.Changes.Bids {
