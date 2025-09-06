@@ -5,7 +5,6 @@ shards:
      - XRPUSDT
      - BNBUSDT
      - ONDOUSDT
-     - SEIUSDT
     kucoin_symbols:
       - XBTUSDTM
       - XRPUSDTM
@@ -14,14 +13,81 @@ shards:
       - SEIUSDTM
   - ip: 172.31.8.202
     binance_symbols:
-     - ETHUSDT
-     - SUIUSDT
-     - SHIBUSDT
-     - SOLUSDT
-     - DOTUSDT
+      - SEIUSDT
+      - ETHUSDT
+      - SUIUSDT
+      - SHIBUSDT
     kucoin_symbols:
       - ETHUSDTM
       - SUIUSDTM
       - SHIBUSDTM
       - SOLUSDTM
       - DOTUSDTM
+  - ip: 172.31.1.88
+    binance_symbols:
+      - SOLUSDT
+      - DOTUSDT
+      - PEPEUSDT
+      - DOGEUSDT
+    kucoin_symbols:
+      - PEPEUSDTM
+      - DOGEUSDTM
+      - WIFUSDTM
+      - ADAUSDTM
+      - XBTUSDCM
+  - ip: 172.31.14.157
+    binance_symbols:
+      - WIFUSDT
+      - ADAUSDT
+      - BTCUSDC
+      - ETHUSDC
+    kucoin_symbols:
+      - ETHUSDCM
+      - SOLUSDCM
+      - SUIUSDCM
+      - XRPUSDCM
+      - LTCUSDTM
+  - ip: 172.31.9.173
+    binance_symbols:
+      - SOLUSDC
+      - SUIUSDC
+      - XRPUSDC
+      - LTCUSDT
+    kucoin_symbols:
+      - AVAXUSDTM
+      - LINKUSDTM
+      - UNIUSDTM
+      - XLMUSDTM
+      - NEARUSDTM
+  - ip: 172.31.4.116
+    binance_symbols:
+      - AVAXUSDT
+      - LINKUSDT
+      - UNIUSDT
+      - XLMUSDT
+    kucoin_symbols:
+      - HYPEUSDTM
+      - BCHUSDTM
+      - TRXUSDTM
+      - AAVEUSDTM
+      - BONKUSDTM
+  - ip: 172.31.8.67
+    binance_symbols:
+      - NEARUSDT
+      - HYPEUSDT
+      - BCHUSDT
+      - TRXUSDT
+    kucoin_symbols:
+      - OPUSDTM
+      - ARBUSDTM
+      - INJUSDTM
+  - ip: 172.31.5.194
+    binance_symbols:
+      - AAVEUSDT
+      - BONKUSDT
+      - OPUSDT
+      - ARBUSDT
+  - ip: 172.31.15.240
+    binance_symbols:
+      - INJUSDT
+      - FARTCOINUSDT
