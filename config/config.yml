@@ -202,13 +202,13 @@ source:
           url: https://api-futures.kucoin.com/api/v1/level2/snapshot
           limit: 1000
           interval_ms: 1000
-#          symbols: [ XBTUSDTM, ETHUSDTM ]
+          symbols: [ XBTUSDTM, ETHUSDTM ]
         delta:
           enabled: true
           connection: websocket
           url: wss://api-futures.kucoin.com/endpoint
           interval_ms: 100
-#          symbols: [ XBTUSDTM, ETHUSDTM ]
+          symbols: [ XBTUSDTM, ETHUSDTM ]
 
   coinbase:
     spot:
