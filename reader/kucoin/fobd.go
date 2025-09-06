@@ -188,7 +188,6 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					Symbol    string `json:"symbol"`
 					Timestamp int64  `json:"timestamp"`
 					Change    string `json:"change"`
-					} `json:"changes"`
 				}
 				if err := msg.ReadData(&data); err != nil {
 					log.WithError(err).Warn("failed to read level2 data")
