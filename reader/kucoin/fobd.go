@@ -188,32 +188,53 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					Symbol    string `json:"symbol"`
 					Timestamp int64  `json:"timestamp"`
 					Change    string `json:"change"`
+					Changes   struct {
+						Bids [][]string `json:"bids"`
+						Asks [][]string `json:"asks"`
+					} `json:"changes"`
 				}
 				if err := msg.ReadData(&data); err != nil {
 					log.WithError(err).Warn("failed to read level2 data")
 					continue
 				}
+				symbol := data.Symbol
+				if symbol == "" {
+					symbol = strings.TrimPrefix(msg.Topic, "/contractMarket/level2:")
+				}
 
 				evt := models.KucoinFOBDResp{
-					Symbol:    data.Symbol,
+					Symbol:    symbol,
 					Sequence:  data.Sequence,
 					Timestamp: data.Timestamp,
 				}
 
-				parts := strings.Split(data.Change, ",")
-				if len(parts) >= 3 {
-					entry := models.FOBDEntry{Price: parts[0], Quantity: parts[1]}
-					switch parts[2] {
-					case "buy":
-						evt.Bids = []models.FOBDEntry{entry}
-					case "sell":
-						evt.Asks = []models.FOBDEntry{entry}
+				if data.Change != "" {
+					parts := strings.Split(data.Change, ",")
+					if len(parts) >= 3 {
+						entry := models.FOBDEntry{Price: parts[0], Quantity: parts[1]}
+						switch parts[2] {
+						case "buy":
+							evt.Bids = []models.FOBDEntry{entry}
+						case "sell":
+							evt.Asks = []models.FOBDEntry{entry}
+						}
+					}
+				} else {
+					for _, bid := range data.Changes.Bids {
+						if len(bid) >= 2 {
+							evt.Bids = append(evt.Bids, models.FOBDEntry{Price: bid[0], Quantity: bid[1]})
+						}
+					}
+					for _, ask := range data.Changes.Asks {
+						if len(ask) >= 2 {
+							evt.Asks = append(evt.Asks, models.FOBDEntry{Price: ask[0], Quantity: ask[1]})
+						}
 					}
 
 				}
 
 				log.WithFields(logger.Fields{
-					"symbol":   data.Symbol,
+					"symbol":   symbol,
 					"sequence": data.Sequence,
 					"bids":     len(evt.Bids),
 					"asks":     len(evt.Asks),
@@ -227,7 +248,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 
 				msgOut := models.RawFOBDMessage{
 					Exchange:  "kucoin",
-					Symbol:    symbols.ToBinance("kucoin", data.Symbol),
+					Symbol:    symbols.ToBinance("kucoin", symbol),
 					Market:    "future-orderbook-delta",
 					Data:      payload,
 					Timestamp: time.Now(),
