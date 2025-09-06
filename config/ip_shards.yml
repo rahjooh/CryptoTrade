@@ -16,7 +16,7 @@ shards:
       - SEIUSDT
       - ETHUSDT
       - SUIUSDT
-      - SHIBUSDT
+      - 1000SHIBUSDT
     kucoin_symbols:
       - ETHUSDTM
       - SUIUSDTM
@@ -27,7 +27,7 @@ shards:
     binance_symbols:
       - SOLUSDT
       - DOTUSDT
-      - PEPEUSDT
+      - 1000PEPEUSDT
       - DOGEUSDT
     kucoin_symbols:
       - PEPEUSDTM
@@ -84,7 +84,7 @@ shards:
   - ip: 172.31.5.194
     binance_symbols:
       - AAVEUSDT
-      - BONKUSDT
+      - 1000BONKUSDT
       - OPUSDT
       - ARBUSDT
   - ip: 172.31.15.240
