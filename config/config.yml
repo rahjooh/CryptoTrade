@@ -269,8 +269,8 @@ reader:
 
 processor:
   max_workers: 1
-  batch_size: 1
-  batch_timeout: "1s"
+  batch_size: 100
+  batch_timeout: "5s"
 
 storage:
   s3:
@@ -282,13 +282,13 @@ storage:
 writer:
   max_workers: 1
   batch:
-    size: 10
-    timeout: "1s"
+    size: 100
+    timeout: "30s"
     max_memory: "1MB"
   buffer:
     max_size: 10
     snapshot_flush_interval: "5m"
-    delta_flush_interval: "9m"
+    delta_flush_interval: "5m"
     memory_threshold: 0.8
   partitioning:
     scheme: "time"
