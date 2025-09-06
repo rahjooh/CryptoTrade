@@ -24,6 +24,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/Kucoin/kucoin-futures-go-sdk v1.1.4 h1:NRcPmMDoJ16X1Jx06U8SNgBARFQBN/mlw3cxcZ07h44=
 github.com/Kucoin/kucoin-futures-go-sdk v1.1.4/go.mod h1:UJ6CUIEShlIVMbkNkjL5isMiYGkKIVOsinfm9CGbzh8=
+github.com/Kucoin/kucoin-go-sdk v1.2.18 h1:x59MKLC+DVPWop8DJo6pl7o4gUDRycTvg8PdltyO/gQ=
+github.com/Kucoin/kucoin-go-sdk v1.2.18/go.mod h1:UKz7vp8LPLrcHb6Vn6KcohOdf+pbSxLYrOKn5FgOmQY=
 github.com/adshao/go-binance/v2 v2.8.5 h1:2i8uVFrt1HbZPggnfdL1A1g/PS9MeD1FnoBoIXNhbow=
 github.com/adshao/go-binance/v2 v2.8.5/go.mod h1:XkkuecSyJKPolaCGf/q4ovJYB3t0P+7RUYTbGr+LMGM=
 github.com/apache/arrow/go/arrow v0.0.0-20200730104253-651201b0f516 h1:byKBBF2CKWBjjA4J1ZL2JXttJULvWSl50LegTyRZ728=
@@ -134,7 +136,7 @@ github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
-github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
+github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/hashicorp/go-uuid v0.0.0-20180228145832-27454136f036/go.mod h1:6SBZvOh/SIDV7/2o3Jml5SYk/TvGqwFJ/bN7x4byOro=
