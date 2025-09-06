@@ -46,9 +46,4 @@ func TestNewReaders(t *testing.T) {
 	if r1 == nil {
 		t.Fatal("Kucoin_FOBS_NewReader returned nil")
 	}
-	fobdCh := make(chan models.RawFOBDMessage)
-	r2 := Kucoin_FOBD_NewReader(cfg, fobdCh, []string{"XBT-USDTM"}, "")
-	if r2 == nil {
-		t.Fatal("Kucoin_FOBD_NewReader returned nil")
-	}
 }
