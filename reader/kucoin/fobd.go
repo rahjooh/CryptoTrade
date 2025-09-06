@@ -218,6 +218,13 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 					evt.Asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
 				}
 
+				log.WithFields(logger.Fields{
+					"symbol":   data.Symbol,
+					"sequence": data.Sequence,
+					"bids":     len(evt.Bids),
+					"asks":     len(evt.Asks),
+				}).Info("received futures orderbook delta from kucoin_delta")
+
 				payload, err := json.Marshal(evt)
 				if err != nil {
 					log.WithError(err).Warn("failed to marshal event")
