@@ -18,6 +18,7 @@ import (
 	"cryptoflow/processor"
 	"cryptoflow/reader/binance"
 	"cryptoflow/reader/kucoin"
+	okxreader "cryptoflow/reader/okx"
 	"cryptoflow/writer"
 )
 
@@ -76,11 +77,14 @@ func main() {
 
 	binanceFOBSReaders := make([]*binance.Binance_FOBS_Reader, 0, len(shardCfg.Shards))
 	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(shardCfg.Shards))
+	okxFOBSReaders := make([]*okxreader.Okx_FOBS_Reader, 0, len(shardCfg.Shards))
 	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(shardCfg.Shards))
 	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(shardCfg.Shards))
+	okxFOBDReaders := make([]*okxreader.Okx_FOBD_Reader, 0, len(shardCfg.Shards))
 
 	binanceSymbolSet := make(map[string]struct{})
 	kucoinSymbolSet := make(map[string]struct{})
+	okxSymbolSet := make(map[string]struct{})
 
 	for _, shard := range shardCfg.Shards {
 		sc := *cfg
@@ -88,17 +92,24 @@ func main() {
 		sc.Source.Binance.Future.Orderbook.Delta.Symbols = shard.BinanceSymbols
 		sc.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = shard.KucoinSymbols
 		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
+		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols
+		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols
 
 		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.BinanceSymbols, shard.IP))
 		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.KucoinSymbols, shard.IP))
+		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.OkxSymbols, shard.IP))
 		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.BinanceSymbols, shard.IP))
 		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.KucoinSymbols, shard.IP))
+		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.OkxSymbols, shard.IP))
 
 		for _, s := range shard.BinanceSymbols {
 			binanceSymbolSet[s] = struct{}{}
 		}
 		for _, s := range shard.KucoinSymbols {
 			kucoinSymbolSet[s] = struct{}{}
+		}
+		for _, s := range shard.OkxSymbols {
+			okxSymbolSet[s] = struct{}{}
 		}
 	}
 
@@ -111,11 +122,18 @@ func main() {
 	for s := range kucoinSymbolSet {
 		kucoinAll = append(kucoinAll, s)
 	}
+	okxAll := make([]string, 0, len(okxSymbolSet))
+	for s := range okxSymbolSet {
+		okxAll = append(okxAll, s)
+	}
 
 	cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols = binanceAll
 	cfg.Source.Binance.Future.Orderbook.Delta.Symbols = binanceAll
 	cfg.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = kucoinAll
 	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
+	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
+	cfg.Source.Okx.Future.Orderbook.Snapshots.Symbols = okxAll
+	cfg.Source.Okx.Future.Orderbook.Delta.Symbols = okxAll
 
 	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
 	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
@@ -161,6 +179,16 @@ func main() {
 		}(r)
 	}
 
+	for _, r := range okxFOBSReaders {
+		wg.Add(1)
+		go func(reader *okxreader.Okx_FOBS_Reader) {
+			defer wg.Done()
+			if err := reader.Okx_FOBS_Start(ctx); err != nil {
+				log.WithError(err).Warn("okx reader failed to start")
+			}
+		}(r)
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -185,6 +213,16 @@ func main() {
 			defer wg.Done()
 			if err := reader.Kucoin_FOBD_Start(ctx); err != nil {
 				log.WithError(err).Warn("kucoin delta reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range okxFOBDReaders {
+		wg.Add(1)
+		go func(reader *okxreader.Okx_FOBD_Reader) {
+			defer wg.Done()
+			if err := reader.Okx_FOBD_Start(ctx); err != nil {
+				log.WithError(err).Warn("okx delta reader failed to start")
 			}
 		}(r)
 	}
@@ -253,6 +291,11 @@ func main() {
 		r.Kucoin_FOBD_Stop()
 	}
 
+	log.Info("stopping okx delta readers")
+	for _, r := range okxFOBDReaders {
+		r.Okx_FOBD_Stop()
+	}
+
 	log.Info("stopping binance readers")
 	for _, r := range binanceFOBSReaders {
 		r.Binance_FOBS_Stop()
@@ -261,6 +304,11 @@ func main() {
 	log.Info("stopping kucoin readers")
 	for _, r := range kucoinFOBSReaders {
 		r.Kucoin_FOBS_Stop()
+	}
+
+	log.Info("stopping okx readers")
+	for _, r := range okxFOBSReaders {
+		r.Okx_FOBS_Stop()
 	}
 
 	done := make(chan struct{})

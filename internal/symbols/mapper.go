@@ -4,7 +4,7 @@ import "strings"
 
 // ToBinance converts various exchange-specific symbol formats to Binance style.
 // It ensures symbols are uppercase without separators and uses BTC instead of XBT.
-// Currently supported exchanges: binance, bybit, kucoin, coinbase, kraken.
+// Currently supported exchanges: binance, bybit, kucoin, coinbase, kraken, okx.
 func ToBinance(exchange, sym string) string {
 	switch strings.ToLower(exchange) {
 	case "kucoin":
@@ -21,6 +21,15 @@ func ToBinance(exchange, sym string) string {
 	case "kraken":
 		sym = strings.ReplaceAll(sym, "/", "")
 		sym = strings.ReplaceAll(sym, "-", "")
+	case "okx":
+		parts := strings.Split(sym, "-")
+		if len(parts) >= 2 {
+			sym = parts[0] + parts[1]
+		}
+		// map XBT prefix to BTC
+		if strings.HasPrefix(sym, "XBT") {
+			sym = "BTC" + sym[3:]
+		}
 	default:
 		// binance, bybit and others already use the desired format
 	}
