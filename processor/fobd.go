@@ -174,7 +174,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 
 	entries := make([]models.NormFOBDMessage, 0, len(bids)+len(asks))
 	recv := raw.Timestamp.UnixMilli()
-	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
+	normalSymbol := symbols.ToBinance(raw.Exchange, rawMsg.Symbol)
 	for _, b := range bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
 		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
@@ -222,7 +222,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 func (p *DeltaProcessor) addToBatch(raw models.RawFOBDMessage, entries []models.NormFOBDMessage) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
+	normalSymbol := symbols.ToBinance(raw.Exchange, rawMsg.Symbol)
 	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, normalSymbol)
 	batch, ok := p.batches[key]
 	if !ok {
