@@ -92,6 +92,15 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		if err := client.Public.OrderBook(req, ch); err != nil {
 			log.WithError(err).Warn("subscription failed")
 		}
+
+		params := map[string]string{
+			"instId":   sym,
+			"instType": "SWAP",
+			"channel":  "books-l2-tbt",
+		}
+		if err := client.Subscribe(false, []okex.ChannelName{}, params); err != nil {
+			log.WithError(err).Warn("subscription failed")
+		}
 	}
 
 	for {
