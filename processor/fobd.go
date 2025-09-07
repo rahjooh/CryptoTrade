@@ -18,6 +18,14 @@ import (
 
 // DeltaProcessor normalizes order book delta messages and batches them
 // before forwarding to the next stage.
+type batchState struct {
+	mu        sync.Mutex
+	batch     *models.BatchFOBDMessage
+	lastFlush time.Time
+}
+
+// DeltaProcessor normalizes order book delta messages and batches them
+// before forwarding to the next stage.
 type DeltaProcessor struct {
 	config   *appconfig.Config
 	rawChan  <-chan models.RawFOBDMessage
@@ -28,8 +36,7 @@ type DeltaProcessor struct {
 	running  bool
 	log      *logger.Log
 
-	batches   map[string]*models.BatchFOBDMessage
-	lastFlush map[string]time.Time
+	batches map[string]*batchState
 
 	symbols       map[string]struct{}
 	filterSymbols bool
@@ -50,8 +57,7 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessa
 		normChan:      normChan,
 		wg:            &sync.WaitGroup{},
 		log:           logger.GetLogger(),
-		batches:       make(map[string]*models.BatchFOBDMessage),
-		lastFlush:     make(map[string]time.Time),
+		batches:       make(map[string]*batchState),
 		symbols:       symSet,
 		filterSymbols: len(symSet) > 0,
 	}
@@ -220,32 +226,44 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 }
 
 func (p *DeltaProcessor) addToBatch(raw models.RawFOBDMessage, entries []models.NormFOBDMessage) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	normalSymbol := symbols.ToBinance(raw.Exchange, raw.Symbol)
 	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, normalSymbol)
-	batch, ok := p.batches[key]
+
+	p.mu.RLock()
+	state, ok := p.batches[key]
+	p.mu.RUnlock()
 	if !ok {
-		batch = &models.BatchFOBDMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    raw.Exchange,
-			Symbol:      normalSymbol,
-			Market:      raw.Market,
-			Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
-			Timestamp:   raw.Timestamp,
-			ProcessedAt: time.Now(),
+		p.mu.Lock()
+		if state, ok = p.batches[key]; !ok {
+			state = &batchState{
+				batch: &models.BatchFOBDMessage{
+					BatchID:     uuid.New().String(),
+					Exchange:    raw.Exchange,
+					Symbol:      normalSymbol,
+					Market:      raw.Market,
+					Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
+					Timestamp:   raw.Timestamp,
+					ProcessedAt: time.Now(),
+				},
+				lastFlush: time.Now(),
+			}
+			p.batches[key] = state
 		}
-		p.batches[key] = batch
-		p.lastFlush[key] = time.Now()
+		p.mu.Unlock()
 	}
 
-	batch.Entries = append(batch.Entries, entries...)
-	batch.RecordCount = len(batch.Entries)
-	if raw.Timestamp.After(batch.Timestamp) {
-		batch.Timestamp = raw.Timestamp
+	state.mu.Lock()
+	b := state.batch
+	b.Entries = append(b.Entries, entries...)
+	b.RecordCount = len(b.Entries)
+	if raw.Timestamp.After(b.Timestamp) {
+		b.Timestamp = raw.Timestamp
 	}
+	state.lastFlush = time.Now()
+	shouldFlush := b.RecordCount >= p.config.Processor.BatchSize
+	state.mu.Unlock()
 
-	if batch.RecordCount >= p.config.Processor.BatchSize {
+	if shouldFlush {
 		p.flush(key)
 	}
 }
@@ -265,36 +283,71 @@ func (p *DeltaProcessor) flusher() {
 }
 
 func (p *DeltaProcessor) flushTimedOut() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
 	now := time.Now()
-	for k, t := range p.lastFlush {
-		if now.Sub(t) >= p.config.Processor.BatchTimeout {
+	for k, state := range p.batches {
+		state.mu.Lock()
+		if now.Sub(state.lastFlush) >= p.config.Processor.BatchTimeout && state.batch.RecordCount > 0 {
+			state.mu.Unlock()
 			p.flush(k)
+		} else {
+			state.mu.Unlock()
 		}
 	}
+	p.mu.RUnlock()
 }
 
 func (p *DeltaProcessor) flush(key string) {
-	batch, ok := p.batches[key]
-	if !ok || batch.RecordCount == 0 {
+	p.mu.RLock()
+	state, ok := p.batches[key]
+	p.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	state.mu.Lock()
+	batch := state.batch
+	if batch == nil || batch.RecordCount == 0 {
+		state.mu.Unlock()
 		return
 	}
 	select {
 	case p.normChan <- *batch:
-		delete(p.batches, key)
-		delete(p.lastFlush, key)
+		state.batch = &models.BatchFOBDMessage{
+			BatchID:     uuid.New().String(),
+			Exchange:    batch.Exchange,
+			Symbol:      batch.Symbol,
+			Market:      batch.Market,
+			Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
+			ProcessedAt: time.Now(),
+		}
+		state.lastFlush = time.Now()
 	case <-p.ctx.Done():
+		state.mu.Unlock()
 		return
 	default:
 		p.log.WithComponent("delta_processor").WithFields(logger.Fields{"batch_key": key}).Warn("normfobd channel full, dropping batch")
+		state.batch = &models.BatchFOBDMessage{
+			BatchID:     uuid.New().String(),
+			Exchange:    batch.Exchange,
+			Symbol:      batch.Symbol,
+			Market:      batch.Market,
+			Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
+			ProcessedAt: time.Now(),
+		}
+		state.lastFlush = time.Now()
 	}
+	state.mu.Unlock()
 }
 
 func (p *DeltaProcessor) flushAll() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	keys := make([]string, 0, len(p.batches))
 	for k := range p.batches {
+		keys = append(keys, k)
+	}
+	p.mu.RUnlock()
+	for _, k := range keys {
 		p.flush(k)
 	}
 }
