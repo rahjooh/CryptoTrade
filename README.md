@@ -135,12 +135,34 @@ Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerol
 
 ### Monitoring
 
-CryptoFlow publishes runtime and pipeline metrics to Amazon CloudWatch using
-the configured S3 region and service name as the metric namespace. Metrics
-include CPU, memory, disk and network usage along with counts for errors,
-warnings, channel activity and S3 writes. A sample CloudWatch agent
-configuration is provided in `infra/cloudwatch-agent-config.json` for
-collecting host-level metrics on the EC2 instance running the service.
+names that all begin with the prefix `Hadi`. The namespace is set to the
+service name prefixed with `hadi` (e.g. `hadiCryptoFlow`) and each metric name
+follows the same convention (such as `hadiCPUPercent` and
+`hadiChannelMessages`). A sample CloudWatch agent configuration is provided in
+`infra/cloudwatch-agent-config.json` for collecting host-level metrics on the
+EC2 instance running the service. To visualize these metrics you can create a
+dashboard:
+
+```bash
+aws cloudwatch put-dashboard \
+  --dashboard-name Hadi-CryptoFlowDashboard \
+  --dashboard-body '{
+    "widgets": [
+      {
+        "type": "metric",
+        "properties": {
+          "metrics": [
+            [ "Hadi-CryptoFlow", "Hadi-CPUPercent" ],
+            [ "Hadi-CryptoFlow", "Hadi-NetBytesSent" ]
+          ],
+          "period": 60,
+          "stat": "Average",
+          "view": "timeSeries"
+        }
+      }
+    ]
+  }'
+```
 
 ---
 

@@ -6,9 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	//"cryptoflow/logger"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -127,6 +124,7 @@ type ConnectionPoolConfig struct {
 type SourceConfig struct {
 	Binance BinanceSourceConfig `yaml:"binance"`
 	Kucoin  KucoinSourceConfig  `yaml:"kucoin"`
+	Okx     OkxSourceConfig     `yaml:"okx"`
 }
 
 type BinanceSourceConfig struct {
@@ -139,12 +137,21 @@ type KucoinSourceConfig struct {
 	Future         KucoinFutureConfig   `yaml:"future"`
 }
 
+type OkxSourceConfig struct {
+	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
+	Future         OkxFutureConfig      `yaml:"future"`
+}
+
 type BinanceFutureConfig struct {
 	Orderbook BinanceFutureOrderbookConfig `yaml:"orderbook"`
 }
 
 type KucoinFutureConfig struct {
 	Orderbook KucoinFutureOrderbookConfig `yaml:"orderbook"`
+}
+
+type OkxFutureConfig struct {
+	Orderbook OkxFutureOrderbookConfig `yaml:"orderbook"`
 }
 
 type BinanceFutureOrderbookConfig struct {
@@ -155,6 +162,11 @@ type BinanceFutureOrderbookConfig struct {
 type KucoinFutureOrderbookConfig struct {
 	Snapshots KucoinSnapshotConfig `yaml:"snapshots"`
 	Delta     KucoinDeltaConfig    `yaml:"delta"`
+}
+
+type OkxFutureOrderbookConfig struct {
+	Snapshots OkxSnapshotConfig `yaml:"snapshots"`
+	Delta     OkxDeltaConfig    `yaml:"delta"`
 }
 
 type BinanceSnapshotConfig struct {
@@ -177,6 +189,15 @@ type KucoinSnapshotConfig struct {
 	Symbols    []string `yaml:"symbols"`
 }
 
+type OkxSnapshotConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	Limit      int      `yaml:"limit"`
+	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
+}
+
 type BinanceDeltaConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	Connection string   `yaml:"connection"`
@@ -186,6 +207,14 @@ type BinanceDeltaConfig struct {
 }
 
 type KucoinDeltaConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
+}
+
+type OkxDeltaConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	Connection string   `yaml:"connection"`
 	URL        string   `yaml:"url"`

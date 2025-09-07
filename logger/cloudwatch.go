@@ -10,7 +10,7 @@ import (
 )
 
 var cwClient *cloudwatch.Client
-var cwNamespace string = "CryptoFlow"
+var cwNamespace string = "Hadi-CryptoFlow"
 
 // InitCloudWatch configures the CloudWatch client used for publishing metrics.
 // If region is empty, the default region resolution is used. Namespace defaults to "CryptoFlow".
@@ -26,7 +26,7 @@ func InitCloudWatch(region, namespace string) {
 	}
 	cwClient = cloudwatch.NewFromConfig(cfg)
 	if namespace != "" {
-		cwNamespace = namespace
+		cwNamespace = "Hadi-" + namespace
 	}
 }
 
