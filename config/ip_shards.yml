@@ -9,18 +9,16 @@ shards:
       - XRPUSDTM
       - BNBUSDTM
       - ONDOUSDTM
-      - SEIUSDTM
   - ip: 172.31.8.202
     binance_symbols:
       - SEIUSDT
       - ETHUSDT
       - 1000SHIBUSDT
     kucoin_symbols:
+      - SEIUSDTM
       - ETHUSDTM
       - SUIUSDTM
       - SHIBUSDTM
-      - SOLUSDTM
-      - DOTUSDTM
   - ip: 172.31.1.88
     binance_symbols:
       - SOLUSDT
@@ -28,11 +26,10 @@ shards:
       - 1000PEPEUSDT
       - DOGEUSDT
     kucoin_symbols:
+      - SOLUSDTM
+      - DOTUSDTM
       - PEPEUSDTM
       - DOGEUSDTM
-      - WIFUSDTM
-      - ADAUSDTM
-      - XBTUSDCM
   - ip: 172.31.14.157
     binance_symbols:
       - WIFUSDT
@@ -40,11 +37,10 @@ shards:
       - BTCUSDC
       - ETHUSDC
     kucoin_symbols:
+      - WIFUSDTM
+      - ADAUSDTM
+      - XBTUSDCM
       - ETHUSDCM
-      - SOLUSDCM
-      - SUIUSDCM
-      - XRPUSDCM
-      - LTCUSDTM
   - ip: 172.31.9.173
     binance_symbols:
       - SOLUSDC
@@ -52,11 +48,10 @@ shards:
       - XRPUSDC
       - LTCUSDT
     kucoin_symbols:
-      - AVAXUSDTM
-      - LINKUSDTM
-      - UNIUSDTM
-      - XLMUSDTM
-      - NEARUSDTM
+      - SOLUSDCM
+      - SUIUSDCM
+      - XRPUSDCM
+      - LTCUSDTM
   - ip: 172.31.4.116
     binance_symbols:
       - AVAXUSDT
@@ -64,11 +59,10 @@ shards:
       - UNIUSDT
       - XLMUSDT
     kucoin_symbols:
-      - HYPEUSDTM
-      - BCHUSDTM
-      - TRXUSDTM
-      - AAVEUSDTM
-      - OPUSDTM
+      - AVAXUSDTM
+      - LINKUSDTM
+      - UNIUSDTM
+      - XLMUSDTM
   - ip: 172.31.8.67
     binance_symbols:
       - NEARUSDT
@@ -76,14 +70,21 @@ shards:
       - BCHUSDT
       - TRXUSDT
     kucoin_symbols:
-      - ARBUSDTM
-      - INJUSDTM
+      - NEARUSDTM
+      - HYPEUSDTM
+      - BCHUSDTM
+      - TRXUSDTM
   - ip: 172.31.5.194
     binance_symbols:
       - AAVEUSDT
       - 1000BONKUSDT
       - OPUSDT
       - ARBUSDT
+    kucoin_symbols:
+      - AAVEUSDTM
+      - OPUSDTM
+      - ARBUSDTM
+      - INJUSDTM
   - ip: 172.31.15.240
     binance_symbols:
       - INJUSDT
