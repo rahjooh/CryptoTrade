@@ -17,6 +17,7 @@ import (
 	sdkapi "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/api"
 	futuresmarket "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/futures/market"
 	sdktype "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/types"
+	"golang.org/x/time/rate"
 )
 
 // Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
@@ -30,6 +31,7 @@ type Kucoin_FOBS_Reader struct {
 	running    bool
 	log        *logger.Log
 	symbols    []string
+	limiter    *rate.Limiter
 }
 
 // Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin universal SDK.
@@ -61,6 +63,16 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSM
 	client := sdkapi.NewClient(option)
 	marketAPI := client.RestService().GetFuturesService().GetMarketAPI()
 
+	var limiter *rate.Limiter
+	rl := cfg.Reader.RateLimit
+	if rl.RequestsPerSecond > 0 {
+		burst := rl.BurstSize
+		if burst <= 0 {
+			burst = rl.RequestsPerSecond
+		}
+		limiter = rate.NewLimiter(rate.Limit(rl.RequestsPerSecond), burst)
+	}
+
 	reader := &Kucoin_FOBS_Reader{
 		config:     cfg,
 		marketAPI:  marketAPI,
@@ -68,6 +80,7 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSM
 		wg:         &sync.WaitGroup{},
 		log:        log,
 		symbols:    symbols,
+		limiter:    limiter,
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
@@ -168,9 +181,61 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	})
 
 	req := futuresmarket.NewGetFullOrderBookReqBuilder().SetSymbol(symbol).Build()
-	resp, err := r.marketAPI.GetFullOrderBook(req, r.ctx)
-	if err != nil {
-		log.WithError(err).Warn("failed to fetch orderbook")
+
+	retryCfg := r.config.Reader.Retry
+	maxAttempts := retryCfg.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	delay := retryCfg.BaseDelay
+	if delay <= 0 {
+		delay = 500 * time.Millisecond
+	}
+	maxDelay := retryCfg.MaxDelay
+	if maxDelay <= 0 {
+		maxDelay = 5 * time.Second
+	}
+	multiplier := retryCfg.BackoffMultiplier
+	if multiplier <= 0 {
+		multiplier = 2
+	}
+
+	var resp *futuresmarket.GetFullOrderBookResp
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if r.limiter != nil {
+			if err = r.limiter.Wait(r.ctx); err != nil {
+				log.WithError(err).Warn("rate limiter wait failed")
+				return
+			}
+		}
+
+		resp, err = r.marketAPI.GetFullOrderBook(req, r.ctx)
+		if err == nil {
+			break
+		}
+
+		if attempt == maxAttempts {
+			log.WithError(err).Warn("failed to fetch orderbook")
+			return
+		}
+
+		log.WithError(err).WithField("attempt", attempt).Warnf("retrying in %v", delay)
+
+		select {
+		case <-time.After(delay):
+		case <-r.ctx.Done():
+			return
+		}
+
+		delay = delay * time.Duration(multiplier)
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+
+	if resp == nil {
+		log.Warn("received nil response from kucoin")
 		return
 	}
 
