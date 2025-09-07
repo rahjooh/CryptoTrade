@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"gopkg.in/yaml.v3"
 )
 
 // IPShard defines a set of symbols that should be fetched using a specific source IP.
