@@ -26,6 +26,15 @@ func ToBinance(exchange, sym string) string {
 	}
 
 	sym = strings.ToUpper(sym)
+	// handle binance's "1000" prefixed contracts
+	switch sym {
+	case "1000BONKUSDT":
+		sym = "BONKUSDT"
+	case "1000PEPEUSDT":
+		sym = "PEPEUSDT"
+	case "1000SHIBUSDT":
+		sym = "SHIBUSDT"
+	}
 	if strings.HasPrefix(sym, "XBT") {
 		sym = "BTC" + sym[3:]
 	}
