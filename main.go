@@ -54,7 +54,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger.InitCloudWatch(cfg.Storage.S3.Region, cfg.Cryptoflow.Name)
+	logger.InitCloudWatch(cfg.Storage.S3.Region, cfg.Cryptoflow.Name, cfg.Logging.DashboardName)
 
 	if strings.ToLower(cfg.Logging.Level) == "report" {
 		logger.StartReport(ctx, log, 30*time.Second)

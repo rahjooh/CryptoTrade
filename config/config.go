@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -278,11 +277,12 @@ type AlertsThresholdsConfig struct {
 }
 
 type LoggingConfig struct {
-	Level  string                 `yaml:"level"`
-	Format string                 `yaml:"format"`
-	Output string                 `yaml:"output"`
-	MaxAge int                    `yaml:"max_age"`
-	Fields map[string]interface{} `yaml:"fields"`
+	Level         string                 `yaml:"level"`
+	Format        string                 `yaml:"format"`
+	Output        string                 `yaml:"output"`
+	MaxAge        int                    `yaml:"max_age"`
+	Fields        map[string]interface{} `yaml:"fields"`
+	DashboardName string                 `yaml:"dashboard_name"`
 }
 
 func LoadConfig(path string) (*Config, error) {

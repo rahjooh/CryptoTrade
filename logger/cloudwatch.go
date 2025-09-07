@@ -12,10 +12,11 @@ import (
 
 var cwClient *cloudwatch.Client
 var cwNamespace string = "Hadi-CryptoFlow"
+var cwDashboard string = "Data"
 
-// InitCloudWatch configures the CloudWatch client used for publishing metrics.
-// If region is empty, the default region resolution is used. Namespace defaults to "CryptoFlow".
-func InitCloudWatch(region, namespace string) {
+// If dashboard is provided, metrics are sent to that dashboard; otherwise a
+// default name derived from the namespace is used.
+func InitCloudWatch(region, namespace, dashboard string) {
 	ctx := context.Background()
 	opts := []func(*config.LoadOptions) error{}
 	if region != "" {
@@ -28,6 +29,11 @@ func InitCloudWatch(region, namespace string) {
 	cwClient = cloudwatch.NewFromConfig(cfg)
 	if namespace != "" {
 		cwNamespace = "Hadi-" + namespace
+	}
+	if dashboard != "" {
+		cwDashboard = dashboard
+	} else {
+		cwDashboard = cwNamespace + "-dashboard"
 	}
 	CreateDefaultDashboard(ctx)
 }
@@ -70,7 +76,7 @@ func CreateDefaultDashboard(ctx context.Context) {
 }`, cwNamespace)
 
 	_, _ = cwClient.PutDashboard(ctx, &cloudwatch.PutDashboardInput{
-		DashboardName: aws.String(cwNamespace + "-dashboard"),
+		DashboardName: aws.String(cwDashboard),
 		DashboardBody: aws.String(body),
 	})
 }
