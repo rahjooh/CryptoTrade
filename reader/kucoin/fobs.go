@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -15,62 +13,65 @@ import (
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
+
+	sdkapi "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/api"
+	futuresmarket "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/futures/market"
+	sdktype "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/types"
 )
 
 // Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
 type Kucoin_FOBS_Reader struct {
-	config      *config.Config
-	client      *http.Client
-	rawChannel  chan<- models.RawFOBSMessage
-	ctx         context.Context
-	wg          *sync.WaitGroup
-	mu          sync.RWMutex
-	running     bool
-	log         *logger.Log
-	symbols     []string
-	snapshotURL string
+	config     *config.Config
+	marketAPI  futuresmarket.MarketAPI
+	rawChannel chan<- models.RawFOBSMessage
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Log
+	symbols    []string
 }
 
-// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using a custom HTTP client.
-// The reader will bind outbound connections to the provided localIP if not empty
-// and fetch snapshots only for the supplied symbols.
+// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin universal SDK.
+// The reader will fetch snapshots only for the supplied symbols. The localIP parameter is kept
+// for compatibility but not used by the underlying SDK.
 func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Kucoin_FOBS_Reader {
 	log := logger.GetLogger()
 
 	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
 
-	transport := &http.Transport{
-		MaxIdleConns:        cfg.Source.Kucoin.ConnectionPool.MaxIdleConns,
-		MaxIdleConnsPerHost: cfg.Source.Kucoin.ConnectionPool.MaxIdleConns,
-		MaxConnsPerHost:     cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost,
-		IdleConnTimeout:     cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout,
-		DisableCompression:  false,
+	baseURL := snapshotCfg.URL
+	if u, err := url.Parse(snapshotCfg.URL); err == nil {
+		baseURL = fmt.Sprintf("https://%s", u.Host)
 	}
 
-	if localIP != "" {
-		if ip := net.ParseIP(localIP); ip != nil {
-			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
-			transport.DialContext = dialer.DialContext
-		}
-	}
+	transportOpt := sdktype.NewTransportOptionBuilder().
+		SetMaxIdleConns(cfg.Source.Kucoin.ConnectionPool.MaxIdleConns).
+		SetMaxIdleConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxIdleConns).
+		SetMaxConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost).
+		SetIdleConnTimeout(cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout).
+		SetTimeout(cfg.Reader.Timeout).
+		Build()
 
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   cfg.Reader.Timeout,
-	}
+	option := sdktype.NewClientOptionBuilder().
+		WithFuturesEndpoint(baseURL).
+		WithTransportOption(transportOpt).
+		Build()
+
+	client := sdkapi.NewClient(option)
+	marketAPI := client.RestService().GetFuturesService().GetMarketAPI()
 
 	reader := &Kucoin_FOBS_Reader{
-		config:      cfg,
-		client:      httpClient,
-		rawChannel:  rawChannel,
-		wg:          &sync.WaitGroup{},
-		log:         log,
-		symbols:     symbols,
-		snapshotURL: snapshotCfg.URL,
+		config:     cfg,
+		marketAPI:  marketAPI,
+		rawChannel: rawChannel,
+		wg:         &sync.WaitGroup{},
+		log:        log,
+		symbols:    symbols,
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"base_url": snapshotCfg.URL,
+		"base_url": baseURL,
 	}).Info("kucoin reader initialized")
 
 	return reader
@@ -166,44 +167,15 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		"operation": "fetch_orderbook",
 	})
 
-	reqURL, err := url.Parse(r.snapshotURL)
-	if err != nil {
-		log.WithError(err).Warn("invalid snapshot URL")
-		return
-	}
-	q := reqURL.Query()
-	q.Set("symbol", symbol)
-	reqURL.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, reqURL.String(), nil)
-	if err != nil {
-		log.WithError(err).Warn("failed to create request")
-		return
-	}
-
-	res, err := r.client.Do(req)
+	req := futuresmarket.NewGetFullOrderBookReqBuilder().SetSymbol(symbol).Build()
+	resp, err := r.marketAPI.GetFullOrderBook(req, r.ctx)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
-	defer res.Body.Close()
 
-	var resp struct {
-		Code string `json:"code"`
-		Data struct {
-			Sequence int64       `json:"sequence"`
-			Bids     [][]float64 `json:"bids"`
-			Asks     [][]float64 `json:"asks"`
-		} `json:"data"`
-	}
-
-	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		log.WithError(err).Warn("failed to decode snapshot data")
-		return
-	}
-
-	bids := make([][]string, len(resp.Data.Bids))
-	for i, b := range resp.Data.Bids {
+	bids := make([][]string, len(resp.Bids))
+	for i, b := range resp.Bids {
 		if len(b) < 2 {
 			continue
 		}
@@ -213,8 +185,8 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		}
 	}
 
-	asks := make([][]string, len(resp.Data.Asks))
-	for i, a := range resp.Data.Asks {
+	asks := make([][]string, len(resp.Asks))
+	for i, a := range resp.Asks {
 		if len(a) < 2 {
 			continue
 		}
@@ -225,7 +197,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	}
 
 	kucoinResp := models.BinanceFOBSresp{
-		LastUpdateID: resp.Data.Sequence,
+		LastUpdateID: resp.Sequence,
 		Bids:         bids,
 		Asks:         asks,
 	}
