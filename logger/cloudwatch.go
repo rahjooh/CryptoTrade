@@ -29,6 +29,7 @@ func InitCloudWatch(region, namespace string) {
 	if namespace != "" {
 		cwNamespace = "Hadi-" + namespace
 	}
+	CreateDefaultDashboard(ctx)
 }
 
 // publishMetrics sends the provided metric data to CloudWatch if a client is configured.
