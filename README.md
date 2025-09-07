@@ -133,6 +133,15 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... \
 
 Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.
 
+### Monitoring
+
+CryptoFlow publishes runtime and pipeline metrics to Amazon CloudWatch using
+the configured S3 region and service name as the metric namespace. Metrics
+include CPU, memory, disk and network usage along with counts for errors,
+warnings, channel activity and S3 writes. A sample CloudWatch agent
+configuration is provided in `infra/cloudwatch-agent-config.json` for
+collecting host-level metrics on the EC2 instance running the service.
+
 ---
 
 ## Graceful Shutdown
