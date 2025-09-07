@@ -68,7 +68,7 @@ shards:
       - BCHUSDTM
       - TRXUSDTM
       - AAVEUSDTM
-      - BONKUSDTM
+      - OPUSDTM
   - ip: 172.31.8.67
     binance_symbols:
       - NEARUSDT
@@ -76,7 +76,6 @@ shards:
       - BCHUSDT
       - TRXUSDT
     kucoin_symbols:
-      - OPUSDTM
       - ARBUSDTM
       - INJUSDTM
   - ip: 172.31.5.194
