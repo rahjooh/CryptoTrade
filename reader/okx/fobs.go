@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +17,6 @@ import (
 
 	okex "github.com/tfxq/okx-go-sdk"
 	"github.com/tfxq/okx-go-sdk/api/rest"
-	marketreq "github.com/tfxq/okx-go-sdk/requests/rest/market"
 	"golang.org/x/time/rate"
 )
 
@@ -131,7 +132,11 @@ func (r *Okx_FOBS_Reader) fetchWorker(symbol string, snapshotCfg config.OkxSnaps
 // fetchOrderbook pulls snapshot data for a symbol and forwards to raw channel.
 func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSnapshotConfig) {
 	log := r.log.WithComponent("okx_reader").WithFields(logger.Fields{"symbol": symbol, "operation": "fetch_orderbook"})
-	req := marketreq.GetOrderBook{InstID: symbol, Sz: snapshotCfg.Limit}
+	params := map[string]string{
+		"instId":   symbol,
+		"instType": "SWAP",
+		"sz":       strconv.Itoa(snapshotCfg.Limit),
+	}
 	if r.limiter != nil {
 		if err := r.limiter.Wait(r.ctx); err != nil {
 			log.WithError(err).Warn("rate limiter wait failed")
@@ -139,7 +144,7 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		}
 	}
 
-	res, err := r.client.Market.GetOrderBook(req)
+	res, err := r.client.Do(http.MethodGet, "/api/v5/market/books", false, params)
 	if err != nil {
 		if strings.Contains(err.Error(), "50011") || strings.Contains(strings.ToLower(err.Error()), "rate limit") {
 			log.WithError(err).Warn("rate limited, backing off")
@@ -149,11 +154,17 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		}
 		return
 	}
-	if len(res.OrderBooks) == 0 {
+	defer res.Body.Close()
+	var obRes marketres.OrderBook
+	if err := json.NewDecoder(res.Body).Decode(&obRes); err != nil {
+		log.WithError(err).Warn("failed to decode orderbook")
+		return
+	}
+	if len(obRes.OrderBooks) == 0 {
 		log.Warn("empty orderbook response")
 		return
 	}
-	book := res.OrderBooks[0]
+	book := obRes.OrderBooks[0]
 	bids := make([][]string, len(book.Bids))
 	for i, b := range book.Bids {
 		bids[i] = []string{fmt.Sprintf("%f", b.DepthPrice), fmt.Sprintf("%f", b.Size)}
