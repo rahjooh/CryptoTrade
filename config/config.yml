@@ -260,8 +260,8 @@ cryptoflow:
   version: "1.0.0"
 
 channels:
-  raw_buffer: 1000
-  processed_buffer: 1000
+  raw_buffer: 10000
+  processed_buffer: 10000
 
 reader:
   max_workers: 1
