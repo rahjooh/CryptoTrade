@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -49,4 +50,47 @@ func TestDeltaProcessorStartStop(t *testing.T) {
 	}
 	cancel()
 	p.Stop()
+}
+
+func TestDeltaProcessorNormalizesSymbols(t *testing.T) {
+	cfg := minimalDeltaConfig()
+	cfg.Processor.BatchSize = 2
+	rawCh := make(chan models.RawFOBDMessage)
+	normCh := make(chan models.BatchFOBDMessage)
+	p := NewDeltaProcessor(cfg, rawCh, normCh)
+
+	evt := models.BinanceFOBDResp{
+		Time:             1,
+		LastUpdateID:     1,
+		PrevLastUpdateID: 0,
+		FirstUpdateID:    1,
+		Bids:             []models.FOBDEntry{{Price: "1", Quantity: "1"}},
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	raw := models.RawFOBDMessage{
+		Exchange:  "binance",
+		Symbol:    "1000BONKUSDT",
+		Market:    "fobd",
+		Data:      data,
+		Timestamp: time.Now(),
+	}
+
+	p.handleMessage(raw)
+
+	key := "binance_fobd_BONKUSDT"
+	p.mu.RLock()
+	batch, ok := p.batches[key]
+	p.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected batch key %s", key)
+	}
+	if batch.Symbol != "BONKUSDT" {
+		t.Fatalf("expected batch symbol BONKUSDT, got %s", batch.Symbol)
+	}
+	if len(batch.Entries) == 0 || batch.Entries[0].Symbol != "BONKUSDT" {
+		t.Fatalf("expected entry symbol BONKUSDT, got %+v", batch.Entries)
+	}
 }
