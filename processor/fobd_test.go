@@ -82,11 +82,14 @@ func TestDeltaProcessorNormalizesSymbols(t *testing.T) {
 
 	key := "binance_fobd_BONKUSDT"
 	p.mu.RLock()
-	batch, ok := p.batches[key]
+	state, ok := p.batches[key]
 	p.mu.RUnlock()
 	if !ok {
 		t.Fatalf("expected batch key %s", key)
 	}
+	state.mu.Lock()
+	batch := state.batch
+	state.mu.Unlock()
 	if batch.Symbol != "BONKUSDT" {
 		t.Fatalf("expected batch symbol BONKUSDT, got %s", batch.Symbol)
 	}
