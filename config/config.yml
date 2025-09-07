@@ -226,6 +226,7 @@ logging:
   file_path: "logs/collector.log"
   include_caller: true
   max_age: 7
+  dashboard_name: Data  # optional existing CloudWatch dashboard
 
 # CryptoFlow pipeline configuration
 cryptoflow:
