@@ -34,3 +34,39 @@ func TestFlattenerStartStop(t *testing.T) {
 	cancel()
 	f.Stop()
 }
+
+func TestFlattenerNormalizesSymbols(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Processor.BatchSize = 2
+	raw := make(chan models.RawFOBSMessage)
+	norm := make(chan models.BatchFOBSMessage)
+	f := NewFlattener(cfg, raw, norm)
+
+	rawMsg := models.RawFOBSMessage{
+		Exchange:  "binance",
+		Symbol:    "1000BONKUSDT",
+		Market:    "future-orderbook-snapshot",
+		Timestamp: time.Now(),
+	}
+	ob := models.BinanceFOBSresp{
+		LastUpdateID: 1,
+		Bids:         [][]string{{"1", "1"}},
+	}
+
+	entries := f.flattenOrderbook(rawMsg, ob)
+	if len(entries) == 0 || entries[0].Symbol != "BONKUSDT" {
+		t.Fatalf("expected normalized symbol BONKUSDT, got %v", entries)
+	}
+
+	f.addToBatch(rawMsg, entries)
+	key := "binance_future-orderbook-snapshot_BONKUSDT"
+	f.mu.RLock()
+	batch, ok := f.batches[key]
+	f.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected batch key %s", key)
+	}
+	if batch.Symbol != "BONKUSDT" {
+		t.Fatalf("expected batch symbol BONKUSDT, got %s", batch.Symbol)
+	}
+}

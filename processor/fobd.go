@@ -174,6 +174,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 
 	entries := make([]models.NormFOBDMessage, 0, len(bids)+len(asks))
 	recv := raw.Timestamp.UnixMilli()
+	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
 	for _, b := range bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
 		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
@@ -181,7 +182,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 			continue
 		}
 		entries = append(entries, models.NormFOBDMessage{
-			Symbol:        raw.Symbol,
+			Symbol:        normalSymbol,
 			EventTime:     eventTime,
 			UpdateID:      updateID,
 			PrevUpdateID:  prevUpdateID,
@@ -199,7 +200,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 			continue
 		}
 		entries = append(entries, models.NormFOBDMessage{
-			Symbol:        raw.Symbol,
+			Symbol:        normalSymbol,
 			EventTime:     eventTime,
 			UpdateID:      updateID,
 			PrevUpdateID:  prevUpdateID,
@@ -221,14 +222,14 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 func (p *DeltaProcessor) addToBatch(raw models.RawFOBDMessage, entries []models.NormFOBDMessage) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, raw.Symbol)
+	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
+	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, normalSymbol)
 	batch, ok := p.batches[key]
 	if !ok {
 		batch = &models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    raw.Exchange,
-			Symbol:      raw.Symbol,
+			Symbol:      normalSymbol,
 			Market:      raw.Market,
 			Entries:     make([]models.NormFOBDMessage, 0, p.config.Processor.BatchSize),
 			Timestamp:   raw.Timestamp,

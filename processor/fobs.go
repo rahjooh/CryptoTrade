@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -181,6 +182,7 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 
 func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook models.BinanceFOBSresp) []models.NormFOBSMessage {
 	var entries []models.NormFOBSMessage
+	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
 
 	// Process bids (buy orders) - highest price first
 	for level, bid := range orderbook.Bids {
@@ -216,7 +218,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 
 		entries = append(entries, models.NormFOBSMessage{
 			Exchange:     rawMsg.Exchange,
-			Symbol:       rawMsg.Symbol,
+			Symbol:       normalSymbol,
 			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
@@ -261,7 +263,7 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 
 		entries = append(entries, models.NormFOBSMessage{
 			Exchange:     rawMsg.Exchange,
-			Symbol:       rawMsg.Symbol,
+			Symbol:       normalSymbol,
 			Market:       rawMsg.Market,
 			Timestamp:    rawMsg.Timestamp,
 			LastUpdateID: orderbook.LastUpdateID,
@@ -276,17 +278,18 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 }
 
 func (f *Flattener) addToBatch(rawMsg models.RawFOBSMessage, entries []models.NormFOBSMessage) {
+	normalSymbol := symbols.ToBinance(rawMsg.Exchange, rawMsg.Symbol)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	batchKey := fmt.Sprintf("%s_%s_%s", rawMsg.Exchange, rawMsg.Market, rawMsg.Symbol)
+	batchKey := fmt.Sprintf("%s_%s_%s", rawMsg.Exchange, rawMsg.Market, normalSymbol)
 
 	batch, exists := f.batches[batchKey]
 	if !exists {
 		batch = &models.BatchFOBSMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    rawMsg.Exchange,
-			Symbol:      rawMsg.Symbol,
+			Symbol:      normalSymbol,
 			Market:      rawMsg.Market,
 			Entries:     make([]models.NormFOBSMessage, 0, f.config.Processor.BatchSize),
 			RecordCount: 0,
