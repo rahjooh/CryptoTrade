@@ -11,6 +11,10 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
+	gnet "github.com/shirou/gopsutil/v3/net" //cloudwatch
+
+	"github.com/aws/aws-sdk-go-v2/aws"                              //cloudwatch
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types" //cloudwatch
 )
 
 type channelStat struct {
@@ -86,7 +90,7 @@ func startReport(ctx context.Context, log *Log, interval time.Duration) {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				logReport(log)
+				logReport(ctx, log)
 			}
 		}
 	}()
@@ -98,11 +102,11 @@ func StartReport(ctx context.Context, log *Log, interval time.Duration) {
 	startReport(ctx, log, interval)
 }
 
-func logReport(log *Log) {
+func logReport(ctx context.Context, log *Log) {
 	cpuPercent, _ := cpu.Percent(0, false)
 	memStats, _ := mem.VirtualMemory()
 	diskStats, _ := disk.Usage("/")
-
+	netStats, _ := gnet.IOCounters(false)
 	channelData := map[string]map[string]int64{}
 	channels.Range(func(k, v any) bool {
 		name := k.(string)
@@ -119,7 +123,14 @@ func logReport(log *Log) {
 		cpuPct = cpuPercent[0]
 	}
 
-	log.WithComponent("report").WithFields(Fields{
+	bytesSent := uint64(0)
+	bytesRecv := uint64(0)
+	if len(netStats) > 0 {
+		bytesSent = netStats[0].BytesSent
+		bytesRecv = netStats[0].BytesRecv
+	}
+
+	fields := Fields{
 		"errors_delta":       atomic.LoadInt64(&errorsDelta),
 		"errors_snapshot":    atomic.LoadInt64(&errorsSnapshot),
 		"warns_delta":        atomic.LoadInt64(&warnsDelta),
@@ -133,5 +144,45 @@ func logReport(log *Log) {
 		"memory_mb":          int64(memStats.Used) / 1024 / 1024,
 		"disk_mb":            int64(diskStats.Used) / 1024 / 1024,
 		"channels":           channelData,
-	}).Info("runtime report")
+		"net_bytes_sent":     int64(bytesSent),
+		"net_bytes_recv":     int64(bytesRecv),
+	}
+
+	log.WithComponent("report").WithFields(fields).Info("runtime report")
+
+	var data []cwtypes.MetricDatum
+	data = append(data,
+		cwtypes.MetricDatum{MetricName: aws.String("CPUPercent"), Unit: cwtypes.StandardUnitPercent, Value: aws.Float64(cpuPct)},
+		cwtypes.MetricDatum{MetricName: aws.String("MemoryMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(memStats.Used) / 1024 / 1024)},
+		cwtypes.MetricDatum{MetricName: aws.String("DiskMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(diskStats.Used) / 1024 / 1024)},
+		cwtypes.MetricDatum{MetricName: aws.String("ErrorsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("ErrorsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("WarnsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("WarnsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("DeltaReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["delta_reads"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("SnapshotReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["snapshot_reads"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("S3WritesDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("S3WritesSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("NetBytesSent"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesSent))},
+		cwtypes.MetricDatum{MetricName: aws.String("NetBytesRecv"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesRecv))},
+	)
+
+	for name, stats := range channelData {
+		data = append(data,
+			cwtypes.MetricDatum{
+				MetricName: aws.String("ChannelMessages"),
+				Unit:       cwtypes.StandardUnitCount,
+				Dimensions: []cwtypes.Dimension{{Name: aws.String("Channel"), Value: aws.String(name)}},
+				Value:      aws.Float64(float64(stats["messages"])),
+			},
+			cwtypes.MetricDatum{
+				MetricName: aws.String("ChannelBytes"),
+				Unit:       cwtypes.StandardUnitBytes,
+				Dimensions: []cwtypes.Dimension{{Name: aws.String("Channel"), Value: aws.String(name)}},
+				Value:      aws.Float64(float64(stats["bytes"])),
+			},
+		)
+	}
+
+	publishMetrics(ctx, data)
 }

@@ -1,0 +1,23 @@
+{
+  "metrics": {
+    "metrics_collected": {
+      "cpu": {
+        "measurement": ["usage_system", "usage_user", "usage_idle"]
+      },
+      "mem": {
+        "measurement": ["mem_used_percent", "mem_available"]
+      },
+      "disk": {
+        "measurement": ["used_percent"],
+        "resources": ["*"]
+      },
+      "net": {
+        "measurement": ["bytes_sent", "bytes_recv"],
+        "resources": ["*"]
+      }
+    },
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    }
+  }
+}
