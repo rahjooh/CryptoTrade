@@ -14,3 +14,14 @@ services:
       - S3_BUCKET
       - LOG_LEVEL=${LOG_LEVEL:-warn}
     command: ["./cryptoflow"]
+  cloudwatch:
+    image: amazon/cloudwatch-agent:latest
+    container_name: cw-agent
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./infra/cloudwatch/cloudwatch-agent-config.json:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    environment:
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
