@@ -17,6 +17,7 @@ import (
 
 	okex "github.com/tfxq/okx-go-sdk"
 	"github.com/tfxq/okx-go-sdk/api/rest"
+	marketres "github.com/tfxq/okx-go-sdk/responses/market"
 	"golang.org/x/time/rate"
 )
 
