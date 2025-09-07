@@ -136,33 +136,17 @@ Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerol
 ### Monitoring
 
 names that all begin with the prefix `Hadi`. The namespace is set to the
-service name prefixed with `hadi` (e.g. `hadiCryptoFlow`) and each metric name
-follows the same convention (such as `hadiCPUPercent` and
-`hadiChannelMessages`). A sample CloudWatch agent configuration is provided in
-`infra/cloudwatch-agent-config.json` for collecting host-level metrics on the
-EC2 instance running the service. To visualize these metrics you can create a
-dashboard:
+service name prefixed with `Hadi` (e.g. `Hadi-CryptoFlow`) and each metric name
+follows the same convention (such as `Hadi-CPUPercent` and
+`Hadi-ChannelMessages`). A sample CloudWatch agent configuration is provided in
+`infra/cloudwatch/cloudwatch-agent-config.json` for collecting host-level
+metrics on the EC2 instance running the service.
 
-```bash
-aws cloudwatch put-dashboard \
-  --dashboard-name Hadi-CryptoFlowDashboard \
-  --dashboard-body '{
-    "widgets": [
-      {
-        "type": "metric",
-        "properties": {
-          "metrics": [
-            [ "Hadi-CryptoFlow", "Hadi-CPUPercent" ],
-            [ "Hadi-CryptoFlow", "Hadi-NetBytesSent" ]
-          ],
-          "period": 60,
-          "stat": "Average",
-          "view": "timeSeries"
-        }
-      }
-    ]
-  }'
-```
+On startup CryptoFlow automatically creates a CloudWatch dashboard named
+`<namespace>-dashboard` that displays CPU, memory, disk and other runtime
+metrics. When using `docker-compose`, the `cloudwatch` service runs the
+CloudWatch Agent with the provided configuration so the dashboard is populated
+with host metrics without manual steps.
 
 ---
 
