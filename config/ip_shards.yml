@@ -10,9 +10,9 @@ shards:
       - BNBUSDTM
       - ONDOUSDTM
     okx_symbols:
-      - BTC-USDT-SWAP
-      - XRP-USDT-SWAP
-      - BNB-USDT-SWAP
+      - BTC-USDT
+      - XRP-USDT
+      - BNB-USDT
 
   - ip: 172.31.8.202
     binance_symbols:
@@ -25,9 +25,9 @@ shards:
       - SUIUSDTM
       - SHIBUSDTM
     okx_symbols:
-      - SEI-USDT-SWAP
-      - ETH-USDT-SWAP
-      - 1000SHIB-USDT-SWAP
+      - SEI-USDT
+      - ETH-USDT
+      - 1000SHIB-USDT
 
   - ip: 172.31.1.88
     binance_symbols:
@@ -41,10 +41,10 @@ shards:
       - PEPEUSDTM
       - DOGEUSDTM
     okx_symbols:
-      - SOL-USDT-SWAP
-      - DOT-USDT-SWAP
-      - 1000PEPE-USDT-SWAP
-      - DOGE-USDT-SWAP
+      - SOL-USDT
+      - DOT-USDT
+      - 1000PEPE-USDT
+      - DOGE-USDT
 
   - ip: 172.31.14.157
     binance_symbols:
@@ -58,10 +58,10 @@ shards:
       - XBTUSDCM
       - ETHUSDCM
     okx_symbols:
-      - WIF-USDT-SWAP
-      - ADA-USDT-SWAP
-      - BTC-USDC-SWAP
-      - ETH-USDC-SWAP
+      - WIF-USDT
+      - ADA-USDT
+      - BTC-USDC
+      - ETH-USDC
 
   - ip: 172.31.9.173
     binance_symbols:
@@ -75,10 +75,10 @@ shards:
       - XRPUSDCM
       - LTCUSDTM
     okx_symbols:
-      - SOL-USDC-SWAP
-      - SUI-USDC-SWAP
-      - XRP-USDC-SWAP
-      - LTC-USDC-SWAP
+      - SOL-USDC
+      - SUI-USDC
+      - XRP-USDC
+      - LTC-USDC
 
   - ip: 172.31.4.116
     binance_symbols:
@@ -92,10 +92,10 @@ shards:
       - UNIUSDTM
       - XLMUSDTM
     okx_symbols:
-      - AVAX-USDT-SWAP
-      - LINK-USDT-SWAP
-      - UNI-USDT-SWAP
-      - XLM-USDT-SWAP
+      - AVAX-USDT
+      - LINK-USDT
+      - UNI-USDT
+      - XLM-USDT
 
   - ip: 172.31.8.67
     binance_symbols:
@@ -109,10 +109,10 @@ shards:
       - BCHUSDTM
       - TRXUSDTM
     okx_symbols:
-      - NEAR-USDT-SWAP
-      - HYPE-USDT-SWAP
-      - BCH-USDT-SWAP
-      - TRX-USDT-SWAP
+      - NEAR-USDT
+      - HYPE-USDT
+      - BCH-USDT
+      - TRX-USDT
 
   - ip: 172.31.5.194
     binance_symbols:
@@ -126,10 +126,10 @@ shards:
       - ARBUSDTM
       - INJUSDTM
     okx_symbols:
-      - AAVE-USDT-SWAP
-      - 1000BONK-USDT-SWAP
-      - OP-USDT-SWAP
-      - ARB-USDT-SWAP
+      - AAVE-USDT
+      - 1000BONK-USDT
+      - OP-USDT
+      - ARB-USDT
 
   - ip: 172.31.15.240
     binance_symbols:
@@ -138,7 +138,7 @@ shards:
       - ONDOUSDT
       - SUIUSDT
     okx_symbols:
-      - INJ-USDT-SWAP
-      - FARTCOIN-USDT-SWAP
-      - ONDO-USDT-SWAP
-      - SUI-USDT-SWAP
+      - INJ-USDT
+      - FARTCOIN-USDT
+      - ONDO-USDT
+      - SUI-USDT
