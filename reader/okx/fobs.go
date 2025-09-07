@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	okex "github.com/tfxq/okx-go-sdk"
 	"github.com/tfxq/okx-go-sdk/api/rest"
 	marketreq "github.com/tfxq/okx-go-sdk/requests/rest/market"
+	"golang.org/x/time/rate"
 )
 
 // Okx_FOBS_Reader fetches futures order book snapshots from OKX.
@@ -28,6 +30,7 @@ type Okx_FOBS_Reader struct {
 	running    bool
 	log        *logger.Log
 	symbols    []string
+	limiter    *rate.Limiter
 }
 
 // Okx_FOBS_NewReader creates a new OKX snapshot reader. The reader
@@ -40,6 +43,17 @@ func Okx_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMess
 	}
 	client := rest.NewClient("", "", "", base, okex.NormalServer)
 
+	rl := cfg.Reader.RateLimit
+	rps := rl.RequestsPerSecond
+	if rps <= 0 {
+		rps = 5
+	}
+	burst := rl.BurstSize
+	if burst <= 0 {
+		burst = 1
+	}
+	limiter := rate.NewLimiter(rate.Limit(rps), burst)
+
 	return &Okx_FOBS_Reader{
 		config:     cfg,
 		client:     client,
@@ -47,6 +61,7 @@ func Okx_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMess
 		wg:         &sync.WaitGroup{},
 		log:        logger.GetLogger(),
 		symbols:    symbols,
+		limiter:    limiter,
 	}
 }
 
@@ -117,9 +132,21 @@ func (r *Okx_FOBS_Reader) fetchWorker(symbol string, snapshotCfg config.OkxSnaps
 func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSnapshotConfig) {
 	log := r.log.WithComponent("okx_reader").WithFields(logger.Fields{"symbol": symbol, "operation": "fetch_orderbook"})
 	req := marketreq.GetOrderBook{InstID: symbol, Sz: snapshotCfg.Limit}
+	if r.limiter != nil {
+		if err := r.limiter.Wait(r.ctx); err != nil {
+			log.WithError(err).Warn("rate limiter wait failed")
+			return
+		}
+	}
+
 	res, err := r.client.Market.GetOrderBook(req)
 	if err != nil {
-		log.WithError(err).Warn("failed to fetch orderbook")
+		if strings.Contains(err.Error(), "50011") || strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+			log.WithError(err).Warn("rate limited, backing off")
+			time.Sleep(time.Second)
+		} else {
+			log.WithError(err).Warn("failed to fetch orderbook")
+		}
 		return
 	}
 	if len(res.OrderBooks) == 0 {
