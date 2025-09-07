@@ -63,15 +63,17 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSM
 	client := sdkapi.NewClient(option)
 	marketAPI := client.RestService().GetFuturesService().GetMarketAPI()
 
-	var limiter *rate.Limiter
 	rl := cfg.Reader.RateLimit
-	if rl.RequestsPerSecond > 0 {
-		burst := rl.BurstSize
-		if burst <= 0 {
-			burst = rl.RequestsPerSecond
-		}
-		limiter = rate.NewLimiter(rate.Limit(rl.RequestsPerSecond), burst)
+	rps := rl.RequestsPerSecond
+	if rps <= 0 {
+		rps = 5
 	}
+	burst := rl.BurstSize
+	if burst <= 0 {
+		burst = 1
+	}
+
+	limiter := rate.NewLimiter(rate.Limit(rps), burst)
 
 	reader := &Kucoin_FOBS_Reader{
 		config:     cfg,
@@ -84,7 +86,9 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSM
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"base_url": baseURL,
+		"base_url":       baseURL,
+		"rate_limit_rps": rps,
+		"burst":          burst,
 	}).Info("kucoin reader initialized")
 
 	return reader
