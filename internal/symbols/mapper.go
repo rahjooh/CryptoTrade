@@ -26,6 +26,8 @@ func ToBinance(exchange, sym string) string {
 		if len(parts) >= 2 {
 			sym = parts[0] + parts[1]
 		}
+		// trim trailing '-SWAP' denoting futures
+		sym = strings.TrimSuffix(sym, "-SWAP")
 		// map XBT prefix to BTC
 		if strings.HasPrefix(sym, "XBT") {
 			sym = "BTC" + sym[3:]
