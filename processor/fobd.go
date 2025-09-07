@@ -51,6 +51,9 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessa
 	for _, s := range cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols {
 		symSet[symbols.ToBinance("kucoin", s)] = struct{}{}
 	}
+	for _, s := range cfg.Source.Okx.Future.Orderbook.Delta.Symbols {
+		symSet[symbols.ToBinance("okx", s)] = struct{}{}
+	}
 	return &DeltaProcessor{
 		config:        cfg,
 		rawChan:       rawChan,
@@ -162,6 +165,18 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 		updateID = evt.Sequence
 		prevUpdateID = evt.Sequence - 1
 		firstUpdateID = evt.Sequence
+		bids = evt.Bids
+		asks = evt.Asks
+	case "okx":
+		var evt models.OkxFOBDResp
+		if err := json.Unmarshal(raw.Data, &evt); err != nil {
+			log.WithError(err).Warn("failed to unmarshal delta message")
+			return
+		}
+		eventTime = evt.Timestamp
+		updateID = evt.Timestamp
+		prevUpdateID = evt.Timestamp
+		firstUpdateID = evt.Timestamp
 		bids = evt.Bids
 		asks = evt.Asks
 	default:

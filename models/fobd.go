@@ -83,3 +83,17 @@ type KucoinFOBDResp struct {
 	Bids      []FOBDEntry `json:"bids"`
 	Asks      []FOBDEntry `json:"asks"`
 }
+
+/////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// OKX //////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+// OkxFOBDResp represents an order book delta update from OKX websocket.
+// The update includes bids and asks arrays alongside an action type and timestamp.
+type OkxFOBDResp struct {
+	Symbol    string      `json:"symbol"`
+	Action    string      `json:"action"`
+	Timestamp int64       `json:"timestamp"`
+	Bids      []FOBDEntry `json:"bids"`
+	Asks      []FOBDEntry `json:"asks"`
+}
