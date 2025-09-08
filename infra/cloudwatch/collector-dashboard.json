@@ -234,7 +234,7 @@
             "CWAgent",
             "cpu_usage_active",
             "InstanceId",
-            "<collector-instance-id>",
+            "i-0b9c363acf72f7621",
             {
               "stat": "Average"
             }
@@ -263,7 +263,7 @@
             "CWAgent",
             "mem_used_percent",
             "InstanceId",
-            "<collector-instance-id>",
+            "i-0b9c363acf72f7621",
             {
               "stat": "Average"
             }
@@ -294,7 +294,7 @@
             "path",
             "/",
             "InstanceId",
-            "<collector-instance-id>",
+            "i-0b9c363acf72f7621",
             {
               "stat": "Average"
             }
@@ -323,23 +323,17 @@
             "CWAgent",
             "net_bytes_sent",
             "InstanceId",
-            "<collector-instance-id>",
+            "i-0b9c363acf72f7621",
             {
               "stat": "Sum"
             }
           ],
           [
-            ".",
+            "CWAgent",
             "net_bytes_recv",
-            ".",
-            ".",
-            ".",
-            ".",
             "InstanceId",
-            "<collector-instance-id>",
-            {
-              "stat": "Sum"
-            }
+            "i-0b9c363acf72f7621",
+            { "stat": "Sum" }
           ]
         ],
         "period": 60,
