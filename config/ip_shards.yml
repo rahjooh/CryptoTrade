@@ -10,9 +10,9 @@ shards:
       - BNBUSDTM
       - ONDOUSDTM
     okx_symbols:
-      - BTC-USDT
-      - XRPUSDT
-      - BNB-USDT-SWAP
+      - BTC-USDT-SWAP
+      - XRPUSDT-SWAP
+      - BNBUSDT-SWAP
 
 #  - ip: 172.31.8.202
 #    binance_symbols:
