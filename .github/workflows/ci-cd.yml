@@ -137,7 +137,7 @@ jobs:
         id: ec2
         run: |
           IID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=cryptoflow-collector" "Name=instance-state-name,Values=running" \
+            --filters "Name=tag:Name,Values=Collector Test 2" "Name=instance-state-name,Values=running" \
             --query "Reservations[].Instances[].InstanceId" --output text)
           if [ -z "$IID" ]; then echo "No running collector instance found"; exit 1; fi
           echo "instance_id=$IID" >> "$GITHUB_OUTPUT"
