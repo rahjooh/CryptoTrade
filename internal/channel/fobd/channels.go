@@ -110,6 +110,32 @@ func (c *Channels) IncrementNormDropped() {
 	c.statsMutex.Unlock()
 }
 
+func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOBDMessage) bool {
+	select {
+	case c.Raw <- msg:
+		c.IncrementRawSent()
+		return true
+	case <-ctx.Done():
+		return false
+	default:
+		c.IncrementRawDropped()
+		return false
+	}
+}
+
+func (c *Channels) SendNorm(ctx context.Context, msg models.BatchFOBDMessage) bool {
+	select {
+	case c.Norm <- msg:
+		c.IncrementNormSent()
+		return true
+	case <-ctx.Done():
+		return false
+	default:
+		c.IncrementNormDropped()
+		return false
+	}
+}
+
 func (c *Channels) GetStats() ChannelStats {
 	c.statsMutex.RLock()
 	defer c.statsMutex.RUnlock()

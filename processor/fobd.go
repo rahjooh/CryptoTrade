@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
+	fobd "cryptoflow/internal/channel/fobd"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -28,8 +29,7 @@ type batchState struct {
 // before forwarding to the next stage.
 type DeltaProcessor struct {
 	config   *appconfig.Config
-	rawChan  <-chan models.RawFOBDMessage
-	normChan chan<- models.BatchFOBDMessage
+	channels *fobd.Channels
 	ctx      context.Context
 	wg       *sync.WaitGroup
 	mu       sync.RWMutex
@@ -43,7 +43,7 @@ type DeltaProcessor struct {
 }
 
 // NewDeltaProcessor creates a new processor instance.
-func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessage, normChan chan<- models.BatchFOBDMessage) *DeltaProcessor {
+func NewDeltaProcessor(cfg *appconfig.Config, ch *fobd.Channels) *DeltaProcessor {
 	symSet := make(map[string]struct{})
 	for _, s := range cfg.Source.Binance.Future.Orderbook.Delta.Symbols {
 		symSet[s] = struct{}{}
@@ -56,8 +56,7 @@ func NewDeltaProcessor(cfg *appconfig.Config, rawChan <-chan models.RawFOBDMessa
 	}
 	return &DeltaProcessor{
 		config:        cfg,
-		rawChan:       rawChan,
-		normChan:      normChan,
+		channels:      ch,
 		wg:            &sync.WaitGroup{},
 		log:           logger.GetLogger(),
 		batches:       make(map[string]*batchState),
@@ -124,7 +123,7 @@ func (p *DeltaProcessor) worker(id int) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case msg, ok := <-p.rawChan:
+		case msg, ok := <-p.channels.Raw:
 			if !ok {
 				return
 			}
@@ -326,8 +325,7 @@ func (p *DeltaProcessor) flush(key string) {
 		state.mu.Unlock()
 		return
 	}
-	select {
-	case p.normChan <- *batch:
+	if p.channels.SendNorm(p.ctx, *batch) {
 		state.batch = &models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
 			Exchange:    batch.Exchange,
@@ -337,10 +335,10 @@ func (p *DeltaProcessor) flush(key string) {
 			ProcessedAt: time.Now(),
 		}
 		state.lastFlush = time.Now()
-	case <-p.ctx.Done():
+	} else if p.ctx.Err() != nil {
 		state.mu.Unlock()
 		return
-	default:
+	} else {
 		p.log.WithComponent("delta_processor").WithFields(logger.Fields{"batch_key": key}).Warn("normfobd channel full, dropping batch")
 		state.batch = &models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
@@ -383,10 +381,10 @@ func (p *DeltaProcessor) metricsReporter(ctx context.Context) {
 				return
 			}
 			p.log.WithComponent("delta_processor").WithFields(logger.Fields{
-				"raw_channel_len":  len(p.rawChan),
-				"raw_channel_cap":  cap(p.rawChan),
-				"norm_channel_len": len(p.normChan),
-				"norm_channel_cap": cap(p.normChan),
+				"raw_channel_len":  len(p.channels.Raw),
+				"raw_channel_cap":  cap(p.channels.Raw),
+				"norm_channel_len": len(p.channels.Norm),
+				"norm_channel_cap": cap(p.channels.Norm),
 			}).Info("delta processor channel sizes")
 		}
 	}

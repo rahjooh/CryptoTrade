@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"cryptoflow/config"
-	"cryptoflow/models"
+	fobdchan "cryptoflow/internal/channel/fobd"
+	fobschan "cryptoflow/internal/channel/fobs"
 )
 
 func minimalConfig() *config.Config {
@@ -41,12 +42,12 @@ func minimalConfig() *config.Config {
 
 func TestNewReaders(t *testing.T) {
 	cfg := minimalConfig()
-	fobsCh := make(chan models.RawFOBSMessage)
+	fobsCh := fobschan.NewChannels(1, 1)
 	r1 := Kucoin_FOBS_NewReader(cfg, fobsCh, []string{"XBT-USDTM"}, "")
 	if r1 == nil {
 		t.Fatal("Kucoin_FOBS_NewReader returned nil")
 	}
-	fobdCh := make(chan models.RawFOBDMessage)
+	fobdCh := fobdchan.NewChannels(1, 1)
 	r2 := Kucoin_FOBD_NewReader(cfg, fobdCh, []string{"XBT-USDTM"}, "")
 	if r2 == nil {
 		t.Fatal("Kucoin_FOBD_NewReader returned nil")
