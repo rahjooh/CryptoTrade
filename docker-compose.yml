@@ -14,6 +14,8 @@ services:
       - S3_BUCKET
       - LOG_LEVEL=${LOG_LEVEL:-warn}
     command: ["./cryptoflow"]
+    depends_on:
+      - dashboard
   cloudwatch:
     image: amazon/cloudwatch-agent:latest
     container_name: cw-agent
@@ -25,3 +27,20 @@ services:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+  dashboard:
+    image: amazon/aws-cli:latest
+    container_name: cw-dashboard-init
+    restart: "no"
+    volumes:
+      - ./infra/cloudwatch/collector-dashboard.json:/dash/collector-dashboard.json
+    environment:
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+    command:
+      - cloudwatch
+      - put-dashboard
+      - --dashboard-name
+      - Data
+      - --dashboard-body
+      - file://dash/collector-dashboard.json
