@@ -115,6 +115,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string) {
 		client, err := okxapi.NewClient(r.ctx, "", "", "", okex.NormalServer)
 		if err != nil {
 			log.WithError(err).Warn("failed to create okx api client, retrying")
+			logger.IncrementRetryCount()
 			select {
 			case <-time.After(5 * time.Second):
 				continue
