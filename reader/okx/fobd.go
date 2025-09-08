@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	okex "github.com/tfxq/okx-go-sdk"
 	okxapi "github.com/tfxq/okx-go-sdk/api"
 	publicevt "github.com/tfxq/okx-go-sdk/events/public"
+	restpubreq "github.com/tfxq/okx-go-sdk/requests/rest/public"
 	publicreq "github.com/tfxq/okx-go-sdk/requests/ws/public"
 )
 
@@ -30,6 +33,7 @@ type Okx_FOBD_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	localIP  string
 }
 
 // Okx_FOBD_NewReader creates a new delta reader.
@@ -40,6 +44,7 @@ func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []stri
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
+		localIP:  localIP,
 	}
 }
 
@@ -62,6 +67,22 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 		log.Warn("okx swap orderbook delta is disabled")
 		return fmt.Errorf("okx swap orderbook delta is disabled")
 	}
+
+	transport := &http.Transport{}
+	if r.localIP != "" {
+		if ip := net.ParseIP(r.localIP); ip != nil {
+			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+			transport.DialContext = dialer.DialContext
+		}
+	}
+	http.DefaultClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
+
+	apiClient, err := okxapi.NewClient(ctx, "", "", "", okex.NormalServer)
+	if err != nil {
+		log.WithError(err).Error("failed to create okx rest client")
+		return err
+	}
+	r.symbols = r.validateSymbols(apiClient, r.symbols)
 
 	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
 	r.wg.Add(1)
@@ -132,6 +153,28 @@ func (r *Okx_FOBD_Reader) stream(symbols []string) {
 	RECONNECT:
 		time.Sleep(time.Second)
 	}
+}
+
+func (r *Okx_FOBD_Reader) validateSymbols(api *okxapi.Client, symbols []string) []string {
+	req := restpubreq.GetInstruments{InstType: okex.SwapInstrument}
+	resp, err := api.Rest.PublicData.GetInstruments(req)
+	if err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to fetch instruments list")
+		return symbols
+	}
+	valid := make(map[string]struct{}, len(resp.Instruments))
+	for _, inst := range resp.Instruments {
+		valid[inst.InstID] = struct{}{}
+	}
+	var filtered []string
+	for _, s := range symbols {
+		if _, ok := valid[s]; ok {
+			filtered = append(filtered, s)
+		} else {
+			r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": s}).Warn("invalid instrument, skipping")
+		}
+	}
+	return filtered
 }
 
 // handleEvent converts websocket event to raw delta message.
