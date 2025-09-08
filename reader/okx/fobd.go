@@ -17,7 +17,9 @@ import (
 	publicreq "github.com/tfxq/okx-go-sdk/requests/ws/public"
 )
 
-// Okx_FOBD_Reader streams futures order book deltas from OKX.
+// Okx_FOBD_Reader subscribes to OKX websocket streams for swap order book
+// deltas and forwards the normalized messages into the raw delta channel.  The
+// reader uses okx-go-sdk which manages serialization and connection details.
 type Okx_FOBD_Reader struct {
 	config  *appconfig.Config
 	rawChan chan<- models.RawFOBDMessage
@@ -40,7 +42,9 @@ func Okx_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMess
 	}
 }
 
-// Okx_FOBD_Start subscribes to order book channels for configured symbols.
+// Okx_FOBD_Start establishes a websocket connection and subscribes to swap
+// order book delta streams for all configured symbols.  If the connection drops
+// it will be re-established automatically until the context is cancelled.
 func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
@@ -54,17 +58,19 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 	cfg := r.config.Source.Okx.Future.Orderbook.Delta
 	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"operation": "Okx_FOBD_Start"})
 	if !cfg.Enabled {
-		log.Warn("okx futures orderbook delta is disabled")
-		return fmt.Errorf("okx futures orderbook delta is disabled")
+		log.Warn("okx swap orderbook delta is disabled")
+		return fmt.Errorf("okx swap orderbook delta is disabled")
 	}
-	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx delta reader")
+
+	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
 	r.wg.Add(1)
 	go r.stream(r.symbols, cfg.URL)
-	log.Info("okx delta reader started successfully")
+	log.Info("okx swap delta reader started successfully")
 	return nil
 }
 
-// Okx_FOBD_Stop terminates all websocket subscriptions.
+// Okx_FOBD_Stop terminates all websocket subscriptions and waits for goroutines
+// to finish.
 func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 	r.mu.Lock()
 	r.running = false
@@ -74,47 +80,61 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 	r.log.WithComponent("okx_delta_reader").Info("okx delta reader stopped")
 }
 
-// stream handles websocket subscription and event forwarding.
+// stream handles websocket lifecycle, reconnection and forwarding of events.
 func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 	defer r.wg.Done()
 	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbols": symbols, "worker": "delta_stream"})
 
 	urlMap := map[bool]okex.BaseURL{false: okex.BaseURL(wsURL)}
-	client := wspublic.NewClient(r.ctx, "", "", "", urlMap)
-	if err := client.Connect(false); err != nil {
-		log.WithError(err).Error("failed to connect websocket")
-		return
-	}
-
-	ch := make(chan *publicevt.OrderBook)
-	for _, sym := range symbols {
-		req := publicreq.OrderBook{InstID: sym, Channel: "books-l2-tbt"}
-		if err := client.Public.OrderBook(req, ch); err != nil {
-			log.WithError(err).Warn("subscription failed")
-		}
-
-		params := map[string]string{
-			"instId":   sym,
-			"instType": "SWAP",
-			"channel":  "books-l2-tbt",
-		}
-		if err := client.Subscribe(false, []okex.ChannelName{}, params); err != nil {
-			log.WithError(err).Warn("subscription failed")
-		}
-	}
 
 	for {
-		select {
-		case <-r.ctx.Done():
-			client.Cancel()
+		if r.ctx.Err() != nil {
 			return
-		case evt, ok := <-ch:
-			if !ok {
-				client.Cancel()
+		}
+		client := wspublic.NewClient(r.ctx, "", "", "", urlMap)
+		if err := client.Connect(false); err != nil {
+			log.WithError(err).Warn("failed to connect websocket, retrying")
+			select {
+			case <-time.After(5 * time.Second):
+				continue
+			case <-r.ctx.Done():
 				return
 			}
-			r.handleEvent(evt)
 		}
+
+		ch := make(chan *publicevt.OrderBook)
+		for _, sym := range symbols {
+			req := publicreq.OrderBook{InstID: sym, Channel: "books-l2-tbt"}
+			if err := client.Public.OrderBook(req, ch); err != nil {
+				log.WithError(err).Warn("subscription failed")
+			}
+			params := map[string]string{
+				"instId":   sym,
+				"instType": "SWAP",
+				"channel":  "books-l2-tbt",
+			}
+			if err := client.Subscribe(false, []okex.ChannelName{}, params); err != nil {
+				log.WithError(err).Warn("subscription failed")
+			}
+		}
+
+		for {
+			select {
+			case <-r.ctx.Done():
+				client.Cancel()
+				return
+			case evt, ok := <-ch:
+				if !ok {
+					client.Cancel()
+					log.Warn("orderbook channel closed, reconnecting")
+					goto RECONNECT
+				}
+				r.handleEvent(evt)
+			}
+		}
+
+	RECONNECT:
+		time.Sleep(time.Second)
 	}
 }
 
@@ -149,7 +169,7 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *publicevt.OrderBook) {
 	msg := models.RawFOBDMessage{
 		Exchange:  "okx",
 		Symbol:    symbol,
-		Market:    "future-orderbook-delta",
+		Market:    "swap-orderbook-delta",
 		Data:      payload,
 		Timestamp: time.Now(),
 	}
