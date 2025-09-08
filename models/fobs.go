@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -73,3 +74,14 @@ type BinanceFOBSresp struct {
 /////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// KUCOIN ////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
+
+type OKXRawFOBSMessage struct {
+	Exchange   string    `json:"exchange"`
+	Market     string    `json:"market"` // e.g. "swap"
+	Symbol     string    `json:"symbol"` // e.g. "BTC-USDT-SWAP"
+	Depth      int       `json:"depth"`
+	FetchedAt  time.Time `json:"fetched_at"`
+	ReceivedAt time.Time `json:"received_at"`
+	// Payload is the exact OKX REST response body for /market/books, marshaled to JSON bytes.
+	Payload json.RawMessage `json:"payload"`
+}
