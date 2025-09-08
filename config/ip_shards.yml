@@ -139,6 +139,5 @@ shards:
       - SUIUSDT
     okx_symbols:
       - INJ-USDT-SWAP
-      - FARTCOIN-USDT-SWAP
       - ONDO-USDT-SWAP
       - SUI-USDT-SWAP

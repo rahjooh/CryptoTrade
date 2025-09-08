@@ -16,6 +16,7 @@ import (
 
 	okex "github.com/tfxq/okx-go-sdk"
 	okxapi "github.com/tfxq/okx-go-sdk/api"
+	marketmodel "github.com/tfxq/okx-go-sdk/models/market"
 	marketreq "github.com/tfxq/okx-go-sdk/requests/rest/market"
 
 	"golang.org/x/time/rate"
@@ -159,18 +160,11 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		return
 	}
 
-	req := marketreq.GetOrderBook{InstID: symbol, Sz: snapshotCfg.Limit}
-	resp, err := r.api.Rest.Market.GetOrderBook(req)
+	book, err := r.getMarketBooksFull(symbol, snapshotCfg.Limit)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
-	if len(resp.OrderBooks) == 0 {
-		log.Warn("empty orderbook response")
-		return
-	}
-
-	book := resp.OrderBooks[0]
 	ts := time.Time(book.TS).UnixMilli()
 	bids := make([][]string, len(book.Bids))
 	for i, b := range book.Bids {
@@ -204,4 +198,19 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 	} else {
 		log.Warn("raw snapshot channel full, dropping data")
 	}
+}
+
+// getMarketBooksFull retrieves the full depth order book snapshot for a symbol
+// using the OKX REST API. It is a thin wrapper around the SDK's order book
+// endpoint but provides clearer intent within the reader implementation.
+func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*marketmodel.OrderBook, error) {
+	req := marketreq.GetOrderBook{InstID: symbol, Sz: limit}
+	resp, err := r.api.Rest.Market.GetOrderBook(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.OrderBooks) == 0 {
+		return nil, fmt.Errorf("empty orderbook response")
+	}
+	return resp.OrderBooks[0], nil
 }

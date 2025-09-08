@@ -13,7 +13,7 @@ import (
 	"cryptoflow/models"
 
 	okex "github.com/tfxq/okx-go-sdk"
-	wspublic "github.com/tfxq/okx-go-sdk/api/ws"
+	okxapi "github.com/tfxq/okx-go-sdk/api"
 	publicevt "github.com/tfxq/okx-go-sdk/events/public"
 	publicreq "github.com/tfxq/okx-go-sdk/requests/ws/public"
 )
@@ -65,7 +65,7 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 
 	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
 	r.wg.Add(1)
-	go r.stream(r.symbols, cfg.URL)
+	go r.stream(r.symbols)
 	log.Info("okx swap delta reader started successfully")
 	return nil
 }
@@ -82,19 +82,18 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 }
 
 // stream handles websocket lifecycle, reconnection and forwarding of events.
-func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
+func (r *Okx_FOBD_Reader) stream(symbols []string) {
 	defer r.wg.Done()
 	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbols": symbols, "worker": "delta_stream"})
-
-	urlMap := map[bool]okex.BaseURL{false: okex.BaseURL(wsURL)}
 
 	for {
 		if r.ctx.Err() != nil {
 			return
 		}
-		client := wspublic.NewClient(r.ctx, "", "", "", urlMap)
-		if err := client.Connect(false); err != nil {
-			log.WithError(err).Warn("failed to connect websocket, retrying")
+
+		client, err := okxapi.NewClient(r.ctx, "", "", "", okex.NormalServer)
+		if err != nil {
+			log.WithError(err).Warn("failed to create okx api client, retrying")
 			select {
 			case <-time.After(5 * time.Second):
 				continue
@@ -106,15 +105,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		ch := make(chan *publicevt.OrderBook)
 		for _, sym := range symbols {
 			req := publicreq.OrderBook{InstID: sym, Channel: "books-l2-tbt"}
-			if err := client.Public.OrderBook(req, ch); err != nil {
-				log.WithError(err).Warn("subscription failed")
-			}
-			params := map[string]string{
-				"instId":   sym,
-				"instType": "SWAP",
-				"channel":  "books-l2-tbt",
-			}
-			if err := client.Subscribe(false, []okex.ChannelName{}, params); err != nil {
+			if err := client.Ws.Public.OrderBook(req, ch); err != nil {
 				log.WithError(err).Warn("subscription failed")
 			}
 		}
@@ -122,11 +113,15 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		for {
 			select {
 			case <-r.ctx.Done():
-				client.Cancel()
+				client.Ws.Cancel()
 				return
+			case <-client.Ws.DoneChan:
+				client.Ws.Cancel()
+				log.Warn("websocket connection closed, reconnecting")
+				goto RECONNECT
 			case evt, ok := <-ch:
 				if !ok {
-					client.Cancel()
+					client.Ws.Cancel()
 					log.Warn("orderbook channel closed, reconnecting")
 					goto RECONNECT
 				}
