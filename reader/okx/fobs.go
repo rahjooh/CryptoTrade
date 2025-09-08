@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cryptoflow/config"
+	fobs "cryptoflow/internal/channel/fobs"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -25,22 +26,22 @@ import (
 // leverages the official okx-go-sdk for request construction and response
 // parsing to ensure compatibility and performance.
 type Okx_FOBS_Reader struct {
-	config     *config.Config
-	rawChannel chan<- models.RawFOBSMessage
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
-	symbols    []string
-	limiter    *rate.Limiter
-	api        *okxapi.Client
-	localIP    string
+	config   *config.Config
+	channels *fobs.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
+	limiter  *rate.Limiter
+	api      *okxapi.Client
+	localIP  string
 }
 
 // Okx_FOBS_NewReader constructs a new snapshot reader instance.  Network
 // resources are not allocated until Start is invoked.
-func Okx_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Okx_FOBS_Reader {
+func Okx_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string, localIP string) *Okx_FOBS_Reader {
 	rl := cfg.Reader.RateLimit
 	rps := rl.RequestsPerSecond
 	if rps <= 0 {
@@ -51,13 +52,13 @@ func Okx_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMess
 		burst = 1
 	}
 	return &Okx_FOBS_Reader{
-		config:     cfg,
-		rawChannel: rawChannel,
-		wg:         &sync.WaitGroup{},
-		log:        logger.GetLogger(),
-		symbols:    symbols,
-		limiter:    rate.NewLimiter(rate.Limit(rps), burst),
-		localIP:    localIP,
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
+		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
+		localIP:  localIP,
 	}
 }
 
@@ -195,12 +196,12 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		Data:        payload,
 		MessageType: "snapshot",
 	}
-	select {
-	case r.rawChannel <- msg:
+	if r.channels.SendRaw(r.ctx, msg) {
 		logger.LogDataFlowEntry(log, "okx_rest", "raw_channel", len(asks)+len(bids), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
-	case <-r.ctx.Done():
-	default:
+	} else if r.ctx.Err() != nil {
+		return
+	} else {
 		log.Warn("raw snapshot channel full, dropping data")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	fobschan "cryptoflow/internal/channel/fobs"
 	"cryptoflow/models"
 )
 
@@ -21,9 +22,8 @@ func minimalConfig() *appconfig.Config {
 
 func TestFlattenerStartStop(t *testing.T) {
 	cfg := minimalConfig()
-	raw := make(chan models.RawFOBSMessage)
-	norm := make(chan models.BatchFOBSMessage)
-	f := NewFlattener(cfg, raw, norm)
+	ch := fobschan.NewChannels(1, 1)
+	f := NewFlattener(cfg, ch)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := f.Start(ctx); err != nil {
 		t.Fatalf("start: %v", err)
@@ -38,9 +38,8 @@ func TestFlattenerStartStop(t *testing.T) {
 func TestFlattenerNormalizesSymbols(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Processor.BatchSize = 2
-	raw := make(chan models.RawFOBSMessage)
-	norm := make(chan models.BatchFOBSMessage)
-	f := NewFlattener(cfg, raw, norm)
+	ch := fobschan.NewChannels(1, 1)
+	f := NewFlattener(cfg, ch)
 
 	rawMsg := models.RawFOBSMessage{
 		Exchange:  "binance",

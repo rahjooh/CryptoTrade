@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	fobd "cryptoflow/internal/channel/fobd"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -21,27 +22,27 @@ import (
 
 // Kucoin_FOBD_Reader streams futures order book deltas from KuCoin.
 type Kucoin_FOBD_Reader struct {
-	config  *appconfig.Config
-	rawChan chan<- models.RawFOBDMessage
-	ctx     context.Context
-	wg      *sync.WaitGroup
-	mu      sync.RWMutex
-	running bool
-	log     *logger.Log
-	symbols []string
-	localIP string
+	config   *appconfig.Config
+	channels *fobd.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
+	localIP  string
 }
 
 // Kucoin_FOBD_NewReader creates a new delta reader.
 // Symbols defines the markets this reader will subscribe to.
-func Kucoin_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage, symbols []string, localIP string) *Kucoin_FOBD_Reader {
+func Kucoin_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Kucoin_FOBD_Reader {
 	return &Kucoin_FOBD_Reader{
-		config:  cfg,
-		rawChan: rawChan,
-		wg:      &sync.WaitGroup{},
-		log:     logger.GetLogger(),
-		symbols: symbols,
-		localIP: localIP,
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
+		localIP:  localIP,
 	}
 }
 
@@ -174,12 +175,11 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 				Timestamp: time.Now(),
 			}
 
-			select {
-			case r.rawChan <- msgOut:
+			if r.channels.SendRaw(r.ctx, msgOut) {
 				logger.IncrementDeltaRead(len(payload))
-			case <-r.ctx.Done():
+			} else if r.ctx.Err() != nil {
 				return fmt.Errorf("context cancelled")
-			default:
+			} else {
 				log.Warn("raw delta channel full, dropping message")
 			}
 			return nil
