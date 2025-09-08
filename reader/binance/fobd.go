@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	fobd "cryptoflow/internal/channel/fobd"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -20,27 +21,27 @@ import (
 // It uses the websocket diff depth stream with a configurable interval
 // and forwards raw messages to the provided channel.
 type Binance_FOBD_Reader struct {
-	config  *appconfig.Config
-	rawChan chan<- models.RawFOBDMessage
-	ctx     context.Context
-	wg      *sync.WaitGroup
-	mu      sync.RWMutex
-	running bool
-	log     *logger.Log
-	symbols []string
+	config   *appconfig.Config
+	channels *fobd.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
 }
 
 // Binance_FOBD_NewReader creates a new delta reader using binance-go client.
 // Symbols defines the set of markets this reader will subscribe to. The localIP
 // parameter is reserved for future use when websocket dialers support binding to
 // specific interfaces.
-func Binance_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage, symbols []string, localIP string) *Binance_FOBD_Reader {
+func Binance_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Binance_FOBD_Reader {
 	return &Binance_FOBD_Reader{
-		config:  cfg,
-		rawChan: rawChan,
-		wg:      &sync.WaitGroup{},
-		log:     logger.GetLogger(),
-		symbols: symbols,
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
 	}
 }
 
@@ -106,14 +107,14 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 			Timestamp: time.Now(),
 		}
 
-		select {
-		case r.rawChan <- msg:
+		if r.channels.SendRaw(r.ctx, msg) {
 			if log.Logger.IsLevelEnabled(logrus.DebugLevel) {
 				logger.LogDataFlowEntry(log, "binance_ws", "rawfobd", len(event.Bids)+len(event.Asks), "delta_entries")
 			}
 			logger.IncrementDeltaRead(len(payload))
-		case <-r.ctx.Done():
-		default:
+		} else if r.ctx.Err() != nil {
+			return
+		} else {
 			log.Warn("raw delta channel full, dropping message")
 		}
 	}

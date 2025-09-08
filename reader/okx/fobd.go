@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	fobd "cryptoflow/internal/channel/fobd"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -21,24 +22,24 @@ import (
 // deltas and forwards the normalized messages into the raw delta channel.  The
 // reader uses okx-go-sdk which manages serialization and connection details.
 type Okx_FOBD_Reader struct {
-	config  *appconfig.Config
-	rawChan chan<- models.RawFOBDMessage
-	ctx     context.Context
-	wg      *sync.WaitGroup
-	mu      sync.RWMutex
-	running bool
-	log     *logger.Log
-	symbols []string
+	config   *appconfig.Config
+	channels *fobd.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
 }
 
 // Okx_FOBD_NewReader creates a new delta reader.
-func Okx_FOBD_NewReader(cfg *appconfig.Config, rawChan chan<- models.RawFOBDMessage, symbols []string, localIP string) *Okx_FOBD_Reader {
+func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Okx_FOBD_Reader {
 	return &Okx_FOBD_Reader{
-		config:  cfg,
-		rawChan: rawChan,
-		wg:      &sync.WaitGroup{},
-		log:     logger.GetLogger(),
-		symbols: symbols,
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
 	}
 }
 
@@ -173,11 +174,11 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *publicevt.OrderBook) {
 		Data:      payload,
 		Timestamp: time.Now(),
 	}
-	select {
-	case r.rawChan <- msg:
+	if r.channels.SendRaw(r.ctx, msg) {
 		logger.IncrementDeltaRead(len(payload))
-	case <-r.ctx.Done():
-	default:
+	} else if r.ctx.Err() != nil {
+		return
+	} else {
 		r.log.WithComponent("okx_delta_reader").Warn("raw delta channel full, dropping message")
 	}
 }

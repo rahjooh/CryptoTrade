@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cryptoflow/config"
+	fobs "cryptoflow/internal/channel/fobs"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -22,22 +23,22 @@ import (
 
 // Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
 type Kucoin_FOBS_Reader struct {
-	config     *config.Config
-	marketAPI  futuresmarket.MarketAPI
-	rawChannel chan<- models.RawFOBSMessage
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
-	symbols    []string
-	limiter    *rate.Limiter
+	config    *config.Config
+	marketAPI futuresmarket.MarketAPI
+	channels  *fobs.Channels
+	ctx       context.Context
+	wg        *sync.WaitGroup
+	mu        sync.RWMutex
+	running   bool
+	log       *logger.Log
+	symbols   []string
+	limiter   *rate.Limiter
 }
 
 // Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin universal SDK.
 // The reader will fetch snapshots only for the supplied symbols. The localIP parameter is kept
 // for compatibility but not used by the underlying SDK.
-func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Kucoin_FOBS_Reader {
+func Kucoin_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string, localIP string) *Kucoin_FOBS_Reader {
 	log := logger.GetLogger()
 
 	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
@@ -76,13 +77,13 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSM
 	limiter := rate.NewLimiter(rate.Limit(rps), burst)
 
 	reader := &Kucoin_FOBS_Reader{
-		config:     cfg,
-		marketAPI:  marketAPI,
-		rawChannel: rawChannel,
-		wg:         &sync.WaitGroup{},
-		log:        log,
-		symbols:    symbols,
-		limiter:    limiter,
+		config:    cfg,
+		marketAPI: marketAPI,
+		channels:  ch,
+		wg:        &sync.WaitGroup{},
+		log:       log,
+		symbols:   symbols,
+		limiter:   limiter,
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
@@ -286,14 +287,13 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		MessageType: "snapshot",
 	}
 
-	select {
-	case r.rawChannel <- rawData:
+	if r.channels.SendRaw(r.ctx, rawData) {
 		log.Info("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "kucoin_api", "raw_channel", len(asks)+len(bids), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
-	case <-r.ctx.Done():
+	} else if r.ctx.Err() != nil {
 		return
-	default:
+	} else {
 		log.Warn("raw channel is full, dropping data")
 	}
 }
