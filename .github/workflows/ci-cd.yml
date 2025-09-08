@@ -84,6 +84,7 @@ jobs:
       S3_BUCKET:             ${{ vars.S3_BUCKET }}
       S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+      DASHBOARD_NAME:        Data
 
     steps:
       # Download the binary that was built and tested in the previous job.
@@ -124,3 +125,34 @@ jobs:
             docker compose up -d --build
             
             echo "✅ Deploy complete"
+
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/GitHubActions-Deployer
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Resolve collector InstanceId
+        id: ec2
+        run: |
+          IID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=cryptoflow-collector" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" --output text)
+          if [ -z "$IID" ]; then echo "No running collector instance found"; exit 1; fi
+          echo "instance_id=$IID" >> "$GITHUB_OUTPUT"
+
+      - name: Inject InstanceId into dashboard JSON
+        run: |
+          cp infra/cloudwatch/collector-dashboard.json /tmp/dashboard.json
+          sed -i "s|<collector-instance-id>|${{ steps.ec2.outputs.instance_id }}|g" /tmp/dashboard.json
+
+      - name: Put dashboard
+        run: |
+          aws cloudwatch put-dashboard \
+            --dashboard-name "$DASHBOARD_NAME" \
+            --dashboard-body file:///tmp/dashboard.json
+
+      - name: Validate
+        run: |
+          aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
+            --query 'DashboardValidationMessages' --output table
