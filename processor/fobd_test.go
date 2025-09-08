@@ -7,6 +7,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
+	fobdchan "cryptoflow/internal/channel/fobd"
 	"cryptoflow/models"
 )
 
@@ -38,9 +39,8 @@ func minimalDeltaConfig() *appconfig.Config {
 
 func TestDeltaProcessorStartStop(t *testing.T) {
 	cfg := minimalDeltaConfig()
-	raw := make(chan models.RawFOBDMessage)
-	norm := make(chan models.BatchFOBDMessage)
-	p := NewDeltaProcessor(cfg, raw, norm)
+	ch := fobdchan.NewChannels(1, 1)
+	p := NewDeltaProcessor(cfg, ch)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := p.Start(ctx); err != nil {
 		t.Fatalf("start: %v", err)
@@ -55,9 +55,8 @@ func TestDeltaProcessorStartStop(t *testing.T) {
 func TestDeltaProcessorNormalizesSymbols(t *testing.T) {
 	cfg := minimalDeltaConfig()
 	cfg.Processor.BatchSize = 2
-	rawCh := make(chan models.RawFOBDMessage)
-	normCh := make(chan models.BatchFOBDMessage)
-	p := NewDeltaProcessor(cfg, rawCh, normCh)
+	ch := fobdchan.NewChannels(1, 1)
+	p := NewDeltaProcessor(cfg, ch)
 
 	evt := models.BinanceFOBDResp{
 		Time:             1,

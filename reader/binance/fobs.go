@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cryptoflow/config"
+	fobs "cryptoflow/internal/channel/fobs"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -19,21 +20,21 @@ import (
 
 // Binance_FOBS_Reader fetches futures order book snapshots from Binance.
 type Binance_FOBS_Reader struct {
-	config     *config.Config
-	client     *futures.Client
-	rawChannel chan<- models.RawFOBSMessage
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
-	symbols    []string
+	config   *config.Config
+	client   *futures.Client
+	channels *fobs.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
 }
 
 // Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
 // The reader will bind outbound connections to the provided localIP if not empty
 // and fetch snapshots only for the supplied symbols.
-func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBSMessage, symbols []string, localIP string) *Binance_FOBS_Reader {
+func Binance_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string, localIP string) *Binance_FOBS_Reader {
 	log := logger.GetLogger()
 
 	transport := &http.Transport{
@@ -66,12 +67,12 @@ func Binance_FOBS_NewReader(cfg *config.Config, rawChannel chan<- models.RawFOBS
 	}
 
 	reader := &Binance_FOBS_Reader{
-		config:     cfg,
-		client:     client,
-		rawChannel: rawChannel,
-		wg:         &sync.WaitGroup{},
-		log:        log,
-		symbols:    symbols,
+		config:   cfg,
+		client:   client,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      log,
+		symbols:  symbols,
 	}
 
 	log.WithComponent("binance_reader").WithFields(logger.Fields{
@@ -219,14 +220,13 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 		MessageType: "snapshot",
 	}
 
-	select {
-	case br.rawChannel <- rawData:
+	if br.channels.SendRaw(br.ctx, rawData) {
 		log.Info("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "binance_api", "raw_channel", len(binanceResp.Bids)+len(binanceResp.Asks), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
-	case <-br.ctx.Done():
+	} else if br.ctx.Err() != nil {
 		return
-	default:
+	} else {
 		log.Warn("raw channel is full, dropping data")
 	}
 }

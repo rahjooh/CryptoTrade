@@ -11,20 +11,20 @@ import (
 	"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
+	fobs "cryptoflow/internal/channel/fobs"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
 
 type Flattener struct {
-	config     *appconfig.Config
-	rawChan    <-chan models.RawFOBSMessage
-	NormFOBSch chan<- models.BatchFOBSMessage
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
+	config   *appconfig.Config
+	channels *fobs.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
 
 	// Batching
 	batches   map[string]*models.BatchFOBSMessage
@@ -37,15 +37,14 @@ type Flattener struct {
 	entriesProcessed  int64
 }
 
-func NewFlattener(cfg *appconfig.Config, rawChan <-chan models.RawFOBSMessage, NormFOBSch chan<- models.BatchFOBSMessage) *Flattener {
+func NewFlattener(cfg *appconfig.Config, ch *fobs.Channels) *Flattener {
 	return &Flattener{
-		config:     cfg,
-		rawChan:    rawChan,
-		NormFOBSch: NormFOBSch,
-		wg:         &sync.WaitGroup{},
-		log:        logger.GetLogger(),
-		batches:    make(map[string]*models.BatchFOBSMessage),
-		lastFlush:  make(map[string]time.Time),
+		config:    cfg,
+		channels:  ch,
+		wg:        &sync.WaitGroup{},
+		log:       logger.GetLogger(),
+		batches:   make(map[string]*models.BatchFOBSMessage),
+		lastFlush: make(map[string]time.Time),
 	}
 }
 
@@ -115,7 +114,7 @@ func (f *Flattener) worker(workerID int) {
 		case <-f.ctx.Done():
 			log.Info("worker stopped due to context cancellation")
 			return
-		case rawMsg, ok := <-f.rawChan:
+		case rawMsg, ok := <-f.channels.Raw:
 			if !ok {
 				log.Info("raw channel closed, worker stopping")
 				return
@@ -360,8 +359,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 
 	log.Info("flushing batch")
 
-	select {
-	case f.NormFOBSch <- *batch:
+	if f.channels.SendNorm(f.ctx, *batch) {
 		f.batchesProcessed++
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
@@ -369,9 +367,9 @@ func (f *Flattener) flushBatch(batchKey string) {
 		log.Info("batch flushed successfully")
 		logger.LogDataFlowEntry(log, "flattener", "flattened_channel", batch.RecordCount, "batch")
 
-	case <-f.ctx.Done():
+	} else if f.ctx.Err() != nil {
 		return
-	default:
+	} else {
 		log.Warn("flattened channel is full, batch not sent")
 	}
 }
@@ -422,10 +420,10 @@ func (f *Flattener) reportMetrics() {
 	if messagesProcessed > 0 {
 		avgEntriesPerMessage = float64(entriesProcessed) / float64(messagesProcessed)
 	}
-	rawLen := len(f.rawChan)
-	rawCap := cap(f.rawChan)
-	normLen := len(f.NormFOBSch)
-	normCap := cap(f.NormFOBSch)
+	rawLen := len(f.channels.Raw)
+	rawCap := cap(f.channels.Raw)
+	normLen := len(f.channels.Norm)
+	normCap := cap(f.channels.Norm)
 
 	log := f.log.WithComponent("flattener")
 	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
