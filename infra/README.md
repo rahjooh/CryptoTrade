@@ -28,14 +28,9 @@ A sample CloudWatch dashboard definition for the collector is available in `clou
 To deploy it:
 
 1. Replace `<collector-instance-id>` with the actual instance ID or other relevant dimensions.
-2. Run:
+2. Trigger the **Deploy Collector Dashboard** workflow from the GitHub Actions tab. It publishes the dashboard by running:
    ```bash
    aws cloudwatch put-dashboard --dashboard-name Data --dashboard-body file://cloudwatch/collector-dashboard.json
    ```
-3. Open the CloudWatch console and navigate to **Dashboards → Data**.
-
-You can also have `docker-compose` apply the dashboard during deployment:
-
-```bash
-docker-compose up dashboard
-```
+3. Alternatively, run the command above locally with appropriate AWS credentials.
+4. Open the CloudWatch console and navigate to **Dashboards → Data**.

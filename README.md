@@ -142,11 +142,13 @@ follows the same convention (such as `Hadi-CPUPercent` and
 `infra/cloudwatch/cloudwatch-agent-config.json` for collecting host-level
 metrics on the EC2 instance running the service.
 
-On startup CryptoFlow automatically creates a CloudWatch dashboard named
-`<namespace>-dashboard` that displays CPU, memory, disk and other runtime
-metrics. When using `docker-compose`, the `cloudwatch` service runs the
-CloudWatch Agent with the provided configuration so the dashboard is populated
-with host metrics without manual steps.
+A prebuilt dashboard template is available in
+`infra/cloudwatch/collector-dashboard.json`. Deploy it via the **Deploy
+Collector Dashboard** GitHub Action or by running `aws cloudwatch
+put-dashboard --dashboard-name Data --dashboard-body
+file://infra/cloudwatch/collector-dashboard.json`. When using
+`docker-compose`, the `cloudwatch` service runs the CloudWatch Agent with the
+provided configuration so the dashboard is populated with host metrics.
 
 ---
 
