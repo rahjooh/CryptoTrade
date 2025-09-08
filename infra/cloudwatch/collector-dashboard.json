@@ -1,0 +1,355 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "singleValue",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "IngestRate",
+            {
+              "stat": "Sum"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Global Ingest Rate (msg/s)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 0,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "singleValue",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "ParquetWriteErrors",
+            {
+              "stat": "Sum"
+            }
+          ]
+        ],
+        "period": 300,
+        "title": "Parquet Write Errors (5m)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 3,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "OrderbookStalenessMs",
+            "Exchange",
+            "Binance",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            ".",
+            ".",
+            "Exchange",
+            "Bybit",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            ".",
+            ".",
+            "Exchange",
+            "OKX",
+            {
+              "stat": "p95"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Orderbook Staleness p95",
+        "yAxis": {
+          "left": {
+            "label": "ms"
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "SLO 500ms",
+              "value": 500
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 9,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "singleValue",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "DroppedMessages",
+            {
+              "stat": "Sum"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Dropped Messages (1m)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 9,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "singleValue",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "RetryCount",
+            {
+              "stat": "Sum"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Retries / Restarts"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "WriteLatencyMs",
+            "Exchange",
+            "Binance",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            ".",
+            ".",
+            "Exchange",
+            "Bybit",
+            {
+              "stat": "p95"
+            }
+          ],
+          [
+            ".",
+            ".",
+            "Exchange",
+            "OKX",
+            {
+              "stat": "p95"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Parquet Write Latency p95",
+        "yAxis": {
+          "left": {
+            "label": "ms"
+          }
+        },
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "SLO 1000ms",
+              "value": 1000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CryptoFlow/Collector",
+            "QueueDepth",
+            {
+              "stat": "Average"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Channel Queue Depth"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 24,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CWAgent",
+            "cpu_usage_active",
+            "InstanceId",
+            "<collector-instance-id>",
+            {
+              "stat": "Average"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "CPU Utilization (%)",
+        "yAxis": {
+          "left": {
+            "label": "%"
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 24,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CWAgent",
+            "mem_used_percent",
+            "InstanceId",
+            "<collector-instance-id>",
+            {
+              "stat": "Average"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Memory Utilization (%)",
+        "yAxis": {
+          "left": {
+            "label": "%"
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 27,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CWAgent",
+            "disk_used_percent",
+            "path",
+            "/",
+            "InstanceId",
+            "<collector-instance-id>",
+            {
+              "stat": "Average"
+            }
+          ]
+        ],
+        "period": 300,
+        "title": "Disk Usage (%)",
+        "yAxis": {
+          "left": {
+            "label": "%"
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 27,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "view": "timeSeries",
+        "region": "eu-west-1",
+        "metrics": [
+          [
+            "CWAgent",
+            "net_bytes_sent",
+            "InstanceId",
+            "<collector-instance-id>",
+            {
+              "stat": "Sum"
+            }
+          ],
+          [
+            ".",
+            "net_bytes_recv",
+            ".",
+            ".",
+            ".",
+            ".",
+            "InstanceId",
+            "<collector-instance-id>",
+            {
+              "stat": "Sum"
+            }
+          ]
+        ],
+        "period": 60,
+        "title": "Network Throughput (bytes)",
+        "yAxis": {
+          "left": {
+            "label": "bytes"
+          }
+        }
+      }
+    }
+  ]
+}
