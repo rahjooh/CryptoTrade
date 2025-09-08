@@ -18,6 +18,7 @@ import (
 	okxapi "github.com/tfxq/okx-go-sdk/api"
 	marketmodel "github.com/tfxq/okx-go-sdk/models/market"
 	marketreq "github.com/tfxq/okx-go-sdk/requests/rest/market"
+	restpubreq "github.com/tfxq/okx-go-sdk/requests/rest/public"
 
 	"golang.org/x/time/rate"
 )
@@ -88,7 +89,7 @@ func (r *Okx_FOBS_Reader) Okx_FOBS_Start(ctx context.Context) error {
 			transport.DialContext = dialer.DialContext
 		}
 	}
-	http.DefaultClient = &http.Client{Transport: transport, Timeout: r.config.Reader.Timeout}
+	http.DefaultClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
 
 	// Initialise the OKX REST client using the configured HTTP client.
 	apiClient, err := okxapi.NewClient(ctx, "", "", "", okex.NormalServer)
@@ -97,6 +98,7 @@ func (r *Okx_FOBS_Reader) Okx_FOBS_Start(ctx context.Context) error {
 		return err
 	}
 	r.api = apiClient
+	r.symbols = r.validateSymbols(r.symbols)
 
 	cfg := r.config.Source.Okx.Future.Orderbook.Snapshots
 	log := r.log.WithComponent("okx_reader").WithFields(logger.Fields{"operation": "Okx_FOBS_Start"})
@@ -213,4 +215,26 @@ func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*marketm
 		return nil, fmt.Errorf("empty orderbook response")
 	}
 	return resp.OrderBooks[0], nil
+}
+
+func (r *Okx_FOBS_Reader) validateSymbols(symbols []string) []string {
+	req := restpubreq.GetInstruments{InstType: okex.SwapInstrument}
+	resp, err := r.api.Rest.PublicData.GetInstruments(req)
+	if err != nil {
+		r.log.WithComponent("okx_reader").WithError(err).Warn("failed to fetch instruments list")
+		return symbols
+	}
+	valid := make(map[string]struct{}, len(resp.Instruments))
+	for _, inst := range resp.Instruments {
+		valid[inst.InstID] = struct{}{}
+	}
+	var filtered []string
+	for _, s := range symbols {
+		if _, ok := valid[s]; ok {
+			filtered = append(filtered, s)
+		} else {
+			r.log.WithComponent("okx_reader").WithFields(logger.Fields{"symbol": s}).Warn("invalid instrument, skipping")
+		}
+	}
+	return filtered
 }
