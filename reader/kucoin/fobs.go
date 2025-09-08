@@ -226,6 +226,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		}
 
 		log.WithError(err).WithField("attempt", attempt).Warnf("retrying in %v", delay)
+		logger.IncrementRetryCount()
 
 		select {
 		case <-time.After(delay):

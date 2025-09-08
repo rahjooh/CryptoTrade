@@ -23,15 +23,23 @@ type channelStat struct {
 }
 
 var (
-	errorsDelta    int64
-	errorsSnapshot int64
-	warnsDelta     int64
-	warnsSnapshot  int64
-	deltaReads     int64
-	snapshotReads  int64
-	s3WritesDelta  int64
-	s3WritesSnap   int64
-	channels       sync.Map // map[string]*channelStat
+	errorsDelta     int64
+	errorsSnapshot  int64
+	warnsDelta      int64
+	warnsSnapshot   int64
+	deltaReads      int64
+	snapshotReads   int64
+	s3WritesDelta   int64
+	s3WritesSnap    int64
+	channels        sync.Map // map[string]*channelStat
+	droppedMessages int64
+	retryCount      int64
+	parquetErrors   int64
+	reportInterval  time.Duration
+	lastReads       int64
+	lastDropped     int64
+	lastRetry       int64
+	lastParquet     int64
 )
 
 func recordWarn(component string) {
@@ -47,6 +55,9 @@ func recordError(component string) {
 		atomic.AddInt64(&errorsDelta, 1)
 	} else if strings.Contains(component, "snapshot") {
 		atomic.AddInt64(&errorsSnapshot, 1)
+	}
+	if strings.Contains(component, "parquet") {
+		atomic.AddInt64(&parquetErrors, 1)
 	}
 }
 
@@ -74,6 +85,14 @@ func RecordChannelMessage(name string, size int) {
 	recordChannel(name, size)
 }
 
+func IncrementDroppedMessages() {
+	atomic.AddInt64(&droppedMessages, 1)
+}
+
+func IncrementRetryCount() {
+	atomic.AddInt64(&retryCount, 1)
+}
+
 func recordChannel(name string, size int) {
 	v, _ := channels.LoadOrStore(name, &channelStat{})
 	cs := v.(*channelStat)
@@ -99,6 +118,7 @@ func startReport(ctx context.Context, log *Log, interval time.Duration) {
 // StartReport begins periodic logging of system and channel statistics.
 // It exposes the internal startReport function for use by other packages.
 func StartReport(ctx context.Context, log *Log, interval time.Duration) {
+	reportInterval = interval
 	startReport(ctx, log, interval)
 }
 
@@ -146,25 +166,49 @@ func logReport(ctx context.Context, log *Log) {
 		"channels":           channelData,
 		"net_bytes_sent":     int64(bytesSent),
 		"net_bytes_recv":     int64(bytesRecv),
+		"dropped_messages":   atomic.LoadInt64(&droppedMessages),
+		"retry_count":        atomic.LoadInt64(&retryCount),
+		"parquet_errors":     atomic.LoadInt64(&parquetErrors),
 	}
 
 	log.WithComponent("report").WithFields(fields).Info("runtime report")
 
 	var data []cwtypes.MetricDatum
+
+	reads := atomic.LoadInt64(&deltaReads) + atomic.LoadInt64(&snapshotReads)
+	ingest := reads - lastReads
+	lastReads = reads
+
+	dropped := atomic.LoadInt64(&droppedMessages)
+	droppedDelta := dropped - lastDropped
+	lastDropped = dropped
+
+	retries := atomic.LoadInt64(&retryCount)
+	retryDelta := retries - lastRetry
+	lastRetry = retries
+
+	parquet := atomic.LoadInt64(&parquetErrors)
+	parquetDelta := parquet - lastParquet
+	lastParquet = parquet
+
 	data = append(data,
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-CPUPercent"), Unit: cwtypes.StandardUnitPercent, Value: aws.Float64(cpuPct)},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-MemoryMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(memStats.Used) / 1024 / 1024)},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-DiskMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(diskStats.Used) / 1024 / 1024)},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-ErrorsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_delta"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-ErrorsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_snapshot"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-WarnsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_delta"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-WarnsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_snapshot"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-DeltaReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["delta_reads"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-SnapshotReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["snapshot_reads"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-S3WritesDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_delta"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-S3WritesSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_snapshot"].(int64)))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-NetBytesSent"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesSent))},
-		cwtypes.MetricDatum{MetricName: aws.String("Hadi-NetBytesRecv"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesRecv))},
+		cwtypes.MetricDatum{MetricName: aws.String("CPUPercent"), Unit: cwtypes.StandardUnitPercent, Value: aws.Float64(cpuPct)},
+		cwtypes.MetricDatum{MetricName: aws.String("MemoryMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(memStats.Used) / 1024 / 1024)},
+		cwtypes.MetricDatum{MetricName: aws.String("DiskMB"), Unit: cwtypes.StandardUnitMegabytes, Value: aws.Float64(float64(diskStats.Used) / 1024 / 1024)},
+		cwtypes.MetricDatum{MetricName: aws.String("ErrorsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("ErrorsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["errors_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("WarnsDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("WarnsSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["warns_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("DeltaReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["delta_reads"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("SnapshotReads"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["snapshot_reads"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("S3WritesDelta"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_delta"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("S3WritesSnapshot"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(fields["s3_writes_snapshot"].(int64)))},
+		cwtypes.MetricDatum{MetricName: aws.String("NetBytesSent"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesSent))},
+		cwtypes.MetricDatum{MetricName: aws.String("NetBytesRecv"), Unit: cwtypes.StandardUnitBytes, Value: aws.Float64(float64(bytesRecv))},
+		cwtypes.MetricDatum{MetricName: aws.String("IngestRate"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(ingest) / reportInterval.Seconds())},
+		cwtypes.MetricDatum{MetricName: aws.String("DroppedMessages"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(droppedDelta))},
+		cwtypes.MetricDatum{MetricName: aws.String("RetryCount"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(retryDelta))},
+		cwtypes.MetricDatum{MetricName: aws.String("ParquetWriteErrors"), Unit: cwtypes.StandardUnitCount, Value: aws.Float64(float64(parquetDelta))},
 	)
 
 	for name, stats := range channelData {

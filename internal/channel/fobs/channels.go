@@ -102,12 +102,14 @@ func (c *Channels) IncrementRawDropped() {
 	c.statsMutex.Lock()
 	c.stats.RawDropped++
 	c.statsMutex.Unlock()
+	logger.IncrementDroppedMessages()
 }
 
 func (c *Channels) IncrementNormDropped() {
 	c.statsMutex.Lock()
 	c.stats.NormDropped++
 	c.statsMutex.Unlock()
+	logger.IncrementDroppedMessages()
 }
 
 func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOBSMessage) bool {
