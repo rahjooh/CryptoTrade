@@ -12,8 +12,8 @@ import (
 )
 
 var cwClient *cloudwatch.Client
-var cwNamespace string = "Hadi-CryptoFlow"
-var cwDashboard string = "Hadi-CryptoFlow-dashboard"
+var cwNamespace string = "CryptoFlow"
+var cwDashboard string = "Data"
 
 // If dashboard is provided, metrics are sent to that dashboard; otherwise a
 // default name derived from the namespace is used.
