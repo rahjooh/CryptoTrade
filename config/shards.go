@@ -3,14 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
-	"gopkg.in/yaml.v3"
 )
 
 // IPShard defines a set of symbols that should be fetched using a specific source IP.
-// BinanceSymbols and KucoinSymbols allow specifying exchange specific representations.
+// BinanceSymbols, BybitSymbols, KucoinSymbols and OKX allow specifying exchange specific representations.
 type IPShard struct {
 	IP             string   `yaml:"ip"`
 	BinanceSymbols []string `yaml:"binance_symbols"`
+	BybitSymbols   []string `yaml:"bybit_symbols"`
 	KucoinSymbols  []string `yaml:"kucoin_symbols"`
 	OkxSymbols     []string `yaml:"okx_symbols"`
 }
