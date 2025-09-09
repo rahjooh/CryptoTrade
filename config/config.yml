@@ -87,7 +87,7 @@ source:
           enabled: true
           connection: websocket
           url: wss://stream.bybit.com/v5/public/linear
-          interval_ms: 100
+          interval_ms: 1000
       contracts:
         enabled: false
         connection: rest
