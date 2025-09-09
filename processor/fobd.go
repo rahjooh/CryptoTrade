@@ -128,8 +128,8 @@ func (p *DeltaProcessor) worker(id int) {
 				return
 			}
 			if p.filterSymbols {
-				if _, ok := p.symbols[msg.Symbol]; !ok {
-					// drop unneeded symbol
+				normalized := symbols.ToBinance(msg.Exchange, msg.Symbol)
+				if _, ok := p.symbols[normalized]; !ok {
 					continue
 				}
 			}
