@@ -27,14 +27,6 @@ func InitCloudWatch(region, namespace, dashboard string) {
 		return
 	}
 	cwClient = cloudwatch.NewFromConfig(cfg)
-	if namespace != "" {
-		cwNamespace = "Hadi-" + namespace
-	}
-	if dashboard != "" {
-		cwDashboard = dashboard
-	} else {
-		cwDashboard = cwNamespace + "-dashboard"
-	}
 	CreateDefaultDashboard(ctx)
 }
 
