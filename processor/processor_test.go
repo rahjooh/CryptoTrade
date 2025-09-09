@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -72,10 +73,21 @@ func TestDeltaProcessorNormalizesSymbols(t *testing.T) {
 		Time:             1,
 		LastUpdateID:     1,
 		PrevLastUpdateID: 0,
-		Symbol:           "1000BONKUSDT",
-		Market:           "fobd",
-		Data:             data,
-		Timestamp:        time.Now(),
+		Bids: []models.FOBDEntry{{
+			Price:    "1",
+			Quantity: "1",
+		}},
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	raw := models.RawFOBDMessage{
+		Exchange:  "binance",
+		Symbol:    "1000BONKUSDT",
+		Market:    "fobd",
+		Data:      data,
+		Timestamp: time.Now(),
 	}
 
 	p.handleMessage(raw)
@@ -145,5 +157,98 @@ func TestFlattenerNormalizesSymbols(t *testing.T) {
 	}
 	if batch.Symbol != "BONKUSDT" {
 		t.Fatalf("expected batch symbol BONKUSDT, got %s", batch.Symbol)
+	}
+}
+
+func TestDeltaProcessorHandlesBybit(t *testing.T) {
+	cfg := minimalDeltaConfig()
+	cfg.Processor.BatchSize = 2
+	cfg.Source.Bybit = appconfig.BybitSourceConfig{
+		Future: appconfig.BybitFutureConfig{
+			Orderbook: appconfig.BybitFutureOrderbookConfig{
+				Delta: appconfig.BybitDeltaConfig{Symbols: []string{"BTCUSDT"}},
+			},
+		},
+	}
+	ch := fobdchan.NewChannels(1, 1)
+	p := NewDeltaProcessor(cfg, ch)
+	p.ctx = context.Background()
+
+	evt := models.BybitFOBDResp{
+		Ts: 1,
+	}
+	evt.Data.Symbol = "BTCUSDT"
+	evt.Data.Bids = [][]string{{"1", "1"}}
+	evt.Data.Seq = 1
+	data, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	raw := models.RawFOBDMessage{
+		Exchange:  "bybit",
+		Symbol:    "BTCUSDT",
+		Market:    "fobd",
+		Data:      data,
+		Timestamp: time.Now(),
+	}
+
+	p.handleMessage(raw)
+
+	key := "bybit_fobd_BTCUSDT"
+	p.mu.RLock()
+	state, ok := p.batches[key]
+	p.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected batch key %s", key)
+	}
+	state.mu.Lock()
+	batch := state.batch
+	state.mu.Unlock()
+	if batch.RecordCount != 1 {
+		t.Fatalf("expected 1 record, got %d", batch.RecordCount)
+	}
+	if batch.Symbol != "BTCUSDT" {
+		t.Fatalf("expected symbol BTCUSDT, got %s", batch.Symbol)
+	}
+}
+
+func TestFlattenerProcessesBybitSnapshot(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Processor.BatchSize = 2
+	ch := fobschan.NewChannels(1, 1)
+	f := NewFlattener(cfg, ch)
+	f.ctx = context.Background()
+
+	ob := models.BybitFOBSresp{
+		UpdateID: 1,
+		Bids:     [][]string{{"1", "1"}},
+	}
+	data, err := json.Marshal(ob)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	raw := models.RawFOBSMessage{
+		Exchange:  "bybit",
+		Symbol:    "BTCUSDT",
+		Market:    "future-orderbook-snapshot",
+		Data:      data,
+		Timestamp: time.Now(),
+	}
+
+	count := f.processMessage(raw)
+	if count != 1 {
+		t.Fatalf("expected 1 entry, got %d", count)
+	}
+
+	key := "bybit_future-orderbook-snapshot_BTCUSDT"
+	f.mu.RLock()
+	batch, ok := f.batches[key]
+	f.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected batch key %s", key)
+	}
+	if batch.RecordCount != 1 {
+		t.Fatalf("expected 1 record, got %d", batch.RecordCount)
 	}
 }

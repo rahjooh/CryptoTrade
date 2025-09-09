@@ -54,6 +54,9 @@ func NewDeltaProcessor(cfg *appconfig.Config, ch *fobd.Channels) *DeltaProcessor
 	for _, s := range cfg.Source.Okx.Future.Orderbook.Delta.Symbols {
 		symSet[symbols.ToBinance("okx", s)] = struct{}{}
 	}
+	for _, s := range cfg.Source.Bybit.Future.Orderbook.Delta.Symbols {
+		symSet[symbols.ToBinance("bybit", s)] = struct{}{}
+	}
 	return &DeltaProcessor{
 		config:        cfg,
 		channels:      ch,
@@ -154,6 +157,30 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 	)
 
 	switch raw.Exchange {
+	case "bybit":
+		var evt models.BybitFOBDResp
+		if err := json.Unmarshal(raw.Data, &evt); err != nil {
+			log.WithError(err).Warn("failed to unmarshal delta message")
+			return
+		}
+		eventTime = evt.Ts
+		updateID = evt.Data.Seq
+		prevUpdateID = evt.Data.Seq - 1
+		firstUpdateID = evt.Data.Seq
+		bids = make([]models.FOBDEntry, 0, len(evt.Data.Bids))
+		for _, b := range evt.Data.Bids {
+			if len(b) < 2 {
+				continue
+			}
+			bids = append(bids, models.FOBDEntry{Price: b[0], Quantity: b[1]})
+		}
+		asks = make([]models.FOBDEntry, 0, len(evt.Data.Asks))
+		for _, a := range evt.Data.Asks {
+			if len(a) < 2 {
+				continue
+			}
+			asks = append(asks, models.FOBDEntry{Price: a[0], Quantity: a[1]})
+		}
 	case "kucoin":
 		var evt models.KucoinFOBDResp
 		if err := json.Unmarshal(raw.Data, &evt); err != nil {
