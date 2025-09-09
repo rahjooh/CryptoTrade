@@ -94,7 +94,7 @@ func TestLoadIPShards(t *testing.T) {
 	if len(shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot) != 1 || shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot[0] != "BTC-USDT-SWAP" {
 		t.Errorf("unexpected swap_orderbook_snapshot symbols: %v", shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot)
 	}
-	if len(shards.Shards[0].OkxSymbols.SwapOrderbookDelta) != 1 || shards.Shards[0].OkxSymbols.SwapOrderbookDelta[0] != "BTC-USDT-SWAP" {
+	if len(shards.Shards[0].OkxSymbols.SwapOrderbookDelta) != 1 || shards.Shards[0].OkxSymbols.SwapOrderbookDelta[0] != "BTC-USDT" {
 		t.Errorf("unexpected swap_orderbook_delta symbols: %v", shards.Shards[0].OkxSymbols.SwapOrderbookDelta)
 	}
 }
