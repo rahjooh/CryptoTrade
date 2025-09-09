@@ -4,6 +4,10 @@ shards:
       - BTCUSDT
       - XRPUSDT
       - BNBUSDT
+    bibit_symbols:
+      - BTCUSDT
+      - XRPUSDT
+      - BNBUSDT
     kucoin_symbols:
       - XBTUSDTM
       - XRPUSDTM
@@ -14,130 +18,169 @@ shards:
       - XRP-USDT-SWAP
       - BNB-USDT-SWAP
 
-#  - ip: 172.31.8.202
-#    binance_symbols:
-#      - SEIUSDT
-#      - ETHUSDT
-#      - 1000SHIBUSDT
-#    kucoin_symbols:
-#      - SEIUSDTM
-#      - ETHUSDTM
-#      - SUIUSDTM
-#      - SHIBUSDTM
-#    okx_symbols:
-#      - SEI-USDT-SWAP
-#      - ETH-USDT-SWAP
-#      - 1000SHIB-USDT-SWAP
-#
-#  - ip: 172.31.1.88
-#    binance_symbols:
-#      - SOLUSDT
-#      - DOTUSDT
-#      - 1000PEPEUSDT
-#      - DOGEUSDT
-#    kucoin_symbols:
-#      - SOLUSDTM
-#      - DOTUSDTM
-#      - PEPEUSDTM
-#      - DOGEUSDTM
-#    okx_symbols:
-#      - SOL-USDT-SWAP
-#      - DOT-USDT-SWAP
-#      - PEPE-USDT-SWAP
-#      - DOGE-USDT-SWAP
-#
-#  - ip: 172.31.14.157
-#    binance_symbols:
-#      - WIFUSDT
-#      - ADAUSDT
-#      - BTCUSDC
-#      - ETHUSDC
-#    kucoin_symbols:
-#      - WIFUSDTM
-#      - ADAUSDTM
-#      - XBTUSDCM
-#      - ETHUSDCM
-#    okx_symbols:
-#      - WIF-USDT-SWAP
-#      - ADA-USDT-SWAP
-#      - BTC-USDC-SWAP
-#      - ETH-USDC-SWAP
-#
-#  - ip: 172.31.9.173
-#    binance_symbols:
-#      - SOLUSDC
-#      - SUIUSDC
-#      - XRPUSDC
-#      - LTCUSDT
-#    kucoin_symbols:
-#      - SOLUSDCM
-#      - SUIUSDCM
-#      - XRPUSDCM
-#      - LTCUSDTM
-#    okx_symbols:
-#      - SOL-USDC-SWAP
-#      - SUI-USDC-SWAP
-#      - XRP-USDC-SWAP
-#      - LTC-USDC-SWAP
-#
-#  - ip: 172.31.4.116
-#    binance_symbols:
-#      - AVAXUSDT
-#      - LINKUSDT
-#      - UNIUSDT
-#      - XLMUSDT
-#    kucoin_symbols:
-#      - AVAXUSDTM
-#      - LINKUSDTM
-#      - UNIUSDTM
-#      - XLMUSDTM
-#    okx_symbols:
-#      - AVAX-USDT-SWAP
-#      - LINK-USDT-SWAP
-#      - UNI-USDT-SWAP
-#      - XLM-USDT-SWAP
-#
-#  - ip: 172.31.8.67
-#    binance_symbols:
-#      - NEARUSDT
-#      - HYPEUSDT
-#      - BCHUSDT
-#      - TRXUSDT
-#    kucoin_symbols:
-#      - NEARUSDTM
-#      - HYPEUSDTM
-#      - BCHUSDTM
-#      - TRXUSDTM
-#    okx_symbols:
-#      - NEAR-USDT-SWAP
-#      - HYPE-USDT-SWAP
-#      - BCH-USDT-SWAP
-#      - TRX-USDT-SWAP
-#
-#  - ip: 172.31.5.194
-#    binance_symbols:
-#      - AAVEUSDT
-#      - 1000BONKUSDT
-#      - OPUSDT
-#      - ARBUSDT
-#    kucoin_symbols:
-#      - AAVEUSDTM
-#      - OPUSDTM
-#      - ARBUSDTM
-#      - INJUSDTM
-#    okx_symbols:
-#      - AAVE-USDT-SWAP
-#      - 1000BONK-USDT-SWAP
-#      - OP-USDT-SWAP
-#      - ARB-USDT-SWAP
-#
-#  - ip: 172.31.15.240
-#    binance_symbols:
-#      - INJUSDT
-#      - FARTCOINUSDT
-#      - ONDOUSDT
-#      - SUIUSDT
-#    okx_symbols:
-#      - INJ-USDT-SWAP
-#      - ONDO-USDT-SWAP
-#      - SUI-USDT-SWAP
+  - ip: 172.31.8.202
+    binance_symbols:
+      - SEIUSDT
+      - ETHUSDT
+      - 1000SHIBUSDT
+    bibit_symbols:
+      - SEIUSDT
+      - ETHUSDT
+      - SHIBUSDT
+    kucoin_symbols:
+      - SEIUSDTM
+      - ETHUSDTM
+      - SUIUSDTM
+      - SHIBUSDTM
+    okx_symbols:
+      - SEI-USDT-SWAP
+      - ETH-USDT-SWAP
+      - 1000SHIB-USDT-SWAP
+
+  - ip: 172.31.1.88
+    binance_symbols:
+      - SOLUSDT
+      - DOTUSDT
+      - 1000PEPEUSDT
+      - DOGEUSDT
+    bibit_symbols:
+      - SOLUSDT
+      - DOTUSDT
+      - PEPEUSDT
+      - DOGEUSDT
+    kucoin_symbols:
+      - SOLUSDTM
+      - DOTUSDTM
+      - PEPEUSDTM
+      - DOGEUSDTM
+    okx_symbols:
+      - SOL-USDT-SWAP
+      - DOT-USDT-SWAP
+      - PEPE-USDT-SWAP
+      - DOGE-USDT-SWAP
+
+  - ip: 172.31.14.157
+    binance_symbols:
+      - WIFUSDT
+      - ADAUSDT
+      - BTCUSDC
+      - ETHUSDC
+    bibit_symbols:
+      - WIFUSDT
+      - ADAUSDT
+      - BTCUSDC
+      - ETHUSDC
+    kucoin_symbols:
+      - WIFUSDTM
+      - ADAUSDTM
+      - XBTUSDCM
+      - ETHUSDCM
+    okx_symbols:
+      - WIF-USDT-SWAP
+      - ADA-USDT-SWAP
+      - BTC-USDC-SWAP
+      - ETH-USDC-SWAP
+
+  - ip: 172.31.9.173
+    binance_symbols:
+      - SOLUSDC
+      - SUIUSDC
+      - XRPUSDC
+      - LTCUSDT
+    bibit_symbols:
+      - SOLUSDC
+      - SUIUSDC
+      - XRPUSDC
+      - LTCUSDT
+    kucoin_symbols:
+      - SOLUSDCM
+      - SUIUSDCM
+      - XRPUSDCM
+      - LTCUSDTM
+    okx_symbols:
+      - SOL-USDC-SWAP
+      - SUI-USDC-SWAP
+      - XRP-USDC-SWAP
+      - LTC-USDC-SWAP
+
+  - ip: 172.31.4.116
+    binance_symbols:
+      - AVAXUSDT
+      - LINKUSDT
+      - UNIUSDT
+      - XLMUSDT
+    bibit_symbols:
+      - AVAXUSDT
+      - LINKUSDT
+      - UNIUSDT
+      - XLMUSDT
+    kucoin_symbols:
+      - AVAXUSDTM
+      - LINKUSDTM
+      - UNIUSDTM
+      - XLMUSDTM
+    okx_symbols:
+      - AVAX-USDT-SWAP
+      - LINK-USDT-SWAP
+      - UNI-USDT-SWAP
+      - XLM-USDT-SWAP
+
+  - ip: 172.31.8.67
+    binance_symbols:
+      - NEARUSDT
+      - HYPEUSDT
+      - BCHUSDT
+      - TRXUSDT
+    bibit_symbols:
+      - NEARUSDT
+      - HYPEUSDT
+      - BCHUSDT
+      - TRXUSDT
+    kucoin_symbols:
+      - NEARUSDTM
+      - HYPEUSDTM
+      - BCHUSDTM
+      - TRXUSDTM
+    okx_symbols:
+      - NEAR-USDT-SWAP
+      - HYPE-USDT-SWAP
+      - BCH-USDT-SWAP
+      - TRX-USDT-SWAP
+
+  - ip: 172.31.5.194
+    binance_symbols:
+      - AAVEUSDT
+      - 1000BONKUSDT
+      - OPUSDT
+      - ARBUSDT
+    bibit_symbols:
+      - AAVEUSDT
+      - 1000BONKUSDT
+      - OPUSDT
+      - ARBUSDT
+    kucoin_symbols:
+      - AAVEUSDTM
+      - OPUSDTM
+      - ARBUSDTM
+      - INJUSDTM
+    okx_symbols:
+      - AAVE-USDT-SWAP
+      - 1000BONK-USDT-SWAP
+      - OP-USDT-SWAP
+      - ARB-USDT-SWAP
+
+  - ip: 172.31.15.240
+    binance_symbols:
+      - INJUSDT
+      - FARTCOINUSDT
+      - ONDOUSDT
+      - SUIUSDT
+    bibit_symbols:
+      - INJUSDT
+      - FARTCOINUSDT
+      - ONDOUSDT
+      - SUIUSDT
+    okx_symbols:
+      - INJ-USDT-SWAP
+      - ONDO-USDT-SWAP
+      - SUI-USDT-SWAP
