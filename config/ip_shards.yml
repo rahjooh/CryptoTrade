@@ -14,7 +14,7 @@ shards:
       - BNBUSDTM
       - ONDOUSDTM
     okx_symbols:
-      - BTC-USDT-SWAP
+      - BTC-USDT
       - XRP-USDT-SWAP
       - BNB-USDT-SWAP
 

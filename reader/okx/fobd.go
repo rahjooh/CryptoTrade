@@ -1,12 +1,9 @@
 package okx
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -130,11 +127,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 
 		args := make([]map[string]string, 0, len(symbols))
 		for _, sym := range symbols {
-			args = append(args, map[string]string{
-				"channel":  "books-l2-tbt",
-				"instType": "SWAP",
-				"instId":   sym,
-			})
+			args = append(args, map[string]string{"channel": "books-l2-tbt", "instId": sym})
 		}
 		sub := map[string]interface{}{"op": "subscribe", "args": args}
 		if err := conn.WriteJSON(sub); err != nil {
@@ -177,13 +170,9 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 }
 
 func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
-	if data, err := decompress(msg); err == nil {
-		msg = data
-	}
 	// handle ping/pong and subscription events
 	var base map[string]json.RawMessage
 	if err := json.Unmarshal(msg, &base); err != nil {
-		r.log.WithComponent("okx_delta_reader").WithError(err).Debug("failed to decode message")
 		return false
 	}
 	if _, ok := base["event"]; ok {
@@ -213,15 +202,6 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 	}
 	r.handleEvent(&evt)
 	return true
-}
-
-func decompress(msg []byte) ([]byte, error) {
-	reader, err := gzip.NewReader(bytes.NewReader(msg))
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	return io.ReadAll(reader)
 }
 
 func (r *Okx_FOBD_Reader) validateSymbols(symbols []string) []string {
