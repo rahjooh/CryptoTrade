@@ -4,7 +4,7 @@ shards:
       - BTCUSDT
       - XRPUSDT
       - BNBUSDT
-    bibit_symbols:
+    bybit_symbols:
       - BTCUSDT
       - XRPUSDT
       - BNBUSDT
@@ -23,7 +23,7 @@ shards:
       - SEIUSDT
       - ETHUSDT
       - 1000SHIBUSDT
-    bibit_symbols:
+    bybit_symbols:
       - SEIUSDT
       - ETHUSDT
       - SHIBUSDT
@@ -43,7 +43,7 @@ shards:
       - DOTUSDT
       - 1000PEPEUSDT
       - DOGEUSDT
-    bibit_symbols:
+    bybit_symbols:
       - SOLUSDT
       - DOTUSDT
       - PEPEUSDT
@@ -65,7 +65,7 @@ shards:
       - ADAUSDT
       - BTCUSDC
       - ETHUSDC
-    bibit_symbols:
+    bybit_symbols:
       - WIFUSDT
       - ADAUSDT
       - BTCUSDC
@@ -87,7 +87,7 @@ shards:
       - SUIUSDC
       - XRPUSDC
       - LTCUSDT
-    bibit_symbols:
+    bybit_symbols:
       - SOLUSDC
       - SUIUSDC
       - XRPUSDC
@@ -109,7 +109,7 @@ shards:
       - LINKUSDT
       - UNIUSDT
       - XLMUSDT
-    bibit_symbols:
+    bybit_symbols:
       - AVAXUSDT
       - LINKUSDT
       - UNIUSDT
@@ -131,7 +131,7 @@ shards:
       - HYPEUSDT
       - BCHUSDT
       - TRXUSDT
-    bibit_symbols:
+    bybit_symbols:
       - NEARUSDT
       - HYPEUSDT
       - BCHUSDT
@@ -153,7 +153,7 @@ shards:
       - 1000BONKUSDT
       - OPUSDT
       - ARBUSDT
-    bibit_symbols:
+    bybit_symbols:
       - AAVEUSDT
       - 1000BONKUSDT
       - OPUSDT
@@ -175,7 +175,7 @@ shards:
       - FARTCOINUSDT
       - ONDOUSDT
       - SUIUSDT
-    bibit_symbols:
+    bybit_symbols:
       - INJUSDT
       - FARTCOINUSDT
       - ONDOUSDT
