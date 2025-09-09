@@ -124,6 +124,7 @@ type ConnectionPoolConfig struct {
 
 type SourceConfig struct {
 	Binance BinanceSourceConfig `yaml:"binance"`
+	Bybit   BybitSourceConfig   `yaml:"bybit"`
 	Kucoin  KucoinSourceConfig  `yaml:"kucoin"`
 	Okx     OkxSourceConfig     `yaml:"okx"`
 }
@@ -131,6 +132,11 @@ type SourceConfig struct {
 type BinanceSourceConfig struct {
 	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
 	Future         BinanceFutureConfig  `yaml:"future"`
+}
+
+type BybitSourceConfig struct {
+	ConnectionPool ConnectionPoolConfig `yaml:"connection_pool"`
+	Future         BybitFutureConfig    `yaml:"future"`
 }
 
 type KucoinSourceConfig struct {
@@ -147,6 +153,10 @@ type BinanceFutureConfig struct {
 	Orderbook BinanceFutureOrderbookConfig `yaml:"orderbook"`
 }
 
+type BybitFutureConfig struct {
+	Orderbook BybitFutureOrderbookConfig `yaml:"orderbook"`
+}
+
 type KucoinFutureConfig struct {
 	Orderbook KucoinFutureOrderbookConfig `yaml:"orderbook"`
 }
@@ -158,6 +168,11 @@ type OkxFutureConfig struct {
 type BinanceFutureOrderbookConfig struct {
 	Snapshots BinanceSnapshotConfig `yaml:"snapshots"`
 	Delta     BinanceDeltaConfig    `yaml:"delta"`
+}
+
+type BybitFutureOrderbookConfig struct {
+	Snapshots BybitSnapshotConfig `yaml:"snapshots"`
+	Delta     BybitDeltaConfig    `yaml:"delta"`
 }
 
 type KucoinFutureOrderbookConfig struct {
@@ -181,6 +196,15 @@ type BinanceSnapshotConfig struct {
 	BatchSize         int      `yaml:"batch_size"`
 }
 
+type BybitSnapshotConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	Limit      int      `yaml:"limit"`
+	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
+}
+
 type KucoinSnapshotConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	Connection string   `yaml:"connection"`
@@ -200,6 +224,14 @@ type OkxSnapshotConfig struct {
 }
 
 type BinanceDeltaConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
+}
+
+type BybitDeltaConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	Connection string   `yaml:"connection"`
 	URL        string   `yaml:"url"`
