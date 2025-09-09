@@ -34,8 +34,8 @@
     },
     {
       "type": "metric",
-      "x": 0,
-      "y": 3,
+      "x": 12,
+      "y": 0,
       "width": 6,
       "height": 3,
       "properties": {
@@ -50,8 +50,8 @@
     },
     {
       "type": "metric",
-      "x": 6,
-      "y": 3,
+      "x": 18,
+      "y": 0,
       "width": 6,
       "height": 3,
       "properties": {
@@ -67,7 +67,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 6,
+      "y": 3,
       "width": 12,
       "height": 6,
       "properties": {
@@ -85,8 +85,8 @@
     },
     {
       "type": "metric",
-      "x": 0,
-      "y": 12,
+      "x": 12,
+      "y": 3,
       "width": 12,
       "height": 6,
       "properties": {
@@ -105,7 +105,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 18,
+      "y": 9,
       "width": 12,
       "height": 6,
       "properties": {
@@ -123,8 +123,8 @@
     },
     {
       "type": "metric",
-      "x": 0,
-      "y": 24,
+      "x": 12,
+      "y": 9,
       "width": 12,
       "height": 6,
       "properties": {
@@ -144,7 +144,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 30,
+      "y": 15,
       "width": 12,
       "height": 6,
       "properties": {
@@ -161,8 +161,8 @@
     },
     {
       "type": "metric",
-      "x": 0,
-      "y": 36,
+      "x": 12,
+      "y": 15,
       "width": 12,
       "height": 6,
       "properties": {
@@ -175,22 +175,6 @@
         "period": 60,
         "title": "Network Throughput",
         "yAxis": { "left": { "label": "bytes" } }
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 42,
-      "width": 6,
-      "height": 3,
-      "properties": {
-        "view": "singleValue",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-Test", "Project", "CryptoFlow", "Environment", "Dev", { "stat": "Sum" }]
-        ],
-        "period": 300,
-        "title": "Test Metric"
       }
     }
   ]

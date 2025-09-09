@@ -20,6 +20,8 @@ import (
 type channelStat struct {
 	messages int64
 	bytes    int64
+	depth    int64
+	capacity int64
 }
 
 var (
@@ -100,6 +102,13 @@ func recordChannel(name string, size int) {
 	atomic.AddInt64(&cs.bytes, int64(size))
 }
 
+func RecordChannelDepth(name string, depth, capacity int) {
+	v, _ := channels.LoadOrStore(name, &channelStat{})
+	cs := v.(*channelStat)
+	atomic.StoreInt64(&cs.depth, int64(depth))
+	atomic.StoreInt64(&cs.capacity, int64(capacity))
+}
+
 func startReport(ctx context.Context, log *Log, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -134,6 +143,8 @@ func logReport(ctx context.Context, log *Log) {
 		channelData[name] = map[string]int64{
 			"messages": atomic.LoadInt64(&cs.messages),
 			"bytes":    atomic.LoadInt64(&cs.bytes),
+			"depth":    atomic.LoadInt64(&cs.depth),
+			"capacity": atomic.LoadInt64(&cs.capacity),
 		}
 		return true
 	})
@@ -225,7 +236,25 @@ func logReport(ctx context.Context, log *Log) {
 				Dimensions: []cwtypes.Dimension{{Name: aws.String("Channel"), Value: aws.String(name)}},
 				Value:      aws.Float64(float64(stats["bytes"])),
 			},
+			cwtypes.MetricDatum{
+				MetricName: aws.String("Hadi-ChannelDepth"),
+				Unit:       cwtypes.StandardUnitCount,
+				Dimensions: []cwtypes.Dimension{{Name: aws.String("Channel"), Value: aws.String(name)}},
+				Value:      aws.Float64(float64(stats["depth"])),
+			},
 		)
+
+		if cap := stats["capacity"]; cap > 0 {
+			util := float64(stats["depth"]) / float64(cap) * 100
+			data = append(data,
+				cwtypes.MetricDatum{
+					MetricName: aws.String("Hadi-ChannelUtilization"),
+					Unit:       cwtypes.StandardUnitPercent,
+					Dimensions: []cwtypes.Dimension{{Name: aws.String("Channel"), Value: aws.String(name)}},
+					Value:      aws.Float64(util),
+				},
+			)
+		}
 	}
 
 	publishMetrics(ctx, data)

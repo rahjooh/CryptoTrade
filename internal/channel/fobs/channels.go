@@ -25,6 +25,7 @@ type Channels struct {
 	log                 *logger.Log
 	ctx                 context.Context
 	metricsReportTicker *time.Ticker
+	depthReportTicker   *time.Ticker
 }
 
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
@@ -46,6 +47,7 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 func (c *Channels) StartMetricsReporting(ctx context.Context) {
 	c.ctx = ctx
 	c.metricsReportTicker = time.NewTicker(30 * time.Second)
+	c.depthReportTicker = time.NewTicker(5 * time.Second)
 
 	go func() {
 		for {
@@ -55,6 +57,19 @@ func (c *Channels) StartMetricsReporting(ctx context.Context) {
 				return
 			case <-c.metricsReportTicker.C:
 				c.logChannelStats(c.log)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				c.depthReportTicker.Stop()
+				return
+			case <-c.depthReportTicker.C:
+				logger.RecordChannelDepth("fobs_raw", len(c.Raw), cap(c.Raw))
+				logger.RecordChannelDepth("fobs_norm", len(c.Norm), cap(c.Norm))
 			}
 		}
 	}()
@@ -80,6 +95,9 @@ func (c *Channels) logChannelStats(log *logger.Log) {
 func (c *Channels) Close() {
 	if c.metricsReportTicker != nil {
 		c.metricsReportTicker.Stop()
+	}
+	if c.depthReportTicker != nil {
+		c.depthReportTicker.Stop()
 	}
 	close(c.Raw)
 	close(c.Norm)
