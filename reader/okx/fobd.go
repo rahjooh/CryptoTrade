@@ -2,7 +2,7 @@ package okx
 
 import (
 	"bytes"
-	"compress/flate"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -216,7 +216,10 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 }
 
 func decompress(msg []byte) ([]byte, error) {
-	reader := flate.NewReader(bytes.NewReader(msg))
+	reader, err := gzip.NewReader(bytes.NewReader(msg))
+	if err != nil {
+		return nil, err
+	}
 	defer reader.Close()
 	return io.ReadAll(reader)
 }
