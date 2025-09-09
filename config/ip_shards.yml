@@ -15,13 +15,13 @@ shards:
       - ONDOUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - BTC-USDT
+        - BTC-USDT-SWAP
         - XRP-USDT-SWAP
         - BNB-USDT-SWAP
       swap_orderbook_delta:
         - BTC-USDT
-        - XRP-USDT-SWAP
-        - BNB-USDT-SWAP
+        - XRPUSDT
+        - BNB-USDT
 
 #  - ip: 172.31.8.202
 #    binance_symbols:
@@ -43,9 +43,9 @@ shards:
 #        - ETH-USDT-SWAP
 #        - 1000SHIB-USDT-SWAP
 #      swap_orderbook_delta:
-#        - SEI-USDT-SWAP
-#        - ETH-USDT-SWAP
-#        - 1000SHIB-USDT-SWAP
+#        - SEI-USDT
+#        - ETH-USDT
+#        - 1000SHIB-USDT
 #
 #  - ip: 172.31.1.88
 #    binance_symbols:
@@ -70,10 +70,10 @@ shards:
 #        - PEPE-USDT-SWAP
 #        - DOGE-USDT-SWAP
 #      swap_orderbook_delta:
-#        - SOL-USDT-SWAP
-#        - DOT-USDT-SWAP
-#        - PEPE-USDT-SWAP
-#        - DOGE-USDT-SWAP
+#        - SOL-USDT
+#        - DOT-USDT
+#        - PEPE-USDT
+#        - DOGE-USDT
 #
 #  - ip: 172.31.14.157
 #    binance_symbols:
@@ -98,10 +98,10 @@ shards:
 #        - BTC-USDC-SWAP
 #        - ETH-USDC-SWAP
 #      swap_orderbook_delta:
-#        - WIF-USDT-SWAP
-#        - ADA-USDT-SWAP
-#        - BTC-USDC-SWAP
-#        - ETH-USDC-SWAP
+#        - WIF-USDT
+#        - ADA-USDT
+#        - BTC-USDC
+#        - ETH-USDC
 #
 #  - ip: 172.31.9.173
 #    binance_symbols:
@@ -126,10 +126,10 @@ shards:
 #        - XRP-USDC-SWAP
 #        - LTC-USDC-SWAP
 #      swap_orderbook_delta:
-#        - SOL-USDC-SWAP
-#        - SUI-USDC-SWAP
-#        - XRP-USDC-SWAP
-#        - LTC-USDC-SWAP
+#        - SOL-USDC
+#        - SUI-USDC
+#        - XRP-USDC
+#        - LTC-USDC
 #
 #  - ip: 172.31.4.116
 #    binance_symbols:
@@ -154,10 +154,10 @@ shards:
 #        - UNI-USDT-SWAP
 #        - XLM-USDT-SWAP
 #      swap_orderbook_delta:
-#        - AVAX-USDT-SWAP
-#        - LINK-USDT-SWAP
-#        - UNI-USDT-SWAP
-#        - XLM-USDT-SWAP
+#        - AVAX-USDT
+#        - LINK-USDT
+#        - UNI-USDT
+#        - XLM-USDT
 #
 #  - ip: 172.31.8.67
 #    binance_symbols:
@@ -182,10 +182,10 @@ shards:
 #        - BCH-USDT-SWAP
 #        - TRX-USDT-SWAP
 #      swap_orderbook_delta:
-#        - NEAR-USDT-SWAP
-#        - HYPE-USDT-SWAP
-#        - BCH-USDT-SWAP
-#        - TRX-USDT-SWAP
+#        - NEAR-USDT
+#        - HYPE-USDT
+#        - BCH-USDT
+#        - TRX-USDT
 #
 #  - ip: 172.31.5.194
 #    binance_symbols:
@@ -210,10 +210,10 @@ shards:
 #        - OP-USDT-SWAP
 #        - ARB-USDT-SWAP
 #      swap_orderbook_delta:
-#        - AAVE-USDT-SWAP
-#        - 1000BONK-USDT-SWAP
-#        - OP-USDT-SWAP
-#        - ARB-USDT-SWAP
+#        - AAVE-USDT
+#        - 1000BONK-USDT
+#        - OP-USDT
+#        - ARB-USDT
 #
 #  - ip: 172.31.15.240
 #    binance_symbols:
@@ -232,6 +232,6 @@ shards:
 #        - ONDO-USDT-SWAP
 #        - SUI-USDT-SWAP
 #      swap_orderbook_delta:
-#        - INJ-USDT-SWAP
-#        - ONDO-USDT-SWAP
-#        - SUI-USDT-SWAP
+#        - INJ-USDT
+#        - ONDO-USDT
+#        - SUI-USDT

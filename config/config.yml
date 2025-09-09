@@ -125,7 +125,7 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://www.okx.com/api/v5/market/books
           limit: 400
@@ -134,7 +134,7 @@ source:
           enabled: true
           connection: websocket
           url: wss://ws.okx.com:8443/ws/v5/public
-          interval_ms: 100
+          interval_ms: 1000
       contracts:
         enabled: false
         connection: rest
