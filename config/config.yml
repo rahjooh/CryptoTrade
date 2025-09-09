@@ -29,7 +29,7 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://fapi.binance.com/fapi/v1/depth
           limit: 1000                   # Number of price levels
@@ -37,7 +37,7 @@ source:
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 1000             #  Records per batch before writing
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://fstream.binance.com/ws
           interval_ms: 100
@@ -78,13 +78,13 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api.bybit.com/v5/market/orderbook
           limit: 500
           interval_ms: 1000
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://stream.bybit.com/v5/public/linear
           interval_ms: 1000
@@ -176,13 +176,13 @@ source:
     future:
       orderbook:
         snapshots:
-          enabled: true
+          enabled: false
           connection: rest
           url: https://api-futures.kucoin.com/api/v1/level2/snapshot
           limit: 1000
           interval_ms: 60000
         delta:
-          enabled: true
+          enabled: false
           connection: websocket
           url: wss://api-futures.kucoin.com/endpoint
           interval_ms: 100
