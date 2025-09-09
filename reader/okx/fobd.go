@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -18,24 +17,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Okx_FOBD_Reader subscribes to OKX websocket streams for swap order book
-// deltas and forwards the normalized messages into the raw delta channel. The
-// reader connects directly to the official OKX websocket without relying on
-// third-party SDKs.
+// Okx_FOBD_Reader streams swap order book deltas from OKX's public websocket
+// and forwards the raw messages to the configured channel. The implementation
+// uses a plain websocket connection without relying on an SDK.
 type Okx_FOBD_Reader struct {
-	config     *appconfig.Config
-	channels   *fobd.Channels
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
-	symbols    []string
-	localIP    string
-	httpClient *http.Client
+	config   *appconfig.Config
+	channels *fobd.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
+	localIP  string
 }
 
-// Okx_FOBD_NewReader creates a new delta reader.
+// Okx_FOBD_NewReader creates a new delta reader. The localIP parameter is kept
+// for compatibility; when provided, the websocket dialer binds to it.
 func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Okx_FOBD_Reader {
 	return &Okx_FOBD_Reader{
 		config:   cfg,
@@ -47,9 +45,10 @@ func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []stri
 	}
 }
 
-// Okx_FOBD_Start establishes a websocket connection and subscribes to swap
-// order book delta streams for all configured symbols.  If the connection drops
-// it will be re-established automatically until the context is cancelled.
+// Okx_FOBD_Start establishes a websocket connection to the OKX public
+// endpoint and subscribes to swap order book deltas for all configured symbols.
+// The connection is automatically re-established until the context is
+// cancelled.
 func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
@@ -67,26 +66,20 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 		return fmt.Errorf("okx swap orderbook delta is disabled")
 	}
 
-	transport := &http.Transport{}
-	if r.localIP != "" {
-		if ip := net.ParseIP(r.localIP); ip != nil {
-			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
-			transport.DialContext = dialer.DialContext
-		}
+	wsURL := cfg.URL
+	if wsURL == "" {
+		wsURL = "wss://ws.okx.com:8443/ws/v5/public"
 	}
-	r.httpClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
-
-	r.symbols = r.validateSymbols(r.symbols)
 
 	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
 	r.wg.Add(1)
-	go r.stream(r.symbols, cfg.URL)
+	go r.stream(r.symbols, wsURL)
 	log.Info("okx swap delta reader started successfully")
 	return nil
 }
 
-// Okx_FOBD_Stop terminates all websocket subscriptions and waits for goroutines
-// to finish.
+// Okx_FOBD_Stop terminates all websocket subscriptions and waits for workers to
+// finish.
 func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 	r.mu.Lock()
 	r.running = false
@@ -96,7 +89,7 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 	r.log.WithComponent("okx_delta_reader").Info("okx delta reader stopped")
 }
 
-// stream handles websocket lifecycle, reconnection and forwarding of events.
+// stream manages the websocket lifecycle and message processing.
 func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 	defer r.wg.Done()
 	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbols": symbols, "worker": "delta_stream"})
@@ -133,7 +126,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 				"instId":   sym,
 			})
 		}
-		sub := map[string]interface{}{"op": "subscribe", "args": args}
+		sub := map[string]any{"op": "subscribe", "args": args}
 		if err := conn.WriteJSON(sub); err != nil {
 			log.WithError(err).Warn("failed to subscribe")
 			conn.Close()
@@ -160,21 +153,17 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 				close(done)
 				conn.Close()
 				log.WithError(err).Warn("websocket read error, reconnecting")
-				goto RECONNECT
+				break
 			}
-			if !r.processMessage(conn, msg) {
-				// non-data message processed
-				continue
-			}
+			r.processMessage(conn, msg)
 		}
 
-	RECONNECT:
 		time.Sleep(time.Second)
 	}
 }
 
+// processMessage handles ping/pong frames and forwards order book updates.
 func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
-	// handle ping/pong and subscription events
 	var base map[string]json.RawMessage
 	if err := json.Unmarshal(msg, &base); err != nil {
 		r.log.WithComponent("okx_delta_reader").WithError(err).Debug("failed to decode message")
@@ -185,7 +174,7 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 			Event string `json:"event"`
 		}
 		json.Unmarshal(msg, &evt)
-		if evt.Event == "ping" {
+		if evt.Event == "ping" && conn != nil {
 			conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"pong\"}"))
 		}
 		return false
@@ -194,7 +183,7 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 		var ping struct {
 			Ping int64 `json:"ping"`
 		}
-		if err := json.Unmarshal(msg, &ping); err == nil {
+		if err := json.Unmarshal(msg, &ping); err == nil && conn != nil {
 			resp, _ := json.Marshal(map[string]int64{"pong": ping.Ping})
 			conn.WriteMessage(websocket.TextMessage, resp)
 		}
@@ -209,47 +198,9 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 	return true
 }
 
-func (r *Okx_FOBD_Reader) validateSymbols(symbols []string) []string {
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, "https://www.okx.com/api/v5/public/instruments?instType=SWAP", nil)
-	if err != nil {
-		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to build instruments request")
-		return symbols
-	}
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to fetch instruments list")
-		return symbols
-	}
-	defer resp.Body.Close()
-	var wrapper struct {
-		Code string `json:"code"`
-		Data []struct {
-			InstID string `json:"instId"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
-		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to decode instruments list")
-		return symbols
-	}
-	valid := make(map[string]struct{}, len(wrapper.Data))
-	for _, inst := range wrapper.Data {
-		valid[inst.InstID] = struct{}{}
-	}
-	var filtered []string
-	for _, s := range symbols {
-		if _, ok := valid[s]; ok {
-			filtered = append(filtered, s)
-		} else {
-			r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": s}).Warn("invalid instrument, skipping")
-		}
-	}
-	return filtered
-}
-
 type orderBookEvent struct {
 	Arg struct {
-		Channel string `json:"channel"`
-		InstID  string `json:"instId"`
+		InstID string `json:"instId"`
 	} `json:"arg"`
 	Action string `json:"action"`
 	Data   []struct {
@@ -259,7 +210,7 @@ type orderBookEvent struct {
 	} `json:"data"`
 }
 
-// handleEvent converts websocket event to raw delta message.
+// handleEvent converts a websocket event into a raw delta message.
 func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
 	if evt == nil || len(evt.Data) == 0 {
 		return
@@ -285,6 +236,7 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
 		Bids:      bids,
 		Asks:      asks,
 	}
+
 	payload, err := json.Marshal(resp)
 	if err != nil {
 		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to marshal event")
