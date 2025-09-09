@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
 )
 
 // OkxSymbolSet groups OKX swap order book symbols for snapshot and delta streams.
@@ -37,5 +38,18 @@ func LoadIPShards(path string) (*IPShards, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse shards file: %w", err)
 	}
+	for i := range cfg.Shards {
+		cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot = normalizeOkxSwapSymbols(cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot)
+		cfg.Shards[i].OkxSymbols.SwapOrderbookDelta = normalizeOkxSwapSymbols(cfg.Shards[i].OkxSymbols.SwapOrderbookDelta)
+	}
 	return &cfg, nil
+}
+
+func normalizeOkxSwapSymbols(symbols []string) []string {
+	for i, s := range symbols {
+		if !strings.HasSuffix(strings.ToUpper(s), "-SWAP") {
+			symbols[i] = s + "-SWAP"
+		}
+	}
+	return symbols
 }
