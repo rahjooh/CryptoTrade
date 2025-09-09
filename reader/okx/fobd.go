@@ -1,12 +1,9 @@
 package okx
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -177,9 +174,6 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 }
 
 func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
-	if data, err := decompress(msg); err == nil {
-		msg = data
-	}
 	// handle ping/pong and subscription events
 	var base map[string]json.RawMessage
 	if err := json.Unmarshal(msg, &base); err != nil {
@@ -213,15 +207,6 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 	}
 	r.handleEvent(&evt)
 	return true
-}
-
-func decompress(msg []byte) ([]byte, error) {
-	reader, err := gzip.NewReader(bytes.NewReader(msg))
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	return io.ReadAll(reader)
 }
 
 func (r *Okx_FOBD_Reader) validateSymbols(symbols []string) []string {

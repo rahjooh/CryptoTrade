@@ -65,6 +65,9 @@ func TestLoadIPShards(t *testing.T) {
 - ip: "1.1.1.1"
   binance_symbols: ["BTCUSDT"]
   kucoin_symbols: ["XBTUSDT"]
+  okx_symbols:
+    swap_orderbook_snapshot: ["BTC-USDT-SWAP"]
+    swap_orderbook_delta: ["BTC-USDT"]
 `
 	f, err := os.CreateTemp("", "shards-*.yml")
 	if err != nil {
@@ -87,6 +90,12 @@ func TestLoadIPShards(t *testing.T) {
 	}
 	if shards.Shards[0].IP != "1.1.1.1" {
 		t.Errorf("unexpected IP: %s", shards.Shards[0].IP)
+	}
+	if len(shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot) != 1 || shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot[0] != "BTC-USDT-SWAP" {
+		t.Errorf("unexpected swap_orderbook_snapshot symbols: %v", shards.Shards[0].OkxSymbols.SwapOrderbookSnapshot)
+	}
+	if len(shards.Shards[0].OkxSymbols.SwapOrderbookDelta) != 1 || shards.Shards[0].OkxSymbols.SwapOrderbookDelta[0] != "BTC-USDT-SWAP" {
+		t.Errorf("unexpected swap_orderbook_delta symbols: %v", shards.Shards[0].OkxSymbols.SwapOrderbookDelta)
 	}
 }
 
