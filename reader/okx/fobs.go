@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,32 +14,24 @@ import (
 	fobs "cryptoflow/internal/channel/fobs"
 	"cryptoflow/logger"
 	"cryptoflow/models"
-
-	okex "github.com/tfxq/okx-go-sdk"
-	okxapi "github.com/tfxq/okx-go-sdk/api"
-	marketmodel "github.com/tfxq/okx-go-sdk/models/market"
-	marketreq "github.com/tfxq/okx-go-sdk/requests/rest/market"
-	restpubreq "github.com/tfxq/okx-go-sdk/requests/rest/public"
-
 	"golang.org/x/time/rate"
 )
 
 // Okx_FOBS_Reader periodically queries the OKX REST API for swap order book
-// snapshots and forwards the data into the raw snapshot channel.  The reader
-// leverages the official okx-go-sdk for request construction and response
-// parsing to ensure compatibility and performance.
+// snapshots and forwards the data into the raw snapshot channel. The reader
+// issues HTTP requests directly without relying on any third-party SDK.
 type Okx_FOBS_Reader struct {
-	config   *config.Config
-	channels *fobs.Channels
-	ctx      context.Context
-	wg       *sync.WaitGroup
-	mu       sync.RWMutex
-	running  bool
-	log      *logger.Log
-	symbols  []string
-	limiter  *rate.Limiter
-	api      *okxapi.Client
-	localIP  string
+	config     *config.Config
+	channels   *fobs.Channels
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Log
+	symbols    []string
+	limiter    *rate.Limiter
+	httpClient *http.Client
+	localIP    string
 }
 
 // Okx_FOBS_NewReader constructs a new snapshot reader instance.  Network
@@ -65,8 +58,8 @@ func Okx_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string,
 }
 
 // Okx_FOBS_Start launches snapshot fetch workers for each configured symbol.
-// A custom HTTP transport with connection pooling is installed into the
-// okx-go-sdk before any requests are executed.
+// A custom HTTP transport with connection pooling is configured for the HTTP
+// client used for REST calls.
 func (r *Okx_FOBS_Reader) Okx_FOBS_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
@@ -89,15 +82,7 @@ func (r *Okx_FOBS_Reader) Okx_FOBS_Start(ctx context.Context) error {
 			transport.DialContext = dialer.DialContext
 		}
 	}
-	http.DefaultClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
-
-	// Initialise the OKX REST client using the configured HTTP client.
-	apiClient, err := okxapi.NewClient(ctx, "", "", "", okex.NormalServer)
-	if err != nil {
-		r.log.WithComponent("okx_reader").WithError(err).Error("failed to create okx rest client")
-		return err
-	}
-	r.api = apiClient
+	r.httpClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
 	r.symbols = r.validateSymbols(r.symbols)
 
 	cfg := r.config.Source.Okx.Future.Orderbook.Snapshots
@@ -167,14 +152,20 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
-	ts := time.Time(book.TS).UnixMilli()
+	ts, _ := strconv.ParseInt(book.Ts, 10, 64)
 	bids := make([][]string, len(book.Bids))
 	for i, b := range book.Bids {
-		bids[i] = []string{fmt.Sprintf("%f", b.DepthPrice), fmt.Sprintf("%f", b.Size)}
+		//bids[i] = []string{fmt.Sprintf("%f", b.DepthPrice), fmt.Sprintf("%f", b.Size)}
+		if len(b) >= 2 {
+			bids[i] = []string{b[0], b[1]}
+		}
 	}
 	asks := make([][]string, len(book.Asks))
 	for i, a := range book.Asks {
-		asks[i] = []string{fmt.Sprintf("%f", a.DepthPrice), fmt.Sprintf("%f", a.Size)}
+		//asks[i] = []string{fmt.Sprintf("%f", a.DepthPrice), fmt.Sprintf("%f", a.Size)}
+		if len(a) >= 2 {
+			asks[i] = []string{a[0], a[1]}
+		}
 	}
 
 	snapshot := models.BinanceFOBSresp{LastUpdateID: ts, Bids: bids, Asks: asks}
@@ -202,30 +193,62 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 	}
 }
 
+type okxOrderBook struct {
+	Bids [][]string `json:"bids"`
+	Asks [][]string `json:"asks"`
+	Ts   string     `json:"ts"`
+}
+
 // getMarketBooksFull retrieves the full depth order book snapshot for a symbol
-// using the OKX REST API. It is a thin wrapper around the SDK's order book
-// endpoint but provides clearer intent within the reader implementation.
-func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*marketmodel.OrderBook, error) {
-	req := marketreq.GetOrderBook{InstID: symbol, Sz: limit}
-	resp, err := r.api.Rest.Market.GetOrderBook(req)
+// by calling the OKX REST API directly.
+func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrderBook, error) {
+	url := fmt.Sprintf("https://www.okx.com/api/v5/market/books?instId=%s&sz=%d", symbol, limit)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.OrderBooks) == 0 {
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var wrapper struct {
+		Code string         `json:"code"`
+		Data []okxOrderBook `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, err
+	}
+	if len(wrapper.Data) == 0 {
 		return nil, fmt.Errorf("empty orderbook response")
 	}
-	return resp.OrderBooks[0], nil
+	return &wrapper.Data[0], nil
 }
 
 func (r *Okx_FOBS_Reader) validateSymbols(symbols []string) []string {
-	req := restpubreq.GetInstruments{InstType: okex.SwapInstrument}
-	resp, err := r.api.Rest.PublicData.GetInstruments(req)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, "https://www.okx.com/api/v5/public/instruments?instType=SWAP", nil)
+	if err != nil {
+		r.log.WithComponent("okx_reader").WithError(err).Warn("failed to build instruments request")
+		return symbols
+	}
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		r.log.WithComponent("okx_reader").WithError(err).Warn("failed to fetch instruments list")
 		return symbols
 	}
-	valid := make(map[string]struct{}, len(resp.Instruments))
-	for _, inst := range resp.Instruments {
+	defer resp.Body.Close()
+	var wrapper struct {
+		Code string `json:"code"`
+		Data []struct {
+			InstID string `json:"instId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		r.log.WithComponent("okx_reader").WithError(err).Warn("failed to decode instruments list")
+		return symbols
+	}
+	valid := make(map[string]struct{}, len(wrapper.Data))
+	for _, inst := range wrapper.Data {
 		valid[inst.InstID] = struct{}{}
 	}
 	var filtered []string
