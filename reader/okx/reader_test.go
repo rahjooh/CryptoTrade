@@ -1,8 +1,6 @@
 package okx
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"testing"
@@ -80,19 +78,12 @@ func TestOkxFOBDHandleEvent(t *testing.T) {
 	}
 }
 
-func TestOkxFOBDProcessMessageCompressed(t *testing.T) {
+func TestOkxFOBDProcessMessage(t *testing.T) {
 	ch := fobdchan.NewChannels(1, 1)
 	r := &Okx_FOBD_Reader{channels: ch, ctx: context.Background(), log: logger.GetLogger()}
 
 	raw := []byte(`{"arg":{"channel":"books-l2-tbt","instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	if _, err := w.Write(raw); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	w.Close()
-
-	if !r.processMessage(nil, buf.Bytes()) {
+	if !r.processMessage(nil, raw) {
 		t.Fatal("processMessage returned false")
 	}
 

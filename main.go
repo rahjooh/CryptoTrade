@@ -98,17 +98,17 @@ func main() {
 		sc.Source.Bybit.Future.Orderbook.Delta.Symbols = shard.BybitSymbols
 		sc.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = shard.KucoinSymbols
 		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
-		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols
-		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols
+		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
+		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols.SwapOrderbookDelta
 
 		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS, shard.BinanceSymbols, shard.IP))
 		bybitFOBSReaders = append(bybitFOBSReaders, bybitreader.Bybit_FOBS_NewReader(&sc, channels.FOBS, shard.BybitSymbols, shard.IP))
 		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS, shard.KucoinSymbols, shard.IP))
-		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS, shard.OkxSymbols, shard.IP))
+		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD, shard.BinanceSymbols, shard.IP))
 		bybitFOBDReaders = append(bybitFOBDReaders, bybitreader.Bybit_FOBD_NewReader(&sc, channels.FOBD, shard.BybitSymbols, shard.IP))
 		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
-		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols, shard.IP))
+		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols.SwapOrderbookDelta, shard.IP))
 
 		for _, s := range shard.BinanceSymbols {
 			binanceSymbolSet[s] = struct{}{}
@@ -119,7 +119,10 @@ func main() {
 		for _, s := range shard.KucoinSymbols {
 			kucoinSymbolSet[s] = struct{}{}
 		}
-		for _, s := range shard.OkxSymbols {
+		for _, s := range shard.OkxSymbols.SwapOrderbookSnapshot {
+			okxSymbolSet[s] = struct{}{}
+		}
+		for _, s := range shard.OkxSymbols.SwapOrderbookDelta {
 			okxSymbolSet[s] = struct{}{}
 		}
 	}

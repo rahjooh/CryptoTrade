@@ -2,19 +2,24 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
-        "gopkg.in/yaml.v3"
-
 )
 
+// OkxSymbolSet groups OKX swap order book symbols for snapshot and delta streams.
+type OkxSymbolSet struct {
+	SwapOrderbookSnapshot []string `yaml:"swap_orderbook_snapshot"`
+	SwapOrderbookDelta    []string `yaml:"swap_orderbook_delta"`
+}
+
 // IPShard defines a set of symbols that should be fetched using a specific source IP.
-// BinanceSymbols, BybitSymbols, KucoinSymbols and OKX allow specifying exchange specific representations.
+// BinanceSymbols, BybitSymbols, KucoinSymbols and OkxSymbols allow specifying exchange specific representations.
 type IPShard struct {
-	IP             string   `yaml:"ip"`
-	BinanceSymbols []string `yaml:"binance_symbols"`
-	BybitSymbols   []string `yaml:"bybit_symbols"`
-	KucoinSymbols  []string `yaml:"kucoin_symbols"`
-	OkxSymbols     []string `yaml:"okx_symbols"`
+	IP             string       `yaml:"ip"`
+	BinanceSymbols []string     `yaml:"binance_symbols"`
+	BybitSymbols   []string     `yaml:"bybit_symbols"`
+	KucoinSymbols  []string     `yaml:"kucoin_symbols"`
+	OkxSymbols     OkxSymbolSet `yaml:"okx_symbols"`
 }
 
 // IPShards represents the full shard configuration.
