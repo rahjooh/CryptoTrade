@@ -1,6 +1,8 @@
 package okx
 
 import (
+	"bytes"
+	"compress/flate"
 	"context"
 	"encoding/json"
 	"testing"
@@ -73,6 +75,32 @@ func TestOkxFOBDHandleEvent(t *testing.T) {
 		if len(resp.Bids) != 1 || resp.Bids[0].Price != "1" || resp.Bids[0].Quantity != "2" {
 			t.Fatalf("unexpected bids: %+v", resp.Bids)
 		}
+	case <-time.After(time.Second):
+		t.Fatal("no message received")
+	}
+}
+
+func TestOkxFOBDProcessMessageCompressed(t *testing.T) {
+	ch := fobdchan.NewChannels(1, 1)
+	r := &Okx_FOBD_Reader{channels: ch, ctx: context.Background(), log: logger.GetLogger()}
+
+	raw := []byte(`{"arg":{"channel":"books-l2-tbt","instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
+	var buf bytes.Buffer
+	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
+	if err != nil {
+		t.Fatalf("flate writer: %v", err)
+	}
+	if _, err := w.Write(raw); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	w.Close()
+
+	if !r.processMessage(nil, buf.Bytes()) {
+		t.Fatal("processMessage returned false")
+	}
+
+	select {
+	case <-ch.Raw:
 	case <-time.After(time.Second):
 		t.Fatal("no message received")
 	}
