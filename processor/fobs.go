@@ -150,16 +150,30 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 	log.Info("processing raw message")
 
 	// Parse the raw orderbook data
-	var binanceResp models.BinanceFOBSresp
-	err := json.Unmarshal(rawMsg.Data, &binanceResp)
-	if err != nil {
-		f.errorsCount++
-		log.WithError(err).Warn("failed to unmarshal orderbook data")
-		return 0
+	var book models.BinanceFOBSresp
+	switch rawMsg.Exchange {
+	case "bybit":
+		var bybitResp models.BybitFOBSresp
+		if err := json.Unmarshal(rawMsg.Data, &bybitResp); err != nil {
+			f.errorsCount++
+			log.WithError(err).Warn("failed to unmarshal orderbook data")
+			return 0
+		}
+		book = models.BinanceFOBSresp{
+			LastUpdateID: bybitResp.UpdateID,
+			Bids:         bybitResp.Bids,
+			Asks:         bybitResp.Asks,
+		}
+	default:
+		if err := json.Unmarshal(rawMsg.Data, &book); err != nil {
+			f.errorsCount++
+			log.WithError(err).Warn("failed to unmarshal orderbook data")
+			return 0
+		}
 	}
 
 	// Flatten the orderbook data
-	entries := f.flattenOrderbook(rawMsg, binanceResp)
+	entries := f.flattenOrderbook(rawMsg, book)
 	if len(entries) == 0 {
 		log.Warn("no entries flattened from message")
 		return 0
@@ -170,8 +184,8 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 
 	log.WithFields(logger.Fields{
 		"entries_count": len(entries),
-		"bids_count":    len(binanceResp.Bids),
-		"asks_count":    len(binanceResp.Asks),
+		"bids_count":    len(book.Bids),
+		"asks_count":    len(book.Asks),
 	}).Info("message processed successfully")
 
 	logger.LogDataFlowEntry(log, "raw_channel", "flattened_channel", len(entries), "flattened_entries")
