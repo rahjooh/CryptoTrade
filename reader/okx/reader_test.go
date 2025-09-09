@@ -2,7 +2,7 @@ package okx
 
 import (
 	"bytes"
-	"compress/flate"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"testing"
@@ -86,10 +86,7 @@ func TestOkxFOBDProcessMessageCompressed(t *testing.T) {
 
 	raw := []byte(`{"arg":{"channel":"books-l2-tbt","instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
 	var buf bytes.Buffer
-	w, err := flate.NewWriter(&buf, flate.DefaultCompression)
-	if err != nil {
-		t.Fatalf("flate writer: %v", err)
-	}
+	w := gzip.NewWriter(&buf)
 	if _, err := w.Write(raw); err != nil {
 		t.Fatalf("write: %v", err)
 	}
