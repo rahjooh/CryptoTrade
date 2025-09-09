@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,6 +18,10 @@ var cwDashboard string = "Hadi-CryptoFlow-dashboard"
 // If dashboard is provided, metrics are sent to that dashboard; otherwise a
 // default name derived from the namespace is used.
 func InitCloudWatch(region, namespace, dashboard string) {
+	log := GetLogger().WithComponent("cloudwatch")
+	if region == "" {
+		region = os.Getenv("AWS_REGION")
+	}
 	ctx := context.Background()
 	opts := []func(*config.LoadOptions) error{}
 	if region != "" {
@@ -24,9 +29,17 @@ func InitCloudWatch(region, namespace, dashboard string) {
 	}
 	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
+		log.WithError(err).Warn("failed to load AWS configuration; CloudWatch metrics disabled")
 		return
 	}
 	cwClient = cloudwatch.NewFromConfig(cfg)
+	if namespace != "" {
+		cwNamespace = namespace
+	}
+	if dashboard != "" {
+		cwDashboard = dashboard
+	}
+	log.WithFields(Fields{"region": region, "namespace": cwNamespace}).Info("initialized CloudWatch client")
 	CreateDefaultDashboard(ctx)
 }
 
@@ -35,10 +48,13 @@ func publishMetrics(ctx context.Context, data []cwtypes.MetricDatum) {
 	if cwClient == nil || len(data) == 0 {
 		return
 	}
-	_, _ = cwClient.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
+	_, err := cwClient.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
 		Namespace:  aws.String(cwNamespace),
 		MetricData: data,
 	})
+	if err != nil {
+		GetLogger().WithComponent("cloudwatch").WithError(err).Warn("failed to publish CloudWatch metrics")
+	}
 }
 
 // CreateDefaultDashboard creates or updates a basic CloudWatch dashboard with
@@ -67,8 +83,11 @@ func CreateDefaultDashboard(ctx context.Context) {
 }]
 }`, cwNamespace)
 
-	_, _ = cwClient.PutDashboard(ctx, &cloudwatch.PutDashboardInput{
+	_, err := cwClient.PutDashboard(ctx, &cloudwatch.PutDashboardInput{
 		DashboardName: aws.String(cwDashboard),
 		DashboardBody: aws.String(body),
 	})
+	if err != nil {
+		GetLogger().WithComponent("cloudwatch").WithError(err).Warn("failed to create CloudWatch dashboard")
+	}
 }
