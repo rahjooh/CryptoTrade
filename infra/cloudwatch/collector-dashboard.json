@@ -8,7 +8,7 @@
       "height": 3,
       "properties": {
         "view": "singleValue",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-IngestRate", { "stat": "Sum" }]
         ],
@@ -24,7 +24,7 @@
       "height": 3,
       "properties": {
         "view": "singleValue",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-ParquetWriteErrors", { "stat": "Sum" }]
         ],
@@ -40,7 +40,7 @@
       "height": 3,
       "properties": {
         "view": "singleValue",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-RetryCount", { "stat": "Sum" }]
         ],
@@ -56,7 +56,7 @@
       "height": 3,
       "properties": {
         "view": "singleValue",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-DroppedMessages", { "stat": "Sum" }]
         ],
@@ -72,7 +72,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-ErrorsSnapshot", { "stat": "Sum" }],
           [".", "Hadi-ErrorsDelta", { "stat": "Sum" }],
@@ -91,7 +91,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-SnapshotReads", { "stat": "Sum" }],
           [".", "Hadi-DeltaReads", { "stat": "Sum" }],
@@ -110,7 +110,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-ChannelMessages", "Channel", "snapshot_rest", { "stat": "Sum" }],
           [".", ".", "Channel", "delta_ws", { "stat": "Sum" }],
@@ -129,7 +129,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-ChannelBytes", "Channel", "snapshot_rest", { "stat": "Sum" }],
           [".", ".", "Channel", "delta_ws", { "stat": "Sum" }],
@@ -149,7 +149,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Average" }],
           [".", "Hadi-MemoryMB", { "stat": "Average" }],
@@ -167,7 +167,7 @@
       "height": 6,
       "properties": {
         "view": "timeSeries",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-NetBytesSent", { "stat": "Sum" }],
           [".", "Hadi-NetBytesRecv", { "stat": "Sum" }]
@@ -185,7 +185,7 @@
       "height": 3,
       "properties": {
         "view": "singleValue",
-        "region": "eu-west-1",
+        "region": "ap-south-1",
         "metrics": [
           ["CryptoFlow", "Hadi-Test", "Project", "CryptoFlow", "Environment", "Dev", { "stat": "Sum" }]
         ],
