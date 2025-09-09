@@ -95,12 +95,12 @@ func main() {
 		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols
 		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols
 
-		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS, shard.BinanceSymbols, shard.IP))
-		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS, shard.KucoinSymbols, shard.IP))
-		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS, shard.OkxSymbols, shard.IP))
-		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD, shard.BinanceSymbols, shard.IP))
-		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
-		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols, shard.IP))
+		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.BinanceSymbols, shard.IP))
+		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.KucoinSymbols, shard.IP))
+		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS.Raw, shard.OkxSymbols, shard.IP))
+		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.BinanceSymbols, shard.IP))
+		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.KucoinSymbols, shard.IP))
+		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD.Raw, shard.OkxSymbols, shard.IP))
 
 		for _, s := range shard.BinanceSymbols {
 			binanceSymbolSet[s] = struct{}{}
@@ -135,8 +135,8 @@ func main() {
 	cfg.Source.Okx.Future.Orderbook.Snapshots.Symbols = okxAll
 	cfg.Source.Okx.Future.Orderbook.Delta.Symbols = okxAll
 
-	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS)
-	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD)
+	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS.Raw, channels.FOBS.Norm)
+	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD.Raw, channels.FOBD.Norm)
 
 	var snapshotWriter *writer.SnapshotWriter
 	var deltaWriter *writer.DeltaWriter
