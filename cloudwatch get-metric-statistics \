@@ -1,0 +1,183 @@
+{
+    "Metrics": [
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-IngestRate",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-MemoryMB",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-NetBytesRecv",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-DeltaReads",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-RetryCount",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-WarnsSnapshot",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ErrorsDelta",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelMessages",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "snapshot_rest"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-NetBytesSent",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-SnapshotReads",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-CPUPercent",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-S3WritesDelta",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelMessages",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "delta_ws"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ErrorsSnapshot",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-WarnsDelta",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-S3WritesSnapshot",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ParquetWriteErrors",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelBytes",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "snapshot_rest"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelBytes",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "delta_ws"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-DroppedMessages",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-DiskMB",
+            "Dimensions": []
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelMessages",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "s3_snapshot_write"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelBytes",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "s3_snapshot_write"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelBytes",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "s3_delta_write"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-ChannelMessages",
+            "Dimensions": [
+                {
+                    "Name": "Channel",
+                    "Value": "s3_delta_write"
+                }
+            ]
+        },
+        {
+            "Namespace": "CryptoFlow",
+            "MetricName": "Hadi-Test",
+            "Dimensions": [
+                {
+                    "Name": "Project",
+                    "Value": "CryptoFlow"
+                },
+                {
+                    "Name": "Environment",
+                    "Value": "Dev"
+                }
+            ]
+        }
+    ]
+}
