@@ -13,10 +13,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.36.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.86.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.3
-	github.com/tfxq/okx-go-sdk v1.0.30-alpha-fix
 	github.com/xitongsys/parquet-go v1.6.2
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -44,7 +44,6 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/klauspost/compress v1.13.1 // indirect

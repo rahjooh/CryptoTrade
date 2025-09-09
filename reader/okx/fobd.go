@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,26 +15,24 @@ import (
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
-	okex "github.com/tfxq/okx-go-sdk"
-	okxapi "github.com/tfxq/okx-go-sdk/api"
-	publicevt "github.com/tfxq/okx-go-sdk/events/public"
-	restpubreq "github.com/tfxq/okx-go-sdk/requests/rest/public"
-	publicreq "github.com/tfxq/okx-go-sdk/requests/ws/public"
+	"github.com/gorilla/websocket"
 )
 
 // Okx_FOBD_Reader subscribes to OKX websocket streams for swap order book
-// deltas and forwards the normalized messages into the raw delta channel.  The
-// reader uses okx-go-sdk which manages serialization and connection details.
+// deltas and forwards the normalized messages into the raw delta channel. The
+// reader connects directly to the official OKX websocket without relying on
+// third-party SDKs.
 type Okx_FOBD_Reader struct {
-	config   *appconfig.Config
-	channels *fobd.Channels
-	ctx      context.Context
-	wg       *sync.WaitGroup
-	mu       sync.RWMutex
-	running  bool
-	log      *logger.Log
-	symbols  []string
-	localIP  string
+	config     *appconfig.Config
+	channels   *fobd.Channels
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Log
+	symbols    []string
+	localIP    string
+	httpClient *http.Client
 }
 
 // Okx_FOBD_NewReader creates a new delta reader.
@@ -75,18 +74,13 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 			transport.DialContext = dialer.DialContext
 		}
 	}
-	http.DefaultClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
+	r.httpClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
 
-	apiClient, err := okxapi.NewClient(ctx, "", "", "", okex.NormalServer)
-	if err != nil {
-		log.WithError(err).Error("failed to create okx rest client")
-		return err
-	}
-	r.symbols = r.validateSymbols(apiClient, r.symbols)
+	r.symbols = r.validateSymbols(r.symbols)
 
 	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
 	r.wg.Add(1)
-	go r.stream(r.symbols)
+	go r.stream(r.symbols, cfg.URL)
 	log.Info("okx swap delta reader started successfully")
 	return nil
 }
@@ -103,7 +97,7 @@ func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 }
 
 // stream handles websocket lifecycle, reconnection and forwarding of events.
-func (r *Okx_FOBD_Reader) stream(symbols []string) {
+func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 	defer r.wg.Done()
 	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbols": symbols, "worker": "delta_stream"})
 
@@ -112,9 +106,16 @@ func (r *Okx_FOBD_Reader) stream(symbols []string) {
 			return
 		}
 
-		client, err := okxapi.NewClient(r.ctx, "", "", "", okex.NormalServer)
+		dialer := websocket.Dialer{}
+		if r.localIP != "" {
+			if ip := net.ParseIP(r.localIP); ip != nil {
+				dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}).DialContext
+			}
+		}
+
+		conn, _, err := dialer.Dial(wsURL, nil)
 		if err != nil {
-			log.WithError(err).Warn("failed to create okx api client, retrying")
+			log.WithError(err).Warn("failed to connect websocket, retrying")
 			logger.IncrementRetryCount()
 			select {
 			case <-time.After(5 * time.Second):
@@ -124,30 +125,42 @@ func (r *Okx_FOBD_Reader) stream(symbols []string) {
 			}
 		}
 
-		ch := make(chan *publicevt.OrderBook)
+		args := make([]map[string]string, 0, len(symbols))
 		for _, sym := range symbols {
-			req := publicreq.OrderBook{InstID: sym, Channel: "books-l2-tbt"}
-			if err := client.Ws.Public.OrderBook(req, ch); err != nil {
-				log.WithError(err).Warn("subscription failed")
-			}
+			args = append(args, map[string]string{"channel": "books-l2-tbt", "instId": sym})
+		}
+		sub := map[string]interface{}{"op": "subscribe", "args": args}
+		if err := conn.WriteJSON(sub); err != nil {
+			log.WithError(err).Warn("failed to subscribe")
+			conn.Close()
+			continue
 		}
 
-		for {
-			select {
-			case <-r.ctx.Done():
-				client.Ws.Cancel()
-				return
-			case <-client.Ws.DoneChan:
-				client.Ws.Cancel()
-				log.Warn("websocket connection closed, reconnecting")
-				goto RECONNECT
-			case evt, ok := <-ch:
-				if !ok {
-					client.Ws.Cancel()
-					log.Warn("orderbook channel closed, reconnecting")
-					goto RECONNECT
+		pingTicker := time.NewTicker(20 * time.Second)
+		done := make(chan struct{})
+		go func() {
+			defer pingTicker.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-pingTicker.C:
+					conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"ping\"}"))
 				}
-				r.handleEvent(evt)
+			}
+		}()
+
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				close(done)
+				conn.Close()
+				log.WithError(err).Warn("websocket read error, reconnecting")
+				goto RECONNECT
+			}
+			if !r.processMessage(conn, msg) {
+				// non-data message processed
+				continue
 			}
 		}
 
@@ -156,15 +169,65 @@ func (r *Okx_FOBD_Reader) stream(symbols []string) {
 	}
 }
 
-func (r *Okx_FOBD_Reader) validateSymbols(api *okxapi.Client, symbols []string) []string {
-	req := restpubreq.GetInstruments{InstType: okex.SwapInstrument}
-	resp, err := api.Rest.PublicData.GetInstruments(req)
+func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
+	// handle ping/pong and subscription events
+	var base map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &base); err != nil {
+		return false
+	}
+	if _, ok := base["event"]; ok {
+		var evt struct {
+			Event string `json:"event"`
+		}
+		json.Unmarshal(msg, &evt)
+		if evt.Event == "ping" {
+			conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"pong\"}"))
+		}
+		return false
+	}
+	if _, ok := base["ping"]; ok {
+		var ping struct {
+			Ping int64 `json:"ping"`
+		}
+		if err := json.Unmarshal(msg, &ping); err == nil {
+			resp, _ := json.Marshal(map[string]int64{"pong": ping.Ping})
+			conn.WriteMessage(websocket.TextMessage, resp)
+		}
+		return false
+	}
+
+	var evt orderBookEvent
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		return false
+	}
+	r.handleEvent(&evt)
+	return true
+}
+
+func (r *Okx_FOBD_Reader) validateSymbols(symbols []string) []string {
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, "https://www.okx.com/api/v5/public/instruments?instType=SWAP", nil)
+	if err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to build instruments request")
+		return symbols
+	}
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to fetch instruments list")
 		return symbols
 	}
-	valid := make(map[string]struct{}, len(resp.Instruments))
-	for _, inst := range resp.Instruments {
+	defer resp.Body.Close()
+	var wrapper struct {
+		Code string `json:"code"`
+		Data []struct {
+			InstID string `json:"instId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to decode instruments list")
+		return symbols
+	}
+	valid := make(map[string]struct{}, len(wrapper.Data))
+	for _, inst := range wrapper.Data {
 		valid[inst.InstID] = struct{}{}
 	}
 	var filtered []string
@@ -178,26 +241,42 @@ func (r *Okx_FOBD_Reader) validateSymbols(api *okxapi.Client, symbols []string) 
 	return filtered
 }
 
+type orderBookEvent struct {
+	Arg struct {
+		Channel string `json:"channel"`
+		InstID  string `json:"instId"`
+	} `json:"arg"`
+	Action string `json:"action"`
+	Data   []struct {
+		Bids [][]string `json:"bids"`
+		Asks [][]string `json:"asks"`
+		Ts   string     `json:"ts"`
+	} `json:"data"`
+}
+
 // handleEvent converts websocket event to raw delta message.
-func (r *Okx_FOBD_Reader) handleEvent(evt *publicevt.OrderBook) {
-	if evt == nil || len(evt.Books) == 0 || evt.Arg == nil {
+func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
+	if evt == nil || len(evt.Data) == 0 {
 		return
 	}
-	book := evt.Books[0]
+	book := evt.Data[0]
 	bids := make([]models.FOBDEntry, len(book.Bids))
 	for i, b := range book.Bids {
-		bids[i] = models.FOBDEntry{Price: fmt.Sprintf("%f", b.DepthPrice), Quantity: fmt.Sprintf("%f", b.Size)}
+		if len(b) >= 2 {
+			bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
+		}
 	}
 	asks := make([]models.FOBDEntry, len(book.Asks))
 	for i, a := range book.Asks {
-		asks[i] = models.FOBDEntry{Price: fmt.Sprintf("%f", a.DepthPrice), Quantity: fmt.Sprintf("%f", a.Size)}
+		if len(a) >= 2 {
+			asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
+		}
 	}
-	inst, _ := evt.Arg.Get("instId")
-	symbol, _ := inst.(string)
+	ts, _ := strconv.ParseInt(book.Ts, 10, 64)
 	resp := models.OkxFOBDResp{
-		Symbol:    symbol,
+		Symbol:    evt.Arg.InstID,
 		Action:    evt.Action,
-		Timestamp: time.Time(book.TS).UnixMilli(),
+		Timestamp: ts,
 		Bids:      bids,
 		Asks:      asks,
 	}
@@ -208,7 +287,7 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *publicevt.OrderBook) {
 	}
 	msg := models.RawFOBDMessage{
 		Exchange:  "okx",
-		Symbol:    symbol,
+		Symbol:    evt.Arg.InstID,
 		Market:    "swap-orderbook-delta",
 		Data:      payload,
 		Timestamp: time.Now(),

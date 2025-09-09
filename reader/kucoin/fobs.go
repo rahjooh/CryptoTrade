@@ -1,300 +1,302 @@
-package kucoin
+package okx
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"net"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
-	"cryptoflow/config"
-	fobs "cryptoflow/internal/channel/fobs"
-	"cryptoflow/internal/symbols"
+	appconfig "cryptoflow/config"
+	fobd "cryptoflow/internal/channel/fobd"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
-	sdkapi "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/api"
-	futuresmarket "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/futures/market"
-	sdktype "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/types"
-	"golang.org/x/time/rate"
+	"github.com/gorilla/websocket"
 )
 
-// Kucoin_FOBS_Reader fetches futures order book snapshots from KuCoin.
-type Kucoin_FOBS_Reader struct {
-	config    *config.Config
-	marketAPI futuresmarket.MarketAPI
-	channels  *fobs.Channels
-	ctx       context.Context
-	wg        *sync.WaitGroup
-	mu        sync.RWMutex
-	running   bool
-	log       *logger.Log
-	symbols   []string
-	limiter   *rate.Limiter
+// Okx_FOBD_Reader subscribes to OKX websocket streams for swap order book
+// deltas and forwards the normalized messages into the raw delta channel. The
+// reader connects directly to the official OKX websocket without relying on
+// third-party SDKs.
+type Okx_FOBD_Reader struct {
+	config     *appconfig.Config
+	channels   *fobd.Channels
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Log
+	symbols    []string
+	localIP    string
+	httpClient *http.Client
 }
 
-// Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin universal SDK.
-// The reader will fetch snapshots only for the supplied symbols. The localIP parameter is kept
-// for compatibility but not used by the underlying SDK.
-func Kucoin_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string, localIP string) *Kucoin_FOBS_Reader {
-	log := logger.GetLogger()
-
-	snapshotCfg := cfg.Source.Kucoin.Future.Orderbook.Snapshots
-
-	baseURL := snapshotCfg.URL
-	if u, err := url.Parse(snapshotCfg.URL); err == nil {
-		baseURL = fmt.Sprintf("https://%s", u.Host)
+// Okx_FOBD_NewReader creates a new delta reader.
+func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Okx_FOBD_Reader {
+	return &Okx_FOBD_Reader{
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
+		localIP:  localIP,
 	}
-
-	transportOpt := sdktype.NewTransportOptionBuilder().
-		SetMaxIdleConns(cfg.Source.Kucoin.ConnectionPool.MaxIdleConns).
-		SetMaxIdleConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxIdleConns).
-		SetMaxConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost).
-		SetIdleConnTimeout(cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout).
-		SetTimeout(cfg.Reader.Timeout).
-		Build()
-
-	option := sdktype.NewClientOptionBuilder().
-		WithFuturesEndpoint(baseURL).
-		WithTransportOption(transportOpt).
-		Build()
-
-	client := sdkapi.NewClient(option)
-	marketAPI := client.RestService().GetFuturesService().GetMarketAPI()
-
-	rl := cfg.Reader.RateLimit
-	rps := rl.RequestsPerSecond
-	if rps <= 0 {
-		rps = 5
-	}
-	burst := rl.BurstSize
-	if burst <= 0 {
-		burst = 1
-	}
-
-	limiter := rate.NewLimiter(rate.Limit(rps), burst)
-
-	reader := &Kucoin_FOBS_Reader{
-		config:    cfg,
-		marketAPI: marketAPI,
-		channels:  ch,
-		wg:        &sync.WaitGroup{},
-		log:       log,
-		symbols:   symbols,
-		limiter:   limiter,
-	}
-
-	log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"base_url":       baseURL,
-		"rate_limit_rps": rps,
-		"burst":          burst,
-	}).Info("kucoin reader initialized")
-
-	return reader
 }
 
-// Kucoin_FOBS_Start begins fetching order book snapshots for configured symbols.
-func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Start(ctx context.Context) error {
+// Okx_FOBD_Start establishes a websocket connection and subscribes to swap
+// order book delta streams for all configured symbols.  If the connection drops
+// it will be re-established automatically until the context is cancelled.
+func (r *Okx_FOBD_Reader) Okx_FOBD_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
-		return fmt.Errorf("reader already running")
+		return fmt.Errorf("Okx_FOBD_Reader already running")
 	}
 	r.running = true
 	r.ctx = ctx
 	r.mu.Unlock()
 
-	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{"operation": "Kucoin_FOBS_Start"})
-
-	snapshotCfg := r.config.Source.Kucoin.Future.Orderbook.Snapshots
-	if !snapshotCfg.Enabled {
-		log.Warn("kucoin futures orderbook snapshots are disabled")
-		return fmt.Errorf("kucoin futures orderbook snapshots are disabled")
+	cfg := r.config.Source.Okx.Future.Orderbook.Delta
+	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"operation": "Okx_FOBD_Start"})
+	if !cfg.Enabled {
+		log.Warn("okx swap orderbook delta is disabled")
+		return fmt.Errorf("okx swap orderbook delta is disabled")
 	}
 
-	log.WithFields(logger.Fields{
-		"symbols":  r.symbols,
-		"interval": snapshotCfg.IntervalMs,
-	}).Info("starting kucoin reader")
-
-	for _, symbol := range r.symbols {
-		r.wg.Add(1)
-		go r.Kucoin_FOBS_FetchWorker(symbol, snapshotCfg)
+	transport := &http.Transport{}
+	if r.localIP != "" {
+		if ip := net.ParseIP(r.localIP); ip != nil {
+			dialer := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+			transport.DialContext = dialer.DialContext
+		}
 	}
+	r.httpClient = &http.Client{Transport: userAgentTransport{agent: "curl/8.5.0", base: transport}, Timeout: r.config.Reader.Timeout}
 
-	log.Info("kucoin reader started successfully")
+	r.symbols = r.validateSymbols(r.symbols)
+
+	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting okx swap delta reader")
+	r.wg.Add(1)
+	go r.stream(r.symbols, cfg.URL)
+	log.Info("okx swap delta reader started successfully")
 	return nil
 }
 
-// Kucoin_FOBS_Stop signals all workers to stop and waits for completion.
-func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Stop() {
+// Okx_FOBD_Stop terminates all websocket subscriptions and waits for goroutines
+// to finish.
+func (r *Okx_FOBD_Reader) Okx_FOBD_Stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()
-
-	r.log.WithComponent("kucoin_reader").Info("stopping kucoin reader")
+	r.log.WithComponent("okx_delta_reader").Info("stopping okx delta reader")
 	r.wg.Wait()
-	r.log.WithComponent("kucoin_reader").Info("kucoin reader stopped")
+	r.log.WithComponent("okx_delta_reader").Info("okx delta reader stopped")
 }
 
-func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_FetchWorker(symbol string, snapshotCfg config.KucoinSnapshotConfig) {
+// stream handles websocket lifecycle, reconnection and forwarding of events.
+func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 	defer r.wg.Done()
-
-	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"symbol": symbol,
-		"worker": "orderbook_fetcher",
-	})
-
-	log.Info("starting orderbook worker")
-
-	interval := time.Duration(snapshotCfg.IntervalMs) * time.Millisecond
-
-	now := time.Now()
-	nextTick := now.Truncate(interval).Add(interval)
-	timer := time.NewTimer(nextTick.Sub(now))
-	defer timer.Stop()
+	log := r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbols": symbols, "worker": "delta_stream"})
 
 	for {
-		select {
-		case <-r.ctx.Done():
-			log.Info("worker stopped due to context cancellation")
+		if r.ctx.Err() != nil {
 			return
-		case <-timer.C:
-			start := time.Now()
-			r.Kucoin_FOBS_Fetcher(symbol)
-			duration := time.Since(start)
-
-			if duration > interval {
-				log.WithFields(logger.Fields{
-					"duration": duration.Milliseconds(),
-					"interval": snapshotCfg.IntervalMs,
-				}).Warn("fetch took longer than interval")
-			}
-
-			nextTick = start.Truncate(interval).Add(interval)
-			timer.Reset(time.Until(nextTick))
 		}
-	}
-}
 
-func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
-	log := r.log.WithComponent("kucoin_reader").WithFields(logger.Fields{
-		"symbol":    symbol,
-		"operation": "fetch_orderbook",
-	})
+		dialer := websocket.Dialer{}
+		if r.localIP != "" {
+			if ip := net.ParseIP(r.localIP); ip != nil {
+				dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}).DialContext
+			}
+		}
 
-	req := futuresmarket.NewGetFullOrderBookReqBuilder().SetSymbol(symbol).Build()
-
-	retryCfg := r.config.Reader.Retry
-	maxAttempts := retryCfg.MaxAttempts
-	if maxAttempts <= 0 {
-		maxAttempts = 1
-	}
-	delay := retryCfg.BaseDelay
-	if delay <= 0 {
-		delay = 500 * time.Millisecond
-	}
-	maxDelay := retryCfg.MaxDelay
-	if maxDelay <= 0 {
-		maxDelay = 5 * time.Second
-	}
-	multiplier := retryCfg.BackoffMultiplier
-	if multiplier <= 0 {
-		multiplier = 2
-	}
-
-	var resp *futuresmarket.GetFullOrderBookResp
-	var err error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if r.limiter != nil {
-			if err = r.limiter.Wait(r.ctx); err != nil {
-				log.WithError(err).Warn("rate limiter wait failed")
+		conn, _, err := dialer.Dial(wsURL, nil)
+		if err != nil {
+			log.WithError(err).Warn("failed to connect websocket, retrying")
+			logger.IncrementRetryCount()
+			select {
+			case <-time.After(5 * time.Second):
+				continue
+			case <-r.ctx.Done():
 				return
 			}
 		}
 
-		resp, err = r.marketAPI.GetFullOrderBook(req, r.ctx)
-		if err == nil {
-			break
+		args := make([]map[string]string, 0, len(symbols))
+		for _, sym := range symbols {
+			args = append(args, map[string]string{"channel": "books-l2-tbt", "instId": sym})
 		}
-
-		if attempt == maxAttempts {
-			log.WithError(err).Warn("failed to fetch orderbook")
-			return
-		}
-
-		log.WithError(err).WithField("attempt", attempt).Warnf("retrying in %v", delay)
-		logger.IncrementRetryCount()
-
-		select {
-		case <-time.After(delay):
-		case <-r.ctx.Done():
-			return
-		}
-
-		delay = delay * time.Duration(multiplier)
-		if delay > maxDelay {
-			delay = maxDelay
-		}
-	}
-
-	if resp == nil {
-		log.Warn("received nil response from kucoin")
-		return
-	}
-
-	bids := make([][]string, len(resp.Bids))
-	for i, b := range resp.Bids {
-		if len(b) < 2 {
+		sub := map[string]interface{}{"op": "subscribe", "args": args}
+		if err := conn.WriteJSON(sub); err != nil {
+			log.WithError(err).Warn("failed to subscribe")
+			conn.Close()
 			continue
 		}
-		bids[i] = []string{
-			strconv.FormatFloat(b[0], 'f', -1, 64),
-			strconv.FormatFloat(b[1], 'f', -1, 64),
+
+		pingTicker := time.NewTicker(20 * time.Second)
+		done := make(chan struct{})
+		go func() {
+			defer pingTicker.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-pingTicker.C:
+					conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"ping\"}"))
+				}
+			}
+		}()
+
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				close(done)
+				conn.Close()
+				log.WithError(err).Warn("websocket read error, reconnecting")
+				goto RECONNECT
+			}
+			if !r.processMessage(conn, msg) {
+				// non-data message processed
+				continue
+			}
 		}
+
+	RECONNECT:
+		time.Sleep(time.Second)
+	}
+}
+
+func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
+	// handle ping/pong and subscription events
+	var base map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &base); err != nil {
+		return false
+	}
+	if _, ok := base["event"]; ok {
+		var evt struct {
+			Event string `json:"event"`
+		}
+		json.Unmarshal(msg, &evt)
+		if evt.Event == "ping" {
+			conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"pong\"}"))
+		}
+		return false
+	}
+	if _, ok := base["ping"]; ok {
+		var ping struct {
+			Ping int64 `json:"ping"`
+		}
+		if err := json.Unmarshal(msg, &ping); err == nil {
+			resp, _ := json.Marshal(map[string]int64{"pong": ping.Ping})
+			conn.WriteMessage(websocket.TextMessage, resp)
+		}
+		return false
 	}
 
-	asks := make([][]string, len(resp.Asks))
-	for i, a := range resp.Asks {
-		if len(a) < 2 {
-			continue
-		}
-		asks[i] = []string{
-			strconv.FormatFloat(a[0], 'f', -1, 64),
-			strconv.FormatFloat(a[1], 'f', -1, 64),
-		}
+	var evt orderBookEvent
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		return false
 	}
+	r.handleEvent(&evt)
+	return true
+}
 
-	kucoinResp := models.BinanceFOBSresp{
-		LastUpdateID: resp.Sequence,
-		Bids:         bids,
-		Asks:         asks,
-	}
-
-	payload, err := json.Marshal(kucoinResp)
+func (r *Okx_FOBD_Reader) validateSymbols(symbols []string) []string {
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, "https://www.okx.com/api/v5/public/instruments?instType=SWAP", nil)
 	if err != nil {
-		log.WithError(err).Warn("failed to marshal orderbook")
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to build instruments request")
+		return symbols
+	}
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to fetch instruments list")
+		return symbols
+	}
+	defer resp.Body.Close()
+	var wrapper struct {
+		Code string `json:"code"`
+		Data []struct {
+			InstID string `json:"instId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to decode instruments list")
+		return symbols
+	}
+	valid := make(map[string]struct{}, len(wrapper.Data))
+	for _, inst := range wrapper.Data {
+		valid[inst.InstID] = struct{}{}
+	}
+	var filtered []string
+	for _, s := range symbols {
+		if _, ok := valid[s]; ok {
+			filtered = append(filtered, s)
+		} else {
+			r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": s}).Warn("invalid instrument, skipping")
+		}
+	}
+	return filtered
+}
+
+type orderBookEvent struct {
+	Arg struct {
+		Channel string `json:"channel"`
+		InstID  string `json:"instId"`
+	} `json:"arg"`
+	Action string `json:"action"`
+	Data   []struct {
+		Bids [][]string `json:"bids"`
+		Asks [][]string `json:"asks"`
+		Ts   string     `json:"ts"`
+	} `json:"data"`
+}
+
+// handleEvent converts websocket event to raw delta message.
+func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
+	if evt == nil || len(evt.Data) == 0 {
 		return
 	}
-
-	rawData := models.RawFOBSMessage{
-		Exchange:    "kucoin",
-		Symbol:      symbols.ToBinance("kucoin", symbol),
-		Market:      "future-orderbook-snapshot",
-		Timestamp:   time.Now().UTC(),
-		Data:        payload,
-		MessageType: "snapshot",
+	book := evt.Data[0]
+	bids := make([]models.FOBDEntry, len(book.Bids))
+	for i, b := range book.Bids {
+		if len(b) >= 2 {
+			bids[i] = models.FOBDEntry{Price: b[0], Quantity: b[1]}
+		}
 	}
-
-	if r.channels.SendRaw(r.ctx, rawData) {
-		log.Info("orderbook data sent to raw channel")
-		logger.LogDataFlowEntry(log, "kucoin_api", "raw_channel", len(asks)+len(bids), "orderbook_entries")
-		logger.IncrementSnapshotRead(len(payload))
+	asks := make([]models.FOBDEntry, len(book.Asks))
+	for i, a := range book.Asks {
+		if len(a) >= 2 {
+			asks[i] = models.FOBDEntry{Price: a[0], Quantity: a[1]}
+		}
+	}
+	ts, _ := strconv.ParseInt(book.Ts, 10, 64)
+	resp := models.OkxFOBDResp{
+		Symbol:    evt.Arg.InstID,
+		Action:    evt.Action,
+		Timestamp: ts,
+		Bids:      bids,
+		Asks:      asks,
+	}
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		r.log.WithComponent("okx_delta_reader").WithError(err).Warn("failed to marshal event")
+		return
+	}
+	msg := models.RawFOBDMessage{
+		Exchange:  "okx",
+		Symbol:    evt.Arg.InstID,
+		Market:    "swap-orderbook-delta",
+		Data:      payload,
+		Timestamp: time.Now(),
+	}
+	if r.channels.SendRaw(r.ctx, msg) {
+		logger.IncrementDeltaRead(len(payload))
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
-		log.Warn("raw channel is full, dropping data")
+		r.log.WithComponent("okx_delta_reader").Warn("raw delta channel full, dropping message")
 	}
 }
