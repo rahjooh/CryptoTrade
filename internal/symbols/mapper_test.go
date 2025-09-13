@@ -9,12 +9,15 @@ func TestToBinance(t *testing.T) {
 		want     string
 	}{
 		{"kucoin", "XBT-USDTM", "BTCUSDT"},
-		{"coinbase", "btc-usd", "BTCUSD"},
-		{"kraken", "xbt/usd", "BTCUSD"},
-		{"binance", "ethusdt", "ETHUSDT"},
-		{"binance", "1000bonkusdt", "BONKUSDT"},
-		{"binance", "1000pepeusdt", "PEPEUSDT"},
-		{"binance", "1000shibusdt", "SHIBUSDT"},
+		{"coinbase", "BTC-USD", "BTCUSD"},
+		{"kraken", "XBT/USD", "BTCUSD"},
+		{"binance", "ETHUSDT", "ETHUSDT"},
+		{"binance", "1000BONKUSDT", "BONKUSDT"},
+		{"binance", "1000PEPEUSDT", "PEPEUSDT"},
+		{"binance", "1000SHIBUSDT", "SHIBUSDT"},
+		{"bybit", "SHIB1000USDT", "SHIBUSDT"},
+		{"bybit", "1000BONKUSDT", "BONKUSDT"},
+		{"bybit", "1000PEPEUSDT", "PEPEUSDT"},
 	}
 	for _, tt := range tests {
 		if got := ToBinance(tt.exchange, tt.in); got != tt.want {
