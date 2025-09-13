@@ -106,7 +106,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			}
 		}
 
-		log.WithField("url", wsURL).Info("connecting to websocket") //debug
+		log.WithField("url", wsURL).Debug("connecting to websocket")
 		conn, _, err := dialer.Dial(wsURL, nil)
 		if err != nil {
 			log.WithError(err).Warn("failed to connect websocket, retrying")
@@ -142,7 +142,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			conn.Close()
 			continue
 		} else {
-			log.WithField("response", string(resp)).Info("subscription response received") //debug
+			log.WithField("response", string(resp)).Debug("subscription response received")
 			r.processMessage(conn, resp)
 		}
 
@@ -168,7 +168,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 				log.WithError(err).Warn("websocket read error, reconnecting")
 				break
 			}
-			log.WithField("raw", string(msg)).Info("received websocket message") //debug
+			log.WithField("raw", string(msg)).Debug("received websocket message")
 			r.processMessage(conn, msg)
 		}
 
@@ -180,7 +180,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool {
 	var base map[string]json.RawMessage
 	if err := json.Unmarshal(msg, &base); err != nil {
-		r.log.WithComponent("okx_delta_reader").WithError(err).Info("failed to decode message") //debug
+		r.log.WithComponent("okx_delta_reader").WithError(err).Debug("failed to decode message")
 		return false
 	}
 	if _, ok := base["event"]; ok {
@@ -188,7 +188,7 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 			Event string `json:"event"`
 		}
 		json.Unmarshal(msg, &evt)
-		r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"event": evt.Event, "raw": string(msg)}).Info("received event message") //debug
+		r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"event": evt.Event, "raw": string(msg)}).Debug("received event message")
 		if evt.Event == "ping" && conn != nil {
 			conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"pong\"}"))
 		}
@@ -199,7 +199,7 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 			Ping int64 `json:"ping"`
 		}
 		if err := json.Unmarshal(msg, &ping); err == nil && conn != nil {
-			r.log.WithComponent("okx_delta_reader").WithField("ping", ping.Ping).Info("received ping frame") //debug
+			r.log.WithComponent("okx_delta_reader").WithField("ping", ping.Ping).Debug("received ping frame")
 			resp, _ := json.Marshal(map[string]int64{"pong": ping.Ping})
 			conn.WriteMessage(websocket.TextMessage, resp)
 		}
@@ -210,7 +210,7 @@ func (r *Okx_FOBD_Reader) processMessage(conn *websocket.Conn, msg []byte) bool 
 	if err := json.Unmarshal(msg, &evt); err != nil {
 		return false
 	}
-	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": evt.Arg.InstID, "action": evt.Action}).Info("processing orderbook event") //debug
+	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": evt.Arg.InstID, "action": evt.Action}).Debug("processing orderbook event")
 	r.handleEvent(&evt)
 	return true
 }
@@ -266,7 +266,7 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
 		Data:      payload,
 		Timestamp: time.Now(),
 	}
-	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": resp.Symbol, "action": resp.Action, "bids": len(resp.Bids), "asks": len(resp.Asks)}).Info("forwarding delta to channel") //debug
+	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": resp.Symbol, "action": resp.Action, "bids": len(resp.Bids), "asks": len(resp.Asks)}).Debug("forwarding delta to channel")
 	if r.channels.SendRaw(r.ctx, msg) {
 		logger.IncrementDeltaRead(len(payload))
 	} else if r.ctx.Err() != nil {
