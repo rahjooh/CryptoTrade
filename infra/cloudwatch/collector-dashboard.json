@@ -234,7 +234,7 @@
         "view": "timeSeries",
         "region": "ap-south-1",
         "metrics": [
-          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0123456789abcdef0"]
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621"]
         ],
         "period": 300,
         "stat": "Average",
@@ -251,7 +251,7 @@
         "view": "timeSeries",
         "region": "ap-south-1",
         "metrics": [
-          ["CWAgent", "mem_used_percent", "InstanceId", "i-0123456789abcdef0"]
+          ["CWAgent", "mem_used_percent", "InstanceId", "i-0b9c363acf72f7621"]
         ],
         "period": 300,
         "stat": "Average",
@@ -268,7 +268,7 @@
         "view": "timeSeries",
         "region": "ap-south-1",
         "metrics": [
-          ["CWAgent", "EBS_UsagePercent", "InstanceId", "i-0123456789abcdef0", "device", "xvda1"]
+          ["CWAgent", "EBS_UsagePercent", "InstanceId", "i-0b9c363acf72f7621", "device", "xvda1"]
         ],
         "period": 300,
         "stat": "Average",
