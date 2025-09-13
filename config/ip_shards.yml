@@ -41,11 +41,11 @@ shards:
       swap_orderbook_snapshot:
         - SEI-USDT-SWAP
         - ETH-USDT-SWAP
-        - 1000SHIB-USDT-SWAP
+        - SHIB-USDT-SWAP
       swap_orderbook_delta:
         - SEI-USDT
         - ETH-USDT
-        - 1000SHIB-USDT
+        - SHIB-USDT
 
   - ip: 172.31.1.88
     binance_symbols:
