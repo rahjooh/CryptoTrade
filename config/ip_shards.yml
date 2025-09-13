@@ -5,7 +5,7 @@ shards:
       - XRPUSDT
       - BNBUSDT
     bybit_symbols:
-      - BTC-PERP
+      - BTCUSDT
       - XRPUSDT
       - BNBUSDT
     kucoin_symbols:
