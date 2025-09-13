@@ -171,6 +171,13 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 		return
 	}
 
+	var book models.BybitFOBSresp
+	if err := json.Unmarshal(payload, &book); err != nil {
+		log.WithError(err).Warn("failed to unmarshal orderbook")
+	} else if len(book.Bids) == 0 && len(book.Asks) == 0 {
+		log.Warn("received empty orderbook from Bybit")
+	}
+
 	raw := models.RawFOBSMessage{
 		Exchange:    "bybit",
 		Symbol:      symbol,
@@ -184,8 +191,8 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 		log.Info("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "bybit_api", "raw_channel", len(payload), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
-	} else if r.ctx.Err() != nil {
-		return
+	} else if err := r.ctx.Err(); err != nil {
+		log.WithError(err).Warn("failed to send orderbook to raw channel")
 	} else {
 		log.Warn("raw channel is full, dropping data")
 	}
