@@ -39,11 +39,9 @@ shards:
       - SHIBUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SEI-USDT-SWAP
         - ETH-USDT-SWAP
         - SHIB-USDT-SWAP
       swap_orderbook_delta:
-        - SEI-USDT
         - ETH-USDT
         - SHIB-USDT
 
@@ -65,7 +63,7 @@ shards:
       - DOGEUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SOL-USDT-SWAP
+        - SOL-USDT
         - DOT-USDT-SWAP
         - PEPE-USDT-SWAP
         - DOGE-USDT-SWAP
