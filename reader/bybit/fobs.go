@@ -162,7 +162,7 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	var err error
 	if strings.Contains(symbol, "-USDC-SWAP") {
 		usdcClient := bybit.NewBybitHttpClient("", "")
-		resp, err = usdcClient.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
+		resp, err = usdcClient.NewBybitV5Market().GetOrderBook(context.Background(), params)
 	} else {
 		resp, err = r.client.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
 	}
