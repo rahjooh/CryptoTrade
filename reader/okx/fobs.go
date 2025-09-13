@@ -203,6 +203,8 @@ type okxOrderBook struct {
 // by calling the OKX REST API directly.
 func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrderBook, error) {
 	url := fmt.Sprintf("https://www.okx.com/api/v5/market/books?instId=%s&sz=%d", symbol, limit)
+	log := r.log.WithComponent("okx_reader").WithFields(logger.Fields{"symbol": symbol, "okx_url : %s", url})
+	log.Info("okx_url : %s", url)
 	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
