@@ -156,14 +156,14 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 		"limit":    snapshotCfg.Limit,
 	}
 
-	start := time.Now()
+	//start := time.Now()
 	resp, err := r.client.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
-	duration := time.Since(start)
-	logger.LogPerformanceEntry(log, "bybit_reader", "api_request", duration, logger.Fields{"symbol": symbol})
+	//duration := time.Since(start)
+	//logger.LogPerformanceEntry(log, "bybit_reader", "api_request", duration, logger.Fields{"symbol": symbol})
 
 	payload, err := json.Marshal(resp.Result)
 	if err != nil {
