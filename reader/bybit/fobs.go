@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -157,7 +158,14 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	}
 
 	start := time.Now()
-	resp, err := r.client.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
+	var resp *bybit.ServerResponse
+	var err error
+	if strings.Contains(symbol, "-USDC-SWAP") {
+		usdcClient := bybit.NewBybitHttpClient("", "")
+		resp, err = usdcClient.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
+	} else {
+		resp, err = r.client.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
+	}
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return

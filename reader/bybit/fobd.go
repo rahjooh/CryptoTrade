@@ -60,8 +60,20 @@ func (r *Bybit_FOBD_Reader) Bybit_FOBD_Start(ctx context.Context) error {
 
 	log.WithFields(logger.Fields{"symbols": r.symbols}).Info("starting bybit delta reader")
 
-	r.wg.Add(1)
-	go r.stream(r.symbols, cfg.URL)
+	var regular []string
+	for _, sym := range r.symbols {
+		if strings.Contains(sym, "-USDC-SWAP") {
+			r.wg.Add(1)
+			go r.streamUSDC(sym, cfg.URL)
+		} else {
+			regular = append(regular, sym)
+		}
+	}
+
+	if len(regular) > 0 {
+		r.wg.Add(1)
+		go r.stream(regular, cfg.URL)
+	}
 
 	log.Info("bybit delta reader started successfully")
 	return nil
@@ -129,6 +141,55 @@ func (r *Bybit_FOBD_Reader) stream(symbols []string, wsURL string) {
 		ws := bybit.NewBybitPublicWebSocket(wsURL, handler)
 		ws.Connect().SendSubscription(args)
 
+		select {
+		case <-r.ctx.Done():
+			ws.Disconnect()
+			return
+		}
+	}
+
+}
+
+func (r *Bybit_FOBD_Reader) streamUSDC(symbol, wsURL string) {
+	defer r.wg.Done()
+
+	log := r.log.WithComponent("bybit_delta_reader").WithFields(logger.Fields{
+		"symbols": symbol,
+		"worker":  "delta_stream_usdc",
+	})
+
+	handler := func(message string) error {
+		var base struct {
+			Topic string `json:"topic"`
+		}
+		if err := json.Unmarshal([]byte(message), &base); err != nil {
+			return nil
+		}
+		if base.Topic == "" || !strings.HasPrefix(base.Topic, "orderbook.") {
+			return nil
+		}
+
+		msg := models.RawFOBDMessage{
+			Exchange:  "bybit",
+			Symbol:    symbol,
+			Market:    "future-orderbook-delta",
+			Data:      []byte(message),
+			Timestamp: time.Now(),
+		}
+
+		if r.channels.SendRaw(r.ctx, msg) {
+			logger.IncrementDeltaRead(len(message))
+		} else if r.ctx.Err() != nil {
+			return r.ctx.Err()
+		} else {
+			log.Warn("raw delta channel full, dropping message")
+		}
+		return nil
+	}
+
+	for {
+		ws := bybit.NewBybitPublicWebSocket(wsURL, handler)
+		ws.Connect().SendSubscription([]string{fmt.Sprintf("orderbook.50.%s", symbol)})
 		select {
 		case <-r.ctx.Done():
 			ws.Disconnect()
