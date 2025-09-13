@@ -199,12 +199,12 @@ shards:
     okx_symbols:
       swap_orderbook_snapshot:
         - AAVE-USDT-SWAP
-        - 1000BONK-USDT-SWAP
+        - BONK-USDT-SWAP
         - OP-USDT-SWAP
         - ARB-USDT-SWAP
       swap_orderbook_delta:
         - AAVE-USDT
-        - 1000BONK-USDT
+        - BONK-USDT
         - OP-USDT
         - ARB-USDT
 
