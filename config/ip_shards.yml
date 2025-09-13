@@ -84,8 +84,8 @@ shards:
     bybit_symbols:
       - WIFUSDT
       - ADAUSDT
-      - BTCUSDC
-      - ETHUSDC
+      - BTC-USDC-SWAP
+      - ETH-USDC-SWAP
     kucoin_symbols:
       - WIFUSDTM
       - ADAUSDTM
@@ -110,10 +110,10 @@ shards:
       - XRPUSDC
       - LTCUSDT
     bybit_symbols:
-      - SOLUSDC
-      - SUIUSDC
-      - XRPUSDC
-      - LTCUSDT
+      - SOL-USDC-SWAP
+      - SUI-USDC-SWAP
+      - XRP-USDC-SWAP
+      - LTC-USDC-SWAP
     kucoin_symbols:
       - SOLUSDCM
       - SUIUSDCM
