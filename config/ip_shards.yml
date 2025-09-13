@@ -121,10 +121,10 @@ shards:
       - LTCUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SOL-USDC-SWAP
-        - SUI-USDC-SWAP
-        - XRP-USDC-SWAP
-        - LTC-USDC-SWAP
+        - SOL-USDC
+        - SUI-USDC
+        - XRP-USDC
+        - LTC-USDC
       swap_orderbook_delta:
         - SOL-USDC
         - SUI-USDC
