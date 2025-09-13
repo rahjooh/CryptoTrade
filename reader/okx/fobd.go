@@ -123,6 +123,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		args := make([]map[string]string, 0, len(symbols))
 		for _, sym := range symbols {
 			args = append(args, map[string]string{
+				"channel":  "books",
 				"instType": "SWAP",
 				"instId":   sym,
 			})
