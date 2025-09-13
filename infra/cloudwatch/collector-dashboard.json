@@ -145,18 +145,65 @@
       "type": "metric",
       "x": 0,
       "y": 15,
-      "width": 12,
+      "width": 6,
       "height": 6,
       "properties": {
         "view": "timeSeries",
         "region": "ap-south-1",
         "metrics": [
-          ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Average" }],
-          [".", "Hadi-MemoryMB", { "stat": "Average" }],
-          [".", "Hadi-DiskMB", { "stat": "Average" }]
+          ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Average" }]
         ],
         "period": 60,
-        "title": "Resource Usage"
+        "title": "CPU Avg"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 15,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "metrics": [
+          ["CryptoFlow", "Hadi-DiskMB", { "stat": "Average" }]
+        ],
+        "period": 60,
+        "title": "EBS Usage"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 21,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "metrics": [
+          ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Maximum" }],
+          [".", "Hadi-CPUPercent", { "stat": "Average" }]
+        ],
+        "period": 60,
+        "title": "CPU"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 21,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "metrics": [
+          ["CryptoFlow", "Hadi-MemoryMB", { "stat": "Average" }]
+        ],
+        "period": 60,
+        "title": "Memory"
       }
     },
     {
