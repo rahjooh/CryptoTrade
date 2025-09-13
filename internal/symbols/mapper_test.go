@@ -10,7 +10,7 @@ func TestToBinance(t *testing.T) {
 	}{
 		{"kucoin", "XBT-USDTM", "BTCUSDT"},
 		{"coinbase", "BTC-USD", "BTCUSD"},
-		{"kraken", "XBT/USD", "BTCUSD"},
+		{"kraken", "BTC/USD", "BTCUSD"},
 		{"binance", "ETHUSDT", "ETHUSDT"},
 		{"binance", "1000BONKUSDT", "BONKUSDT"},
 		{"binance", "1000PEPEUSDT", "PEPEUSDT"},
