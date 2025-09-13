@@ -82,7 +82,7 @@ func TestOkxFOBDProcessMessage(t *testing.T) {
 	ch := fobdchan.NewChannels(1, 1)
 	r := &Okx_FOBD_Reader{channels: ch, ctx: context.Background(), log: logger.GetLogger()}
 
-	raw := []byte(`{"arg":{"channel":"books-l2-tbt","instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
+	raw := []byte(`{"arg":{"instId":"BTC-USDT-SWAP"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
 	if !r.processMessage(nil, raw) {
 		t.Fatal("processMessage returned false")
 	}
