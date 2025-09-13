@@ -31,7 +31,7 @@ shards:
     bybit_symbols:
       - SEIUSDT
       - ETHUSDT
-      - SHIBUSDT
+      - SHIB1000USDT
     kucoin_symbols:
       - SEIUSDTM
       - ETHUSDTM
@@ -56,7 +56,7 @@ shards:
     bybit_symbols:
       - SOLUSDT
       - DOTUSDT
-      - PEPEUSDT
+      - 1000PEPEUSDT
       - DOGEUSDT
     kucoin_symbols:
       - SOLUSDTM
