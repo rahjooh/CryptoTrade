@@ -31,7 +31,7 @@ func minimalConfig() *appconfig.Config {
 	}
 }
 
-func TestNewReaders(t *testing.T) {
+func TestOkxFOBS(t *testing.T) {
 	cfg := minimalConfig()
 	fobsCh := fobschan.NewChannels(1, 1)
 	if r := Okx_FOBS_NewReader(cfg, fobsCh, []string{"BTC-USDT-SWAP"}, ""); r == nil {
@@ -43,24 +43,14 @@ func TestNewReaders(t *testing.T) {
 	}
 }
 
-func TestOkxFOBDHandleEvent(t *testing.T) {
+func TestOkxFOBD(t *testing.T) {
 	ch := fobdchan.NewChannels(1, 1)
 	r := &Okx_FOBD_Reader{channels: ch, ctx: context.Background(), log: logger.GetLogger()}
 
-	evt := orderBookEvent{}
-	evt.Arg.InstID = "BTC-USDT-SWAP"
-	evt.Action = "snapshot"
-	evt.Data = []struct {
-		Bids [][]string `json:"bids"`
-		Asks [][]string `json:"asks"`
-		Ts   string     `json:"ts"`
-	}{{
-		Bids: [][]string{{"1", "2"}},
-		Asks: [][]string{{"3", "4"}},
-		Ts:   "1700000000000",
-	}}
-	r.handleEvent(&evt)
-
+	raw := []byte(`{"arg":{"channel":"books","instType":"SWAP","instId":"BTC-USDT"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
+	if !r.processMessage(nil, raw) {
+		t.Fatal("processMessage returned false")
+	}
 	select {
 	case msg := <-ch.Raw:
 		var resp models.OkxFOBDResp
@@ -73,22 +63,6 @@ func TestOkxFOBDHandleEvent(t *testing.T) {
 		if len(resp.Bids) != 1 || resp.Bids[0].Price != "1" || resp.Bids[0].Quantity != "2" {
 			t.Fatalf("unexpected bids: %+v", resp.Bids)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("no message received")
-	}
-}
-
-func TestOkxFOBDProcessMessage(t *testing.T) {
-	ch := fobdchan.NewChannels(1, 1)
-	r := &Okx_FOBD_Reader{channels: ch, ctx: context.Background(), log: logger.GetLogger()}
-
-	raw := []byte(`{"arg":{"channel":"books","instType": "SWAP","instId":"BTC-USDT"},"action":"snapshot","data":[{"bids":[["1","2"]],"asks":[["3","4"]],"ts":"1700000000000"}]}`)
-	if !r.processMessage(nil, raw) {
-		t.Fatal("processMessage returned false")
-	}
-
-	select {
-	case <-ch.Raw:
 	case <-time.After(time.Second):
 		t.Fatal("no message received")
 	}
