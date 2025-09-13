@@ -155,7 +155,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 				case <-done:
 					return
 				case <-pingTicker.C:
-					conn.WriteMessage(websocket.TextMessage, []byte("{\"op\":\"ping\"}"))
+					conn.WriteMessage(websocket.PingMessage, nil)
 				}
 			}
 		}()
