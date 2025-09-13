@@ -110,6 +110,7 @@ shards:
     bybit_symbols:
       - AVAXUSDT
       - LINKUSDT
+      - LTCUSDT
     kucoin_symbols:
       - SOLUSDCM
       - SUIUSDCM
