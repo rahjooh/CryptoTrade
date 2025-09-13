@@ -121,12 +121,12 @@ shards:
         - SOL-USDC
         - SUI-USDC
         - XRP-USDC
-        - LTC-USDC
+        - LTC-USDT
       swap_orderbook_delta:
         - SOL-USDC
         - SUI-USDC
         - XRP-USDC
-        - LTC-USDC
+        - LTC-USDT
 
   - ip: 172.31.4.116
     binance_symbols:
