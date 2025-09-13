@@ -24,6 +24,9 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: Clean Go module cache
+        run: rm -rf ~/go/pkg/mod || true
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -119,7 +122,9 @@ jobs:
             cd "$APP_DIR"
             
             # Stop the running container(s)
-            docker compose down || true
+            docker compose down --rmi all --volumes || true
+            docker system prune -af --volumes || true
+            
             
             # Start the container(s) with the newly transferred files
             docker compose up -d --build
