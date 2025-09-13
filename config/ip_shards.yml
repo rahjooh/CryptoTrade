@@ -176,7 +176,7 @@ shards:
         - TRX-USDT-SWAP
       swap_orderbook_delta:
         - NEAR-USDT
-        - HYPE-USDT
+        - HYPE-USDT-SWAP
         - BCH-USDT
         - TRX-USDT
 
@@ -204,7 +204,7 @@ shards:
         - ARB-USDT-SWAP
       swap_orderbook_delta:
         - AAVE-USDT
-        - BONK-USDT
+        - BONK-USDT-SWAP
         - OP-USDT
         - ARB-USDT
 

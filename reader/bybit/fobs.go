@@ -188,7 +188,7 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	}
 
 	if r.channels.SendRaw(r.ctx, raw) {
-		log.Info("orderbook data sent to raw channel")
+		log.Debug("orderbook data sent to raw channel")
 		logger.LogDataFlowEntry(log, "bybit_api", "raw_channel", len(payload), "orderbook_entries")
 		logger.IncrementSnapshotRead(len(payload))
 	} else if err := r.ctx.Err(); err != nil {
