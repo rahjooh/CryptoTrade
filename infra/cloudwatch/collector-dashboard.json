@@ -160,6 +160,29 @@
 
         ]
       }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 21,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "view": "gauge",
+        "region": "ap-south-1",
+        "title": "Exchange Rate Limit Status",
+        "metrics": [
+          ["CryptoFlow", "near_limit", "component", "binance_reader", "ip", "*", { "label": "Binance Near Limit", "stat": "Maximum" }],
+          ["CryptoFlow", "banned", "component", "binance_reader", "ip", "*", { "label": "Binance Banned", "stat": "Maximum" }],
+          ["CryptoFlow", "near_limit", "component", "bybit_reader", "ip", "*", { "label": "Bybit Near Limit", "stat": "Maximum" }],
+          ["CryptoFlow", "banned", "component", "bybit_reader", "ip", "*", { "label": "Bybit Banned", "stat": "Maximum" }],
+          ["CryptoFlow", "near_limit", "component", "kucoin_reader", "ip", "*", { "label": "Kucoin Near Limit", "stat": "Maximum" }],
+          ["CryptoFlow", "banned", "component", "kucoin_reader", "ip", "*", { "label": "Kucoin Banned", "stat": "Maximum" }],
+          ["CryptoFlow", "near_limit", "component", "okx_reader", "ip", "*", { "label": "OKX Near Limit", "stat": "Maximum" }],
+          ["CryptoFlow", "banned", "component", "okx_reader", "ip", "*", { "label": "OKX Banned", "stat": "Maximum" }]
+        ],
+        "period": 60
+      }
     }
   ]
 }
