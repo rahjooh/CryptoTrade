@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 	"golang.org/x/time/rate"
@@ -21,17 +22,18 @@ import (
 // snapshots and forwards the data into the raw snapshot channel. The reader
 // issues HTTP requests directly without relying on any third-party SDK.
 type Okx_FOBS_Reader struct {
-	config     *config.Config
-	channels   *fobs.Channels
-	ctx        context.Context
-	wg         *sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
-	log        *logger.Log
-	symbols    []string
-	limiter    *rate.Limiter
-	httpClient *http.Client
-	localIP    string
+	config        *config.Config
+	channels      *fobs.Channels
+	ctx           context.Context
+	wg            *sync.WaitGroup
+	mu            sync.RWMutex
+	running       bool
+	log           *logger.Log
+	symbols       []string
+	limiter       *rate.Limiter
+	httpClient    *http.Client
+	localIP       string
+	weightTracker *ratemetrics.OkxRESTWeightTracker
 }
 
 // Okx_FOBS_NewReader constructs a new snapshot reader instance.  Network
@@ -47,13 +49,14 @@ func Okx_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string,
 		burst = 1
 	}
 	return &Okx_FOBS_Reader{
-		config:   cfg,
-		channels: ch,
-		wg:       &sync.WaitGroup{},
-		log:      logger.GetLogger(),
-		symbols:  symbols,
-		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
-		localIP:  localIP,
+		config:        cfg,
+		channels:      ch,
+		wg:            &sync.WaitGroup{},
+		log:           logger.GetLogger(),
+		symbols:       symbols,
+		limiter:       rate.NewLimiter(rate.Limit(rps), burst),
+		localIP:       localIP,
+		weightTracker: ratemetrics.NewOkxRESTWeightTracker(40),
 	}
 }
 
@@ -146,6 +149,9 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		log.WithError(err).Warn("rate limiter wait failed")
 		return
 	}
+
+	r.weightTracker.RegisterRequest()
+	ratemetrics.ReportOkxSnapshotWeight(r.log, r.weightTracker)
 
 	book, err := r.getMarketBooksFull(symbol, snapshotCfg.Limit)
 	if err != nil {
