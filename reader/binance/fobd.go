@@ -31,6 +31,7 @@ type Binance_FOBD_Reader struct {
 	log      *logger.Log
 	symbols  []string
 	wsWeight *ratemetrics.WSWeightTracker
+	ip       string
 }
 
 // Binance_FOBD_NewReader creates a new delta reader using binance-go client.
@@ -45,6 +46,7 @@ func Binance_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []
 		log:      logger.GetLogger(),
 		symbols:  symbols,
 		wsWeight: ratemetrics.NewWSWeightTracker(),
+		ip:       localIP,
 	}
 }
 
