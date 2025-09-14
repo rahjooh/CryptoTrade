@@ -12,6 +12,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/metrics"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -407,12 +408,13 @@ func (p *DeltaProcessor) metricsReporter(ctx context.Context) {
 			if !running {
 				return
 			}
-			p.log.WithComponent("delta_processor").WithFields(logger.Fields{
-				"raw_channel_len":  len(p.channels.Raw),
-				"raw_channel_cap":  cap(p.channels.Raw),
-				"norm_channel_len": len(p.channels.Norm),
-				"norm_channel_cap": cap(p.channels.Norm),
-			}).Info("delta processor channel sizes")
+			sizes := metrics.fobd_proccesor_metrics{
+				RawLen:  len(p.channels.Raw),
+				RawCap:  cap(p.channels.Raw),
+				NormLen: len(p.channels.Norm),
+				NormCap: cap(p.channels.Norm),
+			}
+			metrics.report_fobd_proccesor_metrics(p.log, sizes)
 		}
 	}
 }

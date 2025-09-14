@@ -12,6 +12,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	"cryptoflow/internal/metrics"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -418,47 +419,17 @@ func (f *Flattener) metricsReporter(ctx context.Context) {
 
 func (f *Flattener) reportMetrics() {
 	f.mu.RLock()
-	messagesProcessed := f.messagesProcessed
-	batchesProcessed := f.batchesProcessed
-	errorsCount := f.errorsCount
-	entriesProcessed := f.entriesProcessed
-	activeBatches := len(f.batches)
+	stats := metrics.fobs_proccesor_metrics{
+		MessagesProcessed: f.messagesProcessed,
+		BatchesProcessed:  f.batchesProcessed,
+		ErrorsCount:       f.errorsCount,
+		EntriesProcessed:  f.entriesProcessed,
+		ActiveBatches:     len(f.batches),
+		RawChannelLen:     len(f.channels.Raw),
+		RawChannelCap:     cap(f.channels.Raw),
+		NormChannelLen:    len(f.channels.Norm),
+		NormChannelCap:    cap(f.channels.Norm),
+	}
 	f.mu.RUnlock()
-
-	errorRate := float64(0)
-	if messagesProcessed+errorsCount > 0 {
-		errorRate = float64(errorsCount) / float64(messagesProcessed+errorsCount)
-	}
-
-	avgEntriesPerMessage := float64(0)
-	if messagesProcessed > 0 {
-		avgEntriesPerMessage = float64(entriesProcessed) / float64(messagesProcessed)
-	}
-	rawLen := len(f.channels.Raw)
-	rawCap := cap(f.channels.Raw)
-	normLen := len(f.channels.Norm)
-	normCap := cap(f.channels.Norm)
-
-	log := f.log.WithComponent("flattener")
-	f.log.LogMetric("flattener", "messages_processed", messagesProcessed, "counter", logger.Fields{})
-	f.log.LogMetric("flattener", "batches_processed", batchesProcessed, "counter", logger.Fields{})
-	f.log.LogMetric("flattener", "entries_processed", entriesProcessed, "counter", logger.Fields{})
-	f.log.LogMetric("flattener", "errors_count", errorsCount, "counter", logger.Fields{})
-	f.log.LogMetric("flattener", "error_rate", errorRate, "gauge", logger.Fields{})
-	f.log.LogMetric("flattener", "active_batches", activeBatches, "gauge", logger.Fields{})
-	f.log.LogMetric("flattener", "avg_entries_per_message", avgEntriesPerMessage, "gauge", logger.Fields{})
-
-	log.WithFields(logger.Fields{
-		"messages_processed":      messagesProcessed,
-		"batches_processed":       batchesProcessed,
-		"entries_processed":       entriesProcessed,
-		"errors_count":            errorsCount,
-		"error_rate":              errorRate,
-		"active_batches":          activeBatches,
-		"avg_entries_per_message": avgEntriesPerMessage,
-		"raw_channel_len":         rawLen,
-		"raw_channel_cap":         rawCap,
-		"norm_channel_len":        normLen,
-		"norm_channel_cap":        normCap,
-	}).Info("flattener metrics")
+	metrics.report_fobs_proccesor_metrics(f.log, stats)
 }
