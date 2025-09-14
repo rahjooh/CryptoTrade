@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -238,6 +240,14 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		if delay > maxDelay {
 			delay = maxDelay
 		}
+	}
+
+	if resp != nil && resp.CommonResponse != nil && resp.CommonResponse.RateLimit != nil {
+		header := http.Header{}
+		rl := resp.CommonResponse.RateLimit
+		header.Set("gw-ratelimit-remaining", strconv.FormatInt(rl.Remaining, 10))
+		header.Set("gw-ratelimit-reset", strconv.FormatInt(rl.Reset, 10))
+		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, 0)
 	}
 
 	if resp == nil {

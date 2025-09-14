@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -22,27 +23,29 @@ import (
 
 // Kucoin_FOBD_Reader streams futures order book deltas from KuCoin.
 type Kucoin_FOBD_Reader struct {
-	config   *appconfig.Config
-	channels *fobd.Channels
-	ctx      context.Context
-	wg       *sync.WaitGroup
-	mu       sync.RWMutex
-	running  bool
-	log      *logger.Log
-	symbols  []string
-	localIP  string
+	config    *appconfig.Config
+	channels  *fobd.Channels
+	ctx       context.Context
+	wg        *sync.WaitGroup
+	mu        sync.RWMutex
+	running   bool
+	log       *logger.Log
+	symbols   []string
+	localIP   string
+	wsTracker *ratemetrics.KucoinWSWeightTracker
 }
 
 // Kucoin_FOBD_NewReader creates a new delta reader.
 // Symbols defines the markets this reader will subscribe to.
 func Kucoin_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []string, localIP string) *Kucoin_FOBD_Reader {
 	return &Kucoin_FOBD_Reader{
-		config:   cfg,
-		channels: ch,
-		wg:       &sync.WaitGroup{},
-		log:      logger.GetLogger(),
-		symbols:  symbols,
-		localIP:  localIP,
+		config:    cfg,
+		channels:  ch,
+		wg:        &sync.WaitGroup{},
+		log:       logger.GetLogger(),
+		symbols:   symbols,
+		localIP:   localIP,
+		wsTracker: ratemetrics.NewKucoinWSWeightTracker(),
 	}
 }
 
@@ -136,6 +139,9 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		"worker": "delta_stream",
 	})
 
+	r.wsTracker.RegisterConnectionAttempt()
+	ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker)
+
 	if err := ws.Start(); err != nil {
 		log.WithError(err).Warn("failed to start websocket")
 		return
@@ -143,9 +149,10 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 	defer ws.Stop()
 
 	for _, symbol := range symbolList {
+		r.wsTracker.RegisterOutgoing(1)
+		ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker)
 		_, err := ws.OrderbookIncrement(symbol, func(topic, subject string, data *futurespublic.OrderbookIncrementEvent) error {
 			symbol := strings.TrimPrefix(topic, "/contractMarket/level2:")
-
 			evt := models.KucoinFOBDResp{
 				Symbol:    symbol,
 				Sequence:  data.Sequence,
