@@ -45,11 +45,16 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, 
 	fieldsWithLevel := logger.Fields{"level": level, "ip": ip}
 	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLevel)
 
-	alert := int64(0)
+	near := int64(0)
 	if kucoinPublicPoolLimit > 0 && remaining < kucoinPublicPoolLimit/5 {
-		alert = 1
+		near = 1
 	}
-	l.LogMetric("kucoin_reader", "low_remaining", alert, "gauge", fields)
+	l.LogMetric("kucoin_reader", "near_limit", near, "gauge", fields)
+	banned := int64(0)
+	if remaining <= 0 {
+		banned = 1
+	}
+	l.LogMetric("kucoin_reader", "banned", banned, "gauge", fields)
 }
 
 // KucoinWSWeightTracker tracks outgoing websocket messages and connection

@@ -29,6 +29,16 @@ func ReportBybitSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 		pct := float64(remaining) / float64(limit)
 		l.LogMetric("bybit_reader", "remaining_ratio", pct, "gauge", fields)
 	}
+	near := int64(0)
+	if limit > 0 && remaining*5 <= limit {
+		near = 1
+	}
+	l.LogMetric("bybit_reader", "near_limit", near, "gauge", fields)
+	banned := int64(0)
+	if remaining <= 0 {
+		banned = 1
+	}
+	l.LogMetric("bybit_reader", "banned", banned, "gauge", fields)
 }
 
 // BybitWSWeightTracker tracks outgoing websocket messages and connection
