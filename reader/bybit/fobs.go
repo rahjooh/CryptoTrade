@@ -29,6 +29,7 @@ type Bybit_FOBS_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	ip       string
 }
 
 // Bybit_FOBS_NewReader creates a new snapshot reader for Bybit futures.
@@ -67,6 +68,7 @@ func Bybit_FOBS_NewReader(cfg *appconfig.Config, ch *fobs.Channels, symbols []st
 		wg:       &sync.WaitGroup{},
 		log:      log,
 		symbols:  symbols,
+		ip:       localIP,
 	}
 
 	log.WithComponent("bybit_reader").WithFields(logger.Fields{
