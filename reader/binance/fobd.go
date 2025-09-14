@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metricsreader "cryptoflow/internal/metrics/reader"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -29,6 +30,7 @@ type Binance_FOBD_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	wsWeight *metricsreader.WSWeightTracker
 }
 
 // Binance_FOBD_NewReader creates a new delta reader using binance-go client.
@@ -42,6 +44,7 @@ func Binance_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
+		wsWeight: metricsreader.NewWSWeightTracker(),
 	}
 }
 
@@ -126,6 +129,9 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 	}
 
 	for {
+		r.wsWeight.RegisterConnectionAttempt()
+		r.wsWeight.RegisterOutgoing(len(symbols))
+		metricsreader.ReportWSWeight(r.log, r.wsWeight)
 		doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
 		if err != nil {
 			log.WithError(err).Error("failed to subscribe to combined diff depth stream")
