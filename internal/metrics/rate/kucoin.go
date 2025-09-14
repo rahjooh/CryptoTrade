@@ -1,0 +1,109 @@
+package rate
+
+import (
+	"net/http"
+	"strconv"
+	"sync"
+	"time"
+
+	"cryptoflow/logger"
+)
+
+// kucoinPublicPoolLimit is the default public pool quota per 30s window for VIP0 accounts.
+const kucoinPublicPoolLimit int64 = 2000
+
+// kucoinSnapshotWeight returns the request weight for KuCoin snapshot endpoints.
+// level 0 denotes a full L2 snapshot, while 20 and 100 correspond to partial
+// depth20 and depth100 snapshots respectively.
+func kucoinSnapshotWeight(level int) int64 {
+	switch level {
+	case 0:
+		return 3
+	case 20:
+		return 5
+	case 100:
+		return 10
+	default:
+		return 0
+	}
+}
+
+// ReportKucoinSnapshotWeight parses rate limit headers from KuCoin REST
+// responses and emits metrics about weight usage and remaining quota.
+func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int) {
+	remainingStr := header.Get("gw-ratelimit-remaining")
+	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+	resetStr := header.Get("gw-ratelimit-reset")
+	reset, _ := strconv.ParseInt(resetStr, 10, 64)
+
+	endpointWeight := kucoinSnapshotWeight(level)
+
+	l := log.WithComponent("kucoin_reader")
+	l.LogMetric("kucoin_reader", "remaining_weight", remaining, "gauge", logger.Fields{})
+	l.LogMetric("kucoin_reader", "reset_ms", reset, "gauge", logger.Fields{})
+	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", logger.Fields{"level": level})
+
+	alert := int64(0)
+	if kucoinPublicPoolLimit > 0 && remaining < kucoinPublicPoolLimit/5 {
+		alert = 1
+	}
+	l.LogMetric("kucoin_reader", "low_remaining", alert, "gauge", logger.Fields{})
+}
+
+// KucoinWSWeightTracker tracks outgoing websocket messages and connection
+// attempts for KuCoin futures depth streams.
+type KucoinWSWeightTracker struct {
+	mu            sync.Mutex
+	msgWindow     time.Time
+	msgs          int
+	attemptWindow time.Time
+	attempts      int
+}
+
+// NewKucoinWSWeightTracker creates a new tracker instance.
+func NewKucoinWSWeightTracker() *KucoinWSWeightTracker {
+	now := time.Now()
+	return &KucoinWSWeightTracker{msgWindow: now, attemptWindow: now}
+}
+
+// RegisterOutgoing records n outgoing client messages such as subscriptions or pings.
+func (t *KucoinWSWeightTracker) RegisterOutgoing(n int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	if now.Sub(t.msgWindow) >= 10*time.Second {
+		t.msgs = 0
+		t.msgWindow = now
+	}
+	t.msgs += n
+}
+
+// RegisterConnectionAttempt records a websocket connection attempt.
+func (t *KucoinWSWeightTracker) RegisterConnectionAttempt() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	if now.Sub(t.attemptWindow) >= time.Minute {
+		t.attempts = 0
+		t.attemptWindow = now
+	}
+	t.attempts++
+}
+
+// Stats returns the number of messages sent in the current 10-second window and
+// the number of connection attempts in the current minute.
+func (t *KucoinWSWeightTracker) Stats() (msgs int, attempts int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	msgs = t.msgs
+	attempts = t.attempts
+	return
+}
+
+// ReportKucoinWSWeight emits websocket-related weight metrics.
+func ReportKucoinWSWeight(log *logger.Log, t *KucoinWSWeightTracker) {
+	msgs, attempts := t.Stats()
+	l := log.WithComponent("kucoin_delta_reader")
+	l.LogMetric("kucoin_delta_reader", "outgoing_messages_10s", int64(msgs), "gauge", logger.Fields{})
+	l.LogMetric("kucoin_delta_reader", "connection_attempts_min", int64(attempts), "gauge", logger.Fields{})
+}

@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -30,6 +31,7 @@ type Okx_FOBD_Reader struct {
 	log      *logger.Log
 	symbols  []string
 	localIP  string
+	wsWeight *ratemetrics.OkxWSWeightTracker
 }
 
 // Okx_FOBD_NewReader creates a new delta reader. The localIP parameter is kept
@@ -42,6 +44,7 @@ func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []stri
 		log:      logger.GetLogger(),
 		symbols:  symbols,
 		localIP:  localIP,
+		wsWeight: ratemetrics.NewOkxWSWeightTracker(),
 	}
 }
 
@@ -98,6 +101,8 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		if r.ctx.Err() != nil {
 			return
 		}
+		r.wsWeight.RegisterConnectionAttempt()
+		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight)
 
 		dialer := websocket.Dialer{}
 		if r.localIP != "" {
@@ -135,6 +140,8 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			conn.Close()
 			continue
 		}
+		r.wsWeight.RegisterOp(1)
+		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight)
 
 		// Read subscription acknowledgement
 		if _, resp, err := conn.ReadMessage(); err != nil {

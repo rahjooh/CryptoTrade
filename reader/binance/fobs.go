@@ -12,7 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	metricsreader "cryptoflow/internal/metrics/reader"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -105,7 +105,7 @@ func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 		return fmt.Errorf("binance futures orderbook snapshots are disabled")
 	}
 
-	if limit, err := metricsreader.FetchRequestWeightLimit(ctx, br.client); err == nil {
+	if limit, err := ratemetrics.FetchRequestWeightLimit(ctx, br.client); err == nil {
 		br.weightLimit = limit
 	} else {
 		log.WithError(err).Warn("failed to fetch request weight limit")
@@ -204,7 +204,7 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 		"symbol": symbol,
 	})
 
-	metricsreader.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit)
+	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit)
 
 	var binanceResp models.BinanceFOBSresp
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
