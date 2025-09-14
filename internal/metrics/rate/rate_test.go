@@ -12,7 +12,7 @@ func TestReportKucoinSnapshotWeight(t *testing.T) {
 	header := http.Header{}
 	header.Set("gw-ratelimit-remaining", "1990")
 	header.Set("gw-ratelimit-reset", "1000")
-	ReportKucoinSnapshotWeight(log, header, 0)
+	ReportKucoinSnapshotWeight(log, header, 0, "")
 }
 
 func TestReportKucoinWSWeight(t *testing.T) {
@@ -20,5 +20,5 @@ func TestReportKucoinWSWeight(t *testing.T) {
 	tracker := NewKucoinWSWeightTracker()
 	tracker.RegisterOutgoing(50)
 	tracker.RegisterConnectionAttempt()
-	ReportKucoinWSWeight(log, tracker)
+	ReportKucoinWSWeight(log, tracker, "")
 }

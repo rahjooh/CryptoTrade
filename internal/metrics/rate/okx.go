@@ -55,12 +55,13 @@ func (t *OkxRESTWeightTracker) Stats() (used, remaining int64) {
 }
 
 // ReportOkxSnapshotWeight emits metrics for REST snapshot weight usage.
-func ReportOkxSnapshotWeight(log *logger.Log, t *OkxRESTWeightTracker) {
+func ReportOkxSnapshotWeight(log *logger.Log, t *OkxRESTWeightTracker, ip string) {
 	used, remaining := t.Stats()
 	l := log.WithComponent("okx_reader")
-	l.LogMetric("okx_reader", "used_weight", used, "gauge", logger.Fields{})
-	l.LogMetric("okx_reader", "remaining_weight", remaining, "gauge", logger.Fields{})
-	l.LogMetric("okx_reader", "endpoint_weight", 1, "gauge", logger.Fields{})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("okx_reader", "used_weight", used, "gauge", fields)
+	l.LogMetric("okx_reader", "remaining_weight", remaining, "gauge", fields)
+	l.LogMetric("okx_reader", "endpoint_weight", 1, "gauge", fields)
 }
 
 // OkxWSWeightTracker tracks websocket connection attempts and operations.
@@ -127,7 +128,7 @@ func (t *OkxWSWeightTracker) Stats() (connSec int, totalAttempts int, opsHour in
 }
 
 // ReportOkxWSWeight emits websocket related weight metrics.
-func ReportOkxWSWeight(log *logger.Log, t *OkxWSWeightTracker) {
+func ReportOkxWSWeight(log *logger.Log, t *OkxWSWeightTracker, ip string) {
 	connSec, totalAttempts, opsHour := t.Stats()
 	l := log.WithComponent("okx_delta_reader")
 	remainingConn := 3 - connSec
@@ -138,9 +139,10 @@ func ReportOkxWSWeight(log *logger.Log, t *OkxWSWeightTracker) {
 	if remainingOps < 0 {
 		remainingOps = 0
 	}
-	l.LogMetric("okx_delta_reader", "connection_attempts_current_sec", int64(connSec), "gauge", logger.Fields{})
-	l.LogMetric("okx_delta_reader", "remaining_connections_current_sec", int64(remainingConn), "gauge", logger.Fields{})
-	l.LogMetric("okx_delta_reader", "connection_attempts_total", int64(totalAttempts), "counter", logger.Fields{})
-	l.LogMetric("okx_delta_reader", "ops_last_hour", int64(opsHour), "gauge", logger.Fields{})
-	l.LogMetric("okx_delta_reader", "remaining_ops_last_hour", int64(remainingOps), "gauge", logger.Fields{})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("okx_delta_reader", "connection_attempts_current_sec", int64(connSec), "gauge", fields)
+	l.LogMetric("okx_delta_reader", "remaining_connections_current_sec", int64(remainingConn), "gauge", fields)
+	l.LogMetric("okx_delta_reader", "connection_attempts_total", int64(totalAttempts), "counter", fields)
+	l.LogMetric("okx_delta_reader", "ops_last_hour", int64(opsHour), "gauge", fields)
+	l.LogMetric("okx_delta_reader", "remaining_ops_last_hour", int64(remainingOps), "gauge", fields)
 }

@@ -35,6 +35,7 @@ type Kucoin_FOBS_Reader struct {
 	log       *logger.Log
 	symbols   []string
 	limiter   *rate.Limiter
+	ip        string
 }
 
 // Kucoin_FOBS_NewReader creates a new Kucoin_FOBS_Reader using the KuCoin universal SDK.
@@ -86,6 +87,7 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []stri
 		log:       log,
 		symbols:   symbols,
 		limiter:   limiter,
+		ip:        localIP,
 	}
 
 	log.WithComponent("kucoin_reader").WithFields(logger.Fields{

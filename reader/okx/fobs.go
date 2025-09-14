@@ -151,7 +151,7 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 	}
 
 	r.weightTracker.RegisterRequest()
-	ratemetrics.ReportOkxSnapshotWeight(r.log, r.weightTracker)
+	ratemetrics.ReportOkxSnapshotWeight(r.log, r.weightTracker, r.localIP)
 
 	book, err := r.getMarketBooksFull(symbol, snapshotCfg.Limit)
 	if err != nil {
