@@ -17,7 +17,7 @@ func ToBinance(exchange, sym string) string {
 			sym = "SHIBUSDT"
 		}
 	case "bybit":
-		sym = strings.ReplaceAll(sym, "PREP", "USDC")
+		sym = strings.ReplaceAll(sym, "PERP", "USDC")
 		switch sym {
 		case "1000BONKUSDT":
 			sym = "BONKUSDT"

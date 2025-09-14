@@ -176,6 +176,9 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, me
 
 	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(component)}}
 	for k, v := range fields {
+		if k == "metric" || k == "metric_type" || k == "value" {
+			continue
+		}
 		if s, ok := v.(string); ok {
 			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
 		}
