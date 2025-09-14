@@ -31,6 +31,7 @@ type Binance_FOBS_Reader struct {
 	log         *logger.Log
 	symbols     []string
 	weightLimit int64
+	ip          string
 }
 
 // Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
@@ -75,6 +76,7 @@ func Binance_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []str
 		wg:       &sync.WaitGroup{},
 		log:      log,
 		symbols:  symbols,
+		ip:       localIP,
 	}
 
 	log.WithComponent("binance_reader").WithFields(logger.Fields{
@@ -204,7 +206,7 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 		"symbol": symbol,
 	})
 
-	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit)
+	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit, br.ip)
 
 	var binanceResp models.BinanceFOBSresp
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {

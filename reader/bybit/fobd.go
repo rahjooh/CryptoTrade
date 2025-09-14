@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -26,6 +27,8 @@ type Bybit_FOBD_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	wsWeight *ratemetrics.BybitWSWeightTracker
+	ip       string
 }
 
 // Bybit_FOBD_NewReader creates a new delta reader for Bybit futures.
@@ -36,6 +39,8 @@ func Bybit_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []st
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
+		wsWeight: ratemetrics.NewBybitWSWeightTracker(),
+		ip:       localIP,
 	}
 }
 
@@ -126,8 +131,13 @@ func (r *Bybit_FOBD_Reader) stream(symbols []string, wsURL string) {
 	}
 
 	for {
+		r.wsWeight.RegisterConnectionAttempt()
+		ratemetrics.ReportBybitWSWeight(r.log, r.wsWeight, r.ip)
+
 		ws := bybit.NewBybitPublicWebSocket(wsURL, handler)
 		ws.Connect().SendSubscription(args)
+		r.wsWeight.RegisterOutgoing(len(args))
+		ratemetrics.ReportBybitWSWeight(r.log, r.wsWeight, r.ip)
 
 		select {
 		case <-r.ctx.Done():

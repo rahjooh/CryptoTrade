@@ -31,6 +31,7 @@ type Binance_FOBD_Reader struct {
 	log      *logger.Log
 	symbols  []string
 	wsWeight *ratemetrics.WSWeightTracker
+	ip       string
 }
 
 // Binance_FOBD_NewReader creates a new delta reader using binance-go client.
@@ -45,6 +46,7 @@ func Binance_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []
 		log:      logger.GetLogger(),
 		symbols:  symbols,
 		wsWeight: ratemetrics.NewWSWeightTracker(),
+		ip:       localIP,
 	}
 }
 
@@ -131,7 +133,7 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 	for {
 		r.wsWeight.RegisterConnectionAttempt()
 		r.wsWeight.RegisterOutgoing(len(symbols))
-		ratemetrics.ReportWSWeight(r.log, r.wsWeight)
+		ratemetrics.ReportWSWeight(r.log, r.wsWeight, r.ip)
 		doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
 		if err != nil {
 			log.WithError(err).Error("failed to subscribe to combined diff depth stream")
