@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/sirupsen/logrus"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
@@ -153,6 +156,38 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, me
 	fields["metric_type"] = metricType
 
 	e.WithComponent(component).WithFields(fields).Info("metric")
+
+	// attempt to publish metric to CloudWatch
+	var val float64
+	switch v := value.(type) {
+	case int:
+		val = float64(v)
+	case int32:
+		val = float64(v)
+	case int64:
+		val = float64(v)
+	case float32:
+		val = float64(v)
+	case float64:
+		val = v
+	default:
+		return
+	}
+
+	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(component)}}
+	for k, v := range fields {
+		if s, ok := v.(string); ok {
+			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
+		}
+	}
+
+	data := []cwtypes.MetricDatum{{
+		MetricName: aws.String(metric),
+		Dimensions: dims,
+		Unit:       cwtypes.StandardUnitCount,
+		Value:      aws.Float64(val),
+	}}
+	publishMetrics(context.Background(), data)
 }
 
 // Configure sets up the logger with the provided configuration
@@ -254,6 +289,7 @@ func LogDataFlowEntry(entry *Entry, source string, destination string, recordCou
 
 // Metric logging helper
 func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
+	l.WithComponent(component).LogMetric(component, metric, value, metricType, fields)
 	if fields == nil {
 		fields = make(Fields)
 	}
