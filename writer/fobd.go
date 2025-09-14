@@ -20,6 +20,7 @@ import (
 	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -338,43 +339,15 @@ func (w *DeltaWriter) metricsReporter() {
 }
 
 func (w *DeltaWriter) reportMetrics() {
-	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
-	filesWritten := atomic.LoadInt64(&w.filesWritten)
-	bytesWritten := atomic.LoadInt64(&w.bytesWritten)
-	errorsCount := atomic.LoadInt64(&w.errorsCount)
-
-	errorRate := float64(0)
-	if batchesWritten+errorsCount > 0 {
-		errorRate = float64(errorsCount) / float64(batchesWritten+errorsCount)
+	stats := metrics.WriterStats{
+		BatchesWritten: atomic.LoadInt64(&w.batchesWritten),
+		FilesWritten:   atomic.LoadInt64(&w.filesWritten),
+		BytesWritten:   atomic.LoadInt64(&w.bytesWritten),
+		ErrorsCount:    atomic.LoadInt64(&w.errorsCount),
+		NormChannelLen: len(w.normChan),
+		NormChannelCap: cap(w.normChan),
 	}
-
-	avgBytesPerFile := float64(0)
-	if filesWritten > 0 {
-		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
-	}
-
-	normLen := len(w.normChan)
-	normCap := cap(w.normChan)
-
-	log := w.log.WithComponent("delta_writer")
-	log.LogMetric("delta_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
-	log.LogMetric("delta_writer", "files_written", filesWritten, "counter", logger.Fields{})
-	log.LogMetric("delta_writer", "bytes_written", bytesWritten, "counter", logger.Fields{})
-	log.LogMetric("delta_writer", "errors_count", errorsCount, "counter", logger.Fields{})
-	log.LogMetric("delta_writer", "error_rate", errorRate, "gauge", logger.Fields{})
-	log.LogMetric("delta_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
-	log.LogMetric("delta_writer", "norm_channel_len", normLen, "gauge", logger.Fields{})
-
-	log.WithFields(logger.Fields{
-		"batches_written":    batchesWritten,
-		"files_written":      filesWritten,
-		"bytes_written":      bytesWritten,
-		"errors_count":       errorsCount,
-		"error_rate":         errorRate,
-		"avg_bytes_per_file": avgBytesPerFile,
-		"norm_channel_len":   normLen,
-		"norm_channel_cap":   normCap,
-	}).Warn("s3 writer metrics")
+	metrics.ReportWriter(w.log, "delta_writer", stats)
 }
 
 // Start exposes the internal start method for external packages.

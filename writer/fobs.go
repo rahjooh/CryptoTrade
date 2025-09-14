@@ -22,6 +22,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	"cryptoflow/internal/metadata"
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -547,43 +548,15 @@ func (w *snapshotWriter) metricsReporter(ctx context.Context) {
 }
 
 func (w *snapshotWriter) reportMetrics() {
-	batchesWritten := atomic.LoadInt64(&w.batchesWritten)
-	filesWritten := atomic.LoadInt64(&w.filesWritten)
-	bytesWritten := atomic.LoadInt64(&w.bytesWritten)
-	errorsCount := atomic.LoadInt64(&w.errorsCount)
-
-	errorRate := float64(0)
-	if batchesWritten+errorsCount > 0 {
-		errorRate = float64(errorsCount) / float64(batchesWritten+errorsCount)
+	stats := metrics.WriterStats{
+		BatchesWritten: atomic.LoadInt64(&w.batchesWritten),
+		FilesWritten:   atomic.LoadInt64(&w.filesWritten),
+		BytesWritten:   atomic.LoadInt64(&w.bytesWritten),
+		ErrorsCount:    atomic.LoadInt64(&w.errorsCount),
+		NormChannelLen: len(w.NormFOBSch),
+		NormChannelCap: cap(w.NormFOBSch),
 	}
-
-	avgBytesPerFile := float64(0)
-	if filesWritten > 0 {
-		avgBytesPerFile = float64(bytesWritten) / float64(filesWritten)
-	}
-
-	normLen := len(w.NormFOBSch)
-	normCap := cap(w.NormFOBSch)
-
-	log := w.log.WithComponent("s3_writer")
-	log.LogMetric("s3_writer", "batches_written", batchesWritten, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "files_written", filesWritten, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "bytes_written", bytesWritten, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "errors_count", errorsCount, "counter", logger.Fields{})
-	log.LogMetric("s3_writer", "error_rate", errorRate, "gauge", logger.Fields{})
-	log.LogMetric("s3_writer", "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
-	log.LogMetric("s3_writer", "norm_channel_len", normLen, "gauge", logger.Fields{})
-
-	log.WithFields(logger.Fields{
-		"batches_written":    batchesWritten,
-		"files_written":      filesWritten,
-		"bytes_written":      bytesWritten,
-		"errors_count":       errorsCount,
-		"error_rate":         errorRate,
-		"avg_bytes_per_file": avgBytesPerFile,
-		"norm_channel_len":   normLen,
-		"norm_channel_cap":   normCap,
-	}).Warn("s3 writer metrics")
+	metrics.ReportWriter(w.log, "s3_writer", stats)
 }
 
 // Start exposes the start method of snapshotWriter.
