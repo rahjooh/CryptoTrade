@@ -2,23 +2,24 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"regexp"
 	"strings"
 	"time"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Cryptoflow CryptoflowConfig `yaml:"cryptoflow"`
-	Channels   ChannelsConfig   `yaml:"channels"`
-	Reader     ReaderConfig     `yaml:"reader"`
-	Processor  ProcessorConfig  `yaml:"processor"`
-	Writer     WriterConfig     `yaml:"writer"`
-	Source     SourceConfig     `yaml:"source"`
-	Storage    StorageConfig    `yaml:"storage"`
-	Monitoring MonitoringConfig `yaml:"monitoring"`
-	Logging    LoggingConfig    `yaml:"logging"`
+	Cryptoflow        CryptoflowConfig        `yaml:"cryptoflow"`
+	Channels          ChannelsConfig          `yaml:"channels"`
+	Reader            ReaderConfig            `yaml:"reader"`
+	Processor         ProcessorConfig         `yaml:"processor"`
+	Writer            WriterConfig            `yaml:"writer"`
+	Source            SourceConfig            `yaml:"source"`
+	Storage           StorageConfig           `yaml:"storage"`
+	Monitoring        MonitoringConfig        `yaml:"monitoring"`
+	Logging           LoggingConfig           `yaml:"logging"`
+	ExchangeRateLimit ExchangeRateLimitConfig `yaml:"exchange_rate_limit"`
 }
 
 type CryptoflowConfig struct {
@@ -57,6 +58,18 @@ type CircuitBreakerConfig struct {
 type RateLimitConfig struct {
 	RequestsPerSecond int `yaml:"requests_per_second"`
 	BurstSize         int `yaml:"burst_size"`
+}
+
+type ExchangeRateLimitConfig struct {
+	Binance ExchangeRateLimit `yaml:"binance"`
+	Bybit   ExchangeRateLimit `yaml:"bybit"`
+	Kucoin  ExchangeRateLimit `yaml:"kucoin"`
+	Okx     ExchangeRateLimit `yaml:"okx"`
+}
+
+type ExchangeRateLimit struct {
+	RequestWeight int64 `yaml:"request_weight"`
+	Orders        int64 `yaml:"orders"`
 }
 
 type RetryConfig struct {
