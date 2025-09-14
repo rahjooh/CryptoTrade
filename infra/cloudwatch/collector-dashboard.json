@@ -181,7 +181,8 @@
           ["CryptoFlow", "near_limit", "component", "okx_reader", "ip", "*", { "label": "OKX Near Limit", "stat": "Maximum" }],
           ["CryptoFlow", "banned", "component", "okx_reader", "ip", "*", { "label": "OKX Banned", "stat": "Maximum" }]
         ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "status", "min": 0, "max": 1 } }
       }
     }
   ]
