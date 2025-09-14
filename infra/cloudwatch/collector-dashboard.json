@@ -143,136 +143,20 @@
     },
     {
       "type": "metric",
-      "x": 0,
-      "y": 15,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Average" }]
-        ],
-        "period": 60,
-        "title": "CPU Avg"
-      }
-    },
-    {
-      "type": "metric",
       "x": 6,
-      "y": 15,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-DiskMB", { "stat": "Average" }]
-        ],
-        "period": 60,
-        "title": "EBS Usage"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 21,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-CPUPercent", { "stat": "Maximum" }],
-          [".", "Hadi-CPUPercent", { "stat": "Average" }]
-        ],
-        "period": 60,
-        "title": "CPU"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 6,
-      "y": 21,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-MemoryMB", { "stat": "Average" }]
-        ],
-        "period": 60,
-        "title": "Memory"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12,
       "y": 15,
       "width": 12,
       "height": 6,
       "properties": {
         "view": "timeSeries",
         "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-NetBytesSent", { "stat": "Sum" }],
-          [".", "Hadi-NetBytesRecv", { "stat": "Sum" }]
-        ],
+        "title": "CPU / Memory / Disk %",
         "period": 60,
-        "title": "Network Throughput",
-        "yAxis": { "left": { "label": "bytes" } }
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 27,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
         "metrics": [
-          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621"]
-        ],
-        "period": 300,
-        "stat": "Average",
-        "title": "EC2 CPU Utilization"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 6,
-      "y": 27,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CWAgent", "mem_used_percent", "InstanceId", "i-0b9c363acf72f7621"]
-        ],
-        "period": 300,
-        "stat": "Average",
-        "title": "EC2 Memory Utilization"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12,
-      "y": 27,
-      "width": 6,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CWAgent", "EBS_UsagePercent", "InstanceId", "i-0b9c363acf72f7621", "device", "xvda1"]
-        ],
-        "period": 300,
-        "stat": "Average",
-        "title": "EBS Volume Usage"
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "stat": "Average", "label": "CPU" }],
+          [{ "expression": "SEARCH('{CWAgent,InstanceId,i-0b9c363acf72f7621} MetricName=\"mem_used_percent\"', 'Average', 60)", "label": "mem", "id": "m_mem" }],
+          [{ "expression": "SEARCH('{CWAgent,InstanceId,i-0b9c363acf72f7621,path,/} MetricName=\"disk_used_percent\"', 'Average', 60)", "label": "disk", "id": "m_disk" }]
+        ]
       }
     }
   ]
