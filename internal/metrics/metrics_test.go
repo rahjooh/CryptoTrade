@@ -1,20 +1,19 @@
 package metrics
 
 import (
-	"testing"
-
 	"cryptoflow/logger"
+	"testing"
 )
 
-func TestReportFOBDProcessorMetrics(t *testing.T) {
+func Test_report_fobd_proccesor_metrics(t *testing.T) {
 	log := logger.GetLogger()
-	sizes := FOBDProcessorMetrics{RawLen: 1, RawCap: 2, NormLen: 3, NormCap: 4}
-	ReportFOBDProcessorMetrics(log, sizes)
+	sizes := fobd_proccesor_metrics{RawLen: 1, RawCap: 2, NormLen: 3, NormCap: 4}
+	report_fobd_proccesor_metrics(log, sizes)
 }
 
-func TestReportFOBSProcessorMetrics(t *testing.T) {
+func Test_report_fobs_proccesor_metrics(t *testing.T) {
 	log := logger.GetLogger()
-	stats := FOBSProcessorMetrics{
+	stats := fobs_proccesor_metrics{
 		MessagesProcessed: 1,
 		BatchesProcessed:  2,
 		EntriesProcessed:  3,
@@ -25,5 +24,5 @@ func TestReportFOBSProcessorMetrics(t *testing.T) {
 		NormChannelLen:    1,
 		NormChannelCap:    2,
 	}
-	ReportFOBSProcessorMetrics(log, stats)
+	report_fobs_proccesor_metrics(log, stats)
 }
