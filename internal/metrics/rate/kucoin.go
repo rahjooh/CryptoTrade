@@ -30,7 +30,7 @@ func kucoinSnapshotWeight(level int) int64 {
 
 // ReportKucoinSnapshotWeight parses rate limit headers from KuCoin REST
 // responses and emits metrics about weight usage and remaining quota.
-func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int) {
+func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, ip string) {
 	remainingStr := header.Get("gw-ratelimit-remaining")
 	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
 	resetStr := header.Get("gw-ratelimit-reset")
@@ -39,15 +39,17 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int) 
 	endpointWeight := kucoinSnapshotWeight(level)
 
 	l := log.WithComponent("kucoin_reader")
-	l.LogMetric("kucoin_reader", "remaining_weight", remaining, "gauge", logger.Fields{})
-	l.LogMetric("kucoin_reader", "reset_ms", reset, "gauge", logger.Fields{})
-	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", logger.Fields{"level": level})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("kucoin_reader", "remaining_weight", remaining, "gauge", fields)
+	l.LogMetric("kucoin_reader", "reset_ms", reset, "gauge", fields)
+	fieldsWithLevel := logger.Fields{"level": level, "ip": ip}
+	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLevel)
 
 	alert := int64(0)
 	if kucoinPublicPoolLimit > 0 && remaining < kucoinPublicPoolLimit/5 {
 		alert = 1
 	}
-	l.LogMetric("kucoin_reader", "low_remaining", alert, "gauge", logger.Fields{})
+	l.LogMetric("kucoin_reader", "low_remaining", alert, "gauge", fields)
 }
 
 // KucoinWSWeightTracker tracks outgoing websocket messages and connection
@@ -101,9 +103,10 @@ func (t *KucoinWSWeightTracker) Stats() (msgs int, attempts int) {
 }
 
 // ReportKucoinWSWeight emits websocket-related weight metrics.
-func ReportKucoinWSWeight(log *logger.Log, t *KucoinWSWeightTracker) {
+func ReportKucoinWSWeight(log *logger.Log, t *KucoinWSWeightTracker, ip string) {
 	msgs, attempts := t.Stats()
 	l := log.WithComponent("kucoin_delta_reader")
-	l.LogMetric("kucoin_delta_reader", "outgoing_messages_10s", int64(msgs), "gauge", logger.Fields{})
-	l.LogMetric("kucoin_delta_reader", "connection_attempts_min", int64(attempts), "gauge", logger.Fields{})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("kucoin_delta_reader", "outgoing_messages_10s", int64(msgs), "gauge", fields)
+	l.LogMetric("kucoin_delta_reader", "connection_attempts_min", int64(attempts), "gauge", fields)
 }

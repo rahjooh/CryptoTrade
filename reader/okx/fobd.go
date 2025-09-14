@@ -102,7 +102,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			return
 		}
 		r.wsWeight.RegisterConnectionAttempt()
-		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight)
+		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight, r.localIP)
 
 		dialer := websocket.Dialer{}
 		if r.localIP != "" {
@@ -141,7 +141,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			continue
 		}
 		r.wsWeight.RegisterOp(1)
-		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight)
+		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight, r.localIP)
 
 		// Read subscription acknowledgement
 		if _, resp, err := conn.ReadMessage(); err != nil {

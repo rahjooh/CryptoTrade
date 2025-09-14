@@ -46,16 +46,18 @@ func depthSnapshotWeight(limit int) int64 {
 
 // ReportSnapshotWeight parses the used weight from the HTTP response headers
 // and emits metrics for weight usage.
-func ReportSnapshotWeight(log *logger.Log, header http.Header, rateLimit int64, depthLimit int) {
+func ReportSnapshotWeight(log *logger.Log, header http.Header, rateLimit int64, depthLimit int, ip string) {
 	usedStr := header.Get("X-MBX-USED-WEIGHT-1m")
 	used, _ := strconv.ParseInt(usedStr, 10, 64)
 	remaining := rateLimit - used
 	endpointWeight := depthSnapshotWeight(depthLimit)
 
 	l := log.WithComponent("binance_reader")
-	l.LogMetric("binance_reader", "used_weight", used, "gauge", logger.Fields{})
-	l.LogMetric("binance_reader", "remaining_weight", remaining, "gauge", logger.Fields{})
-	l.LogMetric("binance_reader", "endpoint_weight", endpointWeight, "gauge", logger.Fields{"limit": depthLimit})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("binance_reader", "used_weight", used, "gauge", fields)
+	l.LogMetric("binance_reader", "remaining_weight", remaining, "gauge", fields)
+	fieldsWithLimit := logger.Fields{"limit": depthLimit, "ip": ip}
+	l.LogMetric("binance_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLimit)
 }
 
 // WSWeightTracker tracks the number of outgoing websocket messages and
@@ -103,9 +105,10 @@ func (t *WSWeightTracker) Stats() (msgs int, attempts int) {
 }
 
 // ReportWSWeight emits websocket related weight metrics.
-func ReportWSWeight(log *logger.Log, t *WSWeightTracker) {
+func ReportWSWeight(log *logger.Log, t *WSWeightTracker, ip string) {
 	msgs, attempts := t.Stats()
 	l := log.WithComponent("binance_delta_reader")
-	l.LogMetric("binance_delta_reader", "outgoing_messages", int64(msgs), "gauge", logger.Fields{})
-	l.LogMetric("binance_delta_reader", "connection_attempts", int64(attempts), "counter", logger.Fields{})
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("binance_delta_reader", "outgoing_messages", int64(msgs), "gauge", fields)
+	l.LogMetric("binance_delta_reader", "connection_attempts", int64(attempts), "counter", fields)
 }
