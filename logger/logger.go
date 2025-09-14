@@ -184,12 +184,12 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, me
 		}
 	}
 
-	data := []cwtypes.MetricDatum{{
+	data := []cwtypes.MetricDatum{
 		MetricName: aws.String(metric),
 		Dimensions: dims,
 		Unit:       cwtypes.StandardUnitCount,
 		Value:      aws.Float64(val),
-	}}
+	}
 	publishMetrics(context.Background(), data)
 }
 
