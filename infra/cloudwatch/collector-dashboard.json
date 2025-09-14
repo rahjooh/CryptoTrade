@@ -152,10 +152,12 @@
         "region": "ap-south-1",
         "title": "CPU / Memory / Disk %",
         "period": 60,
+        "stat": "Maximum",
         "metrics": [
-          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "stat": "Average", "label": "CPU" }],
-          [{ "expression": "SEARCH('{CWAgent,InstanceId,i-0b9c363acf72f7621} MetricName=\"mem_used_percent\"', 'Average', 60)", "label": "mem", "id": "m_mem" }],
-          [{ "expression": "SEARCH('{CWAgent,InstanceId,i-0b9c363acf72f7621,path,/} MetricName=\"disk_used_percent\"', 'Average', 60)", "label": "disk", "id": "m_disk" }]
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
+          [ "Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem"} ],
+          [ "Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", {  "label": "Disk" } ]
+
         ]
       }
     }
