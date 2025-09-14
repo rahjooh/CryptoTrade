@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-func Test_report_fobd_proccesor_metrics(t *testing.T) {
+func TestReportFOBDProcessorMetrics(t *testing.T) {
 	log := logger.GetLogger()
-	sizes := fobd_proccesor_metrics{RawLen: 1, RawCap: 2, NormLen: 3, NormCap: 4}
-	report_fobd_proccesor_metrics(log, sizes)
+	sizes := FOBDProcessorMetrics{RawLen: 1, RawCap: 2, NormLen: 3, NormCap: 4}
+	ReportFOBDProcessorMetrics(log, sizes)
 }
 
-func Test_report_fobs_proccesor_metrics(t *testing.T) {
+func TestReportFOBSProcessorMetrics(t *testing.T) {
 	log := logger.GetLogger()
-	stats := fobs_proccesor_metrics{
+	stats := FOBSProcessorMetrics{
 		MessagesProcessed: 1,
 		BatchesProcessed:  2,
 		EntriesProcessed:  3,
@@ -24,5 +24,5 @@ func Test_report_fobs_proccesor_metrics(t *testing.T) {
 		NormChannelLen:    1,
 		NormChannelCap:    2,
 	}
-	report_fobs_proccesor_metrics(log, stats)
+	ReportFOBSProcessorMetrics(log, stats)
 }
