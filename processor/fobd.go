@@ -408,13 +408,13 @@ func (p *DeltaProcessor) metricsReporter(ctx context.Context) {
 			if !running {
 				return
 			}
-			sizes := metrics.fobd_proccesor_metrics{
+			sizes := metrics.FOBDProcessorMetrics{
 				RawLen:  len(p.channels.Raw),
 				RawCap:  cap(p.channels.Raw),
 				NormLen: len(p.channels.Norm),
 				NormCap: cap(p.channels.Norm),
 			}
-			metrics.report_fobd_proccesor_metrics(p.log, sizes)
+			metrics.ReportFOBDProcessorMetrics(p.log, sizes)
 		}
 	}
 }

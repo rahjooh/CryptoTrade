@@ -419,7 +419,7 @@ func (f *Flattener) metricsReporter(ctx context.Context) {
 
 func (f *Flattener) reportMetrics() {
 	f.mu.RLock()
-	stats := metrics.fobs_proccesor_metrics{
+	stats := metrics.FOBSProcessorMetrics{
 		MessagesProcessed: f.messagesProcessed,
 		BatchesProcessed:  f.batchesProcessed,
 		ErrorsCount:       f.errorsCount,
@@ -431,5 +431,5 @@ func (f *Flattener) reportMetrics() {
 		NormChannelCap:    cap(f.channels.Norm),
 	}
 	f.mu.RUnlock()
-	metrics.report_fobs_proccesor_metrics(f.log, stats)
+	metrics.ReportFOBSProcessorMetrics(f.log, stats)
 }

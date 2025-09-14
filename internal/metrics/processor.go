@@ -2,16 +2,16 @@ package metrics
 
 import "cryptoflow/logger"
 
-// fobd_proccesor_metrics holds channel size metrics for the delta processor.
-type fobd_proccesor_metrics struct {
+// FOBDProcessorMetrics holds channel size metrics for the delta processor.
+type FOBDProcessorMetrics struct {
 	RawLen  int
 	RawCap  int
 	NormLen int
 	NormCap int
 }
 
-// report_fobd_proccesor_metrics emits channel size metrics for the delta processor.
-func report_fobd_proccesor_metrics(log *logger.Log, sizes fobd_proccesor_metrics) {
+// ReportFOBDProcessorMetrics emits channel size metrics for the delta processor.
+func ReportFOBDProcessorMetrics(log *logger.Log, sizes FOBDProcessorMetrics) {
 	log.WithComponent("delta_processor").WithFields(logger.Fields{
 		"raw_channel_len":  sizes.RawLen,
 		"raw_channel_cap":  sizes.RawCap,
@@ -20,8 +20,8 @@ func report_fobd_proccesor_metrics(log *logger.Log, sizes fobd_proccesor_metrics
 	}).Info("delta processor channel sizes")
 }
 
-// fobs_proccesor_metrics holds metrics for the flattener processor.
-type fobs_proccesor_metrics struct {
+// FOBSProcessorMetrics holds metrics for the flattener processor.
+type FOBSProcessorMetrics struct {
 	MessagesProcessed int64
 	BatchesProcessed  int64
 	EntriesProcessed  int64
@@ -33,8 +33,8 @@ type fobs_proccesor_metrics struct {
 	NormChannelCap    int
 }
 
-// report_fobs_proccesor_metrics emits metrics for the flattener component.
-func report_fobs_proccesor_metrics(log *logger.Log, stats fobs_proccesor_metrics) {
+// ReportFOBSProcessorMetrics emits metrics for the flattener component.
+func ReportFOBSProcessorMetrics(log *logger.Log, stats FOBSProcessorMetrics) {
 	l := log.WithComponent("flattener")
 
 	errorRate := float64(0)
