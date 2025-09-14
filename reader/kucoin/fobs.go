@@ -249,7 +249,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		rl := resp.CommonResponse.RateLimit
 		header.Set("gw-ratelimit-remaining", strconv.FormatInt(rl.Remaining, 10))
 		header.Set("gw-ratelimit-reset", strconv.FormatInt(rl.Reset, 10))
-		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, 0)
+		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, 0, r.ip)
 	}
 
 	if resp == nil {
