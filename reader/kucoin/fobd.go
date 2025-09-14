@@ -140,7 +140,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 	})
 
 	r.wsTracker.RegisterConnectionAttempt()
-	ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker)
+	ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker, r.localIP)
 
 	if err := ws.Start(); err != nil {
 		log.WithError(err).Warn("failed to start websocket")
@@ -150,7 +150,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 
 	for _, symbol := range symbolList {
 		r.wsTracker.RegisterOutgoing(1)
-		ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker)
+		ratemetrics.ReportKucoinWSWeight(r.log, r.wsTracker, r.localIP)
 		_, err := ws.OrderbookIncrement(symbol, func(topic, subject string, data *futurespublic.OrderbookIncrementEvent) error {
 			symbol := strings.TrimPrefix(topic, "/contractMarket/level2:")
 			evt := models.KucoinFOBDResp{
