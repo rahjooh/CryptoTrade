@@ -277,3 +277,17 @@ writer:
       enabled: false
       compression: ""
   compression: ""
+
+exchange_rate_limit:
+  binance:
+    request_weight: 2400
+    orders: 1200
+  bybit:
+    request_weight: 0
+    orders: 0
+  kucoin:
+    request_weight: 0
+    orders: 0
+  okx:
+    request_weight: 0
+    orders: 0

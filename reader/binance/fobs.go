@@ -107,11 +107,15 @@ func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 		return fmt.Errorf("binance futures orderbook snapshots are disabled")
 	}
 
-	if limit, err := ratemetrics.FetchRequestWeightLimit(ctx, br.client); err == nil {
-		br.weightLimit = limit
-	} else {
-		log.WithError(err).Warn("failed to fetch request weight limit")
+	limit := br.config.ExchangeRateLimit.Binance.RequestWeight
+	if limit == 0 {
+		if fetched, err := ratemetrics.FetchRequestWeightLimit(ctx, br.client); err == nil {
+			limit = fetched
+		} else {
+			log.WithError(err).Warn("failed to fetch request weight limit")
+		}
 	}
+	br.weightLimit = limit
 
 	log.WithFields(logger.Fields{
 		"symbols":  br.symbols,

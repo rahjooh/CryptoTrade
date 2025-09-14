@@ -155,10 +155,10 @@
         "stat": "Maximum",
         "metrics": [
           ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
-          [ "Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem"} ],
-          [ "Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", {  "label": "Disk" } ]
-
-        ]
+          ["Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem" }],
+          ["Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
+        ],
+        "yAxis": { "left": { "label": "%", "min": 0, "max": 100 } }
       }
     },
     {
@@ -181,7 +181,8 @@
           ["CryptoFlow", "near_limit", "component", "okx_reader", "ip", "*", { "label": "OKX Near Limit", "stat": "Maximum" }],
           ["CryptoFlow", "banned", "component", "okx_reader", "ip", "*", { "label": "OKX Banned", "stat": "Maximum" }]
         ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "status", "min": 0, "max": 1 } }
       }
     }
   ]
