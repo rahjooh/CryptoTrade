@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	metricsreader "cryptoflow/internal/metrics/reader"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -20,15 +21,16 @@ import (
 
 // Binance_FOBS_Reader fetches futures order book snapshots from Binance.
 type Binance_FOBS_Reader struct {
-	config   *config.Config
-	client   *futures.Client
-	channels *fobs.Channels
-	ctx      context.Context
-	wg       *sync.WaitGroup
-	mu       sync.RWMutex
-	running  bool
-	log      *logger.Log
-	symbols  []string
+	config      *config.Config
+	client      *futures.Client
+	channels    *fobs.Channels
+	ctx         context.Context
+	wg          *sync.WaitGroup
+	mu          sync.RWMutex
+	running     bool
+	log         *logger.Log
+	symbols     []string
+	weightLimit int64
 }
 
 // Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
@@ -101,6 +103,12 @@ func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 	if !snapshotCfg.Enabled {
 		log.Warn("binance futures orderbook snapshots are disabled")
 		return fmt.Errorf("binance futures orderbook snapshots are disabled")
+	}
+
+	if limit, err := metricsreader.FetchRequestWeightLimit(ctx, br.client); err == nil {
+		br.weightLimit = limit
+	} else {
+		log.WithError(err).Warn("failed to fetch request weight limit")
 	}
 
 	log.WithFields(logger.Fields{
@@ -177,32 +185,31 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 	market := "future-orderbook-snapshot"
 
 	start := time.Now()
-	res, err := br.client.NewDepthService().
-		Symbol(symbol).
-		Limit(snapshotCfg.Limit).
-		Do(br.ctx)
+	reqURL := fmt.Sprintf("%s?symbol=%s&limit=%d", snapshotCfg.URL, symbol, snapshotCfg.Limit)
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+	if err != nil {
+		log.WithError(err).Warn("failed to build request")
+		return
+	}
+	req = req.WithContext(br.ctx)
+	resp, err := br.client.HTTPClient.Do(req)
+
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
 	duration := time.Since(start)
+	defer resp.Body.Close()
 	logger.LogPerformanceEntry(log, "binance_reader", "api_request", duration, logger.Fields{
 		"symbol": symbol,
 	})
 
-	bids := make([][]string, len(res.Bids))
-	for i, b := range res.Bids {
-		bids[i] = []string{b.Price, b.Quantity}
-	}
-	asks := make([][]string, len(res.Asks))
-	for i, a := range res.Asks {
-		asks[i] = []string{a.Price, a.Quantity}
-	}
+	metricsreader.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit)
 
-	binanceResp := models.BinanceFOBSresp{
-		LastUpdateID: res.LastUpdateID,
-		Bids:         bids,
-		Asks:         asks,
+	var binanceResp models.BinanceFOBSresp
+	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
+		log.WithError(err).Warn("failed to decode orderbook")
+		return
 	}
 
 	payload, err := json.Marshal(binanceResp)
