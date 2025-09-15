@@ -62,16 +62,6 @@ func ReportOkxSnapshotWeight(log *logger.Log, t *OkxRESTWeightTracker, ip string
 	l.LogMetric("okx_reader", "used_weight", used, "gauge", fields)
 	l.LogMetric("okx_reader", "remaining_weight", remaining, "gauge", fields)
 	l.LogMetric("okx_reader", "endpoint_weight", 1, "gauge", fields)
-	near := int64(0)
-	if t.limit > 0 && remaining*5 <= t.limit {
-		near = 1
-	}
-	l.LogMetric("okx_reader", "near_limit", near, "gauge", fields)
-	banned := int64(0)
-	if remaining <= 0 {
-		banned = 1
-	}
-	l.LogMetric("okx_reader", "banned", banned, "gauge", fields)
 }
 
 // OkxWSWeightTracker tracks websocket connection attempts and operations.

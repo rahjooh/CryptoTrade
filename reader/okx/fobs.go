@@ -49,14 +49,20 @@ func Okx_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string,
 		burst = 1
 	}
 	return &Okx_FOBS_Reader{
-		config:        cfg,
-		channels:      ch,
-		wg:            &sync.WaitGroup{},
-		log:           logger.GetLogger(),
-		symbols:       symbols,
-		limiter:       rate.NewLimiter(rate.Limit(rps), burst),
-		localIP:       localIP,
-		weightTracker: ratemetrics.NewOkxRESTWeightTracker(40),
+		config:   cfg,
+		channels: ch,
+		wg:       &sync.WaitGroup{},
+		log:      logger.GetLogger(),
+		symbols:  symbols,
+		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
+		localIP:  localIP,
+		weightTracker: ratemetrics.NewOkxRESTWeightTracker(func() int64 {
+			limit := cfg.ExchangeRateLimit.Okx.RequestWeight
+			if limit <= 0 {
+				limit = 40
+			}
+			return limit
+		}()),
 	}
 }
 
