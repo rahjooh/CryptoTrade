@@ -210,7 +210,7 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 		"symbol": symbol,
 	})
 
-	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.weightLimit, snapshotCfg.Limit, br.ip)
+	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.ip)
 
 	var binanceResp models.BinanceFOBSresp
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {

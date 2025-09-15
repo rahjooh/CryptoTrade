@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 	"golang.org/x/time/rate"
