@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -164,6 +165,10 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
+	if len(book.Bids) == 0 && len(book.Asks) == 0 {
+		log.Warn("received empty orderbook snapshot")
+		return
+	}
 	ts, _ := strconv.ParseInt(book.Ts, 10, 64)
 	bids := make([][]string, len(book.Bids))
 	for i, b := range book.Bids {
@@ -214,25 +219,50 @@ type okxOrderBook struct {
 // getMarketBooksFull retrieves the full depth order book snapshot for a symbol
 // by calling the OKX REST API directly.
 func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrderBook, error) {
+
+	log := r.log.WithComponent("okx_reader").WithFields(logger.Fields{
+		"symbol":    symbol,
+		"operation": "get_market_books_full",
+	})
+
 	url := fmt.Sprintf("https://www.okx.com/api/v5/market/books?instId=%s&sz=%d", symbol, limit)
-	fmt.Println(url)
+	log.WithFields(logger.Fields{"url": url}).Debug("requesting orderbook")
+
 	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, url, nil)
 	if err != nil {
+		log.WithError(err).Error("failed to build request")
 		return nil, err
 	}
+
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.WithFields(logger.Fields{
+			"status": resp.StatusCode,
+			"body":   string(body),
+		}).Warn("non-200 response from okx")
+		return nil, fmt.Errorf("non-200 status %s", resp.Status)
+	}
+
 	var wrapper struct {
 		Code string         `json:"code"`
+		Msg  string         `json:"msg"`
 		Data []okxOrderBook `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
 		return nil, err
 	}
+	if wrapper.Code != "0" {
+		log.WithFields(logger.Fields{"code": wrapper.Code, "msg": wrapper.Msg}).Warn("okx returned error code")
+		return nil, fmt.Errorf("okx returned code %s: %s", wrapper.Code, wrapper.Msg)
+	}
 	if len(wrapper.Data) == 0 {
+		log.Warn("orderbook response contained no data")
 		return nil, fmt.Errorf("empty orderbook response")
 	}
 	return &wrapper.Data[0], nil
