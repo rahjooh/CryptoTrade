@@ -10,8 +10,8 @@ import (
 )
 
 // ReportOkxSnapshotWeight parses rate-limit headers from OKX REST responses and
-// emits usage metrics. It looks for both standard and "X-" prefixed header
-// variants. If the headers are missing or unparsable, zero values are emitted.
+// emits a single `used_weight` metric for the originating IP. It accepts both
+// standard and "X-" prefixed header variants.
 func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	limitStr := header.Get("Rate-Limit-Limit")
 	if limitStr == "" {
@@ -27,14 +27,10 @@ func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	if used < 0 {
 		used = 0
 	}
+
 	l := log.WithComponent("okx_reader")
 	fields := logger.Fields{"ip": ip}
-	if limit > 0 {
-		l.LogMetric("okx_reader", "limit", limit, "gauge", fields)
-	}
 	l.LogMetric("okx_reader", "used_weight", used, "gauge", fields)
-	l.LogMetric("okx_reader", "remaining_weight", remaining, "gauge", fields)
-	l.LogMetric("okx_reader", "endpoint_weight", 1, "gauge", fields)
 }
 
 // OkxWSWeightTracker tracks websocket connection attempts and operations.

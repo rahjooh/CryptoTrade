@@ -2,7 +2,7 @@
 
 The `rate` package collects per‑IP rate‑limit usage for every supported exchange.
 Readers call its helpers after each REST or WebSocket request to capture how many
-requests have been consumed and how many remain.
+requests have been consumed by that address.
 
 1. **Configuration** – Free‑tier limits are declared in `config.yml` under
    `exchange_rate_limit` (e.g. Binance `REQUEST_WEIGHT: 2400`). These values become
@@ -11,8 +11,8 @@ requests have been consumed and how many remain.
    reader passes its bound IP to the rate helpers so metrics can be emitted and
    visualised per address.
 3. **Capture** – Functions such as `ReportSnapshotWeight` (Binance) or
-   `ReportKucoinSnapshotWeight` parse the weight headers and compute `used` and
-   `remaining` quotas for that IP.
+   `ReportKucoinSnapshotWeight` parse the weight headers and compute the `used`
+   quota for that IP.
 4. **Log** – Metrics are logged via `logger.LogMetric` with the exchange component
    and IP dimension.
 5. **Publish** – The logger forwards numeric metrics to CloudWatch using
@@ -25,7 +25,7 @@ requests have been consumed and how many remain.
 ```mermaid
 flowchart TD
     Start[Start request] --> ParseHeaders[Parse rate-limit headers]
-    ParseHeaders --> Compute[Compute used & remaining weight]
+    ParseHeaders --> Compute[Compute used weight]
     Compute --> LogMetrics[Log metrics with logger]
     LogMetrics --> Publish[Send to CloudWatch]
     Publish --> Gauge[Dashboard gauges]
@@ -49,7 +49,7 @@ sequenceDiagram
 
     R->>Rate: HTTP resp + IP
     Rate->>Rate: Read X-MBX-USED-WEIGHT-1m
-    Rate->>L: used & remaining vs limit
+    Rate->>L: used vs limit
     L->>CW: PutMetricData (ip)
     CW-->>D: Metric stored
     D-->>User: Gauge per IP
@@ -70,7 +70,7 @@ sequenceDiagram
 
     R->>Rate: HTTP resp + IP
     Rate->>Rate: Read X-Bapi-Limit & Status
-    Rate->>L: used & remaining
+    Rate->>L: used weight
     L->>CW: PutMetricData (ip)
     CW-->>D: Metric stored
     D-->>User: Gauge per IP
@@ -92,7 +92,7 @@ sequenceDiagram
 
     R->>Rate: HTTP resp + IP
     Rate->>Rate: Read gw-ratelimit-remaining
-    Rate->>L: used & remaining
+    Rate->>L: used weight
     L->>CW: PutMetricData (ip)
     CW-->>D: Metric stored
     D-->>User: Gauge per IP
@@ -113,8 +113,8 @@ sequenceDiagram
     participant D as Dashboard
 
     R->>T: RegisterRequest(IP)
-    T->>Rate: used & remaining
-    Rate->>L: used_weight, remaining_weight
+    T->>Rate: used weight
+    Rate->>L: used_weight
     L->>CW: PutMetricData (ip)
     CW-->>D: Metric stored
     D-->>User: Gauge per IP
