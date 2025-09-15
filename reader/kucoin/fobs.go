@@ -244,16 +244,21 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		}
 	}
 
-	if resp != nil && resp.CommonResponse != nil && resp.CommonResponse.RateLimit != nil {
+	if resp != nil {
 		header := http.Header{}
-		rl := resp.CommonResponse.RateLimit
-		header.Set("gw-ratelimit-remaining", strconv.FormatInt(rl.Remaining, 10))
-		header.Set("gw-ratelimit-reset", strconv.FormatInt(rl.Reset, 10))
-		header.Set("gw-ratelimit-limit", strconv.FormatInt(rl.Limit, 10))
-		limit := rl.Limit
-		if limit == 0 {
-			limit = r.config.ExchangeRateLimit.Kucoin.RequestWeight
+		limit := r.config.ExchangeRateLimit.Kucoin.RequestWeight
+		var remaining, reset int64
+		if resp.CommonResponse != nil && resp.CommonResponse.RateLimit != nil {
+			rl := resp.CommonResponse.RateLimit
+			remaining = rl.Remaining
+			reset = rl.Reset
+			if rl.Limit > 0 {
+				limit = rl.Limit
+			}
 		}
+		header.Set("gw-ratelimit-remaining", strconv.FormatInt(remaining, 10))
+		header.Set("gw-ratelimit-reset", strconv.FormatInt(reset, 10))
+		header.Set("gw-ratelimit-limit", strconv.FormatInt(limit, 10))
 		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, r.ip)
 	}
 

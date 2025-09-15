@@ -21,9 +21,18 @@ func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	if remainingStr == "" {
 		remainingStr = header.Get("X-RateLimit-Remaining")
 	}
-	limit, _ := strconv.ParseInt(limitStr, 10, 64)
-	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
-	used := limit - remaining
+	usedStr := header.Get("Rate-Limit-Used")
+	if usedStr == "" {
+		usedStr = header.Get("X-RateLimit-Used")
+	}
+	var used int64
+	if usedStr != "" {
+		used, _ = strconv.ParseInt(usedStr, 10, 64)
+	} else {
+		limit, _ := strconv.ParseInt(limitStr, 10, 64)
+		remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+		used = limit - remaining
+	}
 	if used < 0 {
 		used = 0
 	}
