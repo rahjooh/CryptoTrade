@@ -165,14 +165,22 @@
       "type": "metric",
       "x": 0,
       "y": 21,
-      "width": 6,
+      "width": 12,
       "height": 6,
       "properties": {
         "view": "gauge",
         "region": "ap-south-1",
         "title": "Binance Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "binance_reader", "ip", "*", { "label": "Used", "stat": "Maximum" }]
+          ["CryptoFlow", "used_weight", "component", "binance_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 2400 } }
@@ -180,16 +188,24 @@
     },
     {
       "type": "metric",
-      "x": 6,
+      "x": 12,
       "y": 21,
-      "width": 6,
+      "width": 12,
       "height": 6,
       "properties": {
         "view": "gauge",
         "region": "ap-south-1",
         "title": "Bybit Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "bybit_reader", "ip", "*", { "label": "Used", "stat": "Maximum" }]
+          ["CryptoFlow", "used_weight", "component", "bybit_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 120 } }
@@ -197,16 +213,24 @@
     },
     {
       "type": "metric",
-      "x": 12,
-      "y": 21,
-      "width": 6,
+      "x": 0,
+      "y": 27,
+      "width": 12,
       "height": 6,
       "properties": {
         "view": "gauge",
         "region": "ap-south-1",
         "title": "KuCoin Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "kucoin_reader", "ip", "*", { "label": "Used", "stat": "Maximum" }]
+          ["CryptoFlow", "used_weight", "component", "kucoin_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 4000 } }
@@ -214,16 +238,24 @@
     },
     {
       "type": "metric",
-      "x": 18,
-      "y": 21,
-      "width": 6,
+      "x": 12,
+      "y": 27,
+      "width": 12,
       "height": 6,
       "properties": {
         "view": "gauge",
         "region": "ap-south-1",
         "title": "OKX Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "okx_reader", "ip", "*", { "label": "Used", "stat": "Maximum" }]
+          ["CryptoFlow", "used_weight", "component", "okx_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
