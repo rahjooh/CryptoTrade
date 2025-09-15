@@ -41,6 +41,20 @@ func TestReportBybitSnapshotWeight(t *testing.T) {
 		header.Set("X-RateLimit-Reset", "1000")
 		ReportBybitSnapshotWeight(log, header, "")
 	})
+
+	t.Run("status_pair", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("X-Bapi-Limit-Status", "40/120")
+		ReportBybitSnapshotWeight(log, header, "")
+	})
+}
+
+func TestReportOkxSnapshotWeight(t *testing.T) {
+	log := logger.GetLogger()
+	header := http.Header{}
+	header.Set("Rate-Limit-Limit", "60;w=60")
+	header.Set("Rate-Limit-Remaining", "59;w=60")
+	ReportOkxSnapshotWeight(log, header, "")
 }
 
 func TestReportRateLimitExceeded(t *testing.T) {
