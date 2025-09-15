@@ -33,6 +33,11 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, 
 	resetStr := header.Get("gw-ratelimit-reset")
 	reset, _ := strconv.ParseInt(resetStr, 10, 64)
 
+	if limit == 0 {
+		limitStr := header.Get("gw-ratelimit-limit")
+		limit, _ = strconv.ParseInt(limitStr, 10, 64)
+	}
+
 	endpointWeight := kucoinSnapshotWeight(level)
 
 	l := log.WithComponent("kucoin_reader")
@@ -43,6 +48,11 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, 
 	}
 	l.LogMetric("kucoin_reader", "used_weight", used, "gauge", fields)
 	l.LogMetric("kucoin_reader", "remaining_weight", remaining, "gauge", fields)
+	l.LogMetric("kucoin_reader", "limit", limit, "gauge", fields)
+	if limit > 0 {
+		pct := float64(remaining) / float64(limit)
+		l.LogMetric("kucoin_reader", "remaining_ratio", pct, "gauge", fields)
+	}
 	l.LogMetric("kucoin_reader", "reset_ms", reset, "gauge", fields)
 	fieldsWithLevel := logger.Fields{"level": level, "ip": ip}
 	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLevel)

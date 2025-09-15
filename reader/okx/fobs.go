@@ -12,7 +12,6 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 	"golang.org/x/time/rate"
@@ -22,18 +21,17 @@ import (
 // snapshots and forwards the data into the raw snapshot channel. The reader
 // issues HTTP requests directly without relying on any third-party SDK.
 type Okx_FOBS_Reader struct {
-	config        *config.Config
-	channels      *fobs.Channels
-	ctx           context.Context
-	wg            *sync.WaitGroup
-	mu            sync.RWMutex
-	running       bool
-	log           *logger.Log
-	symbols       []string
-	limiter       *rate.Limiter
-	httpClient    *http.Client
-	localIP       string
-	weightTracker *ratemetrics.OkxRESTWeightTracker
+	config     *config.Config
+	channels   *fobs.Channels
+	ctx        context.Context
+	wg         *sync.WaitGroup
+	mu         sync.RWMutex
+	running    bool
+	log        *logger.Log
+	symbols    []string
+	limiter    *rate.Limiter
+	httpClient *http.Client
+	localIP    string
 }
 
 // Okx_FOBS_NewReader constructs a new snapshot reader instance.  Network
@@ -56,13 +54,6 @@ func Okx_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []string,
 		symbols:  symbols,
 		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
 		localIP:  localIP,
-		weightTracker: ratemetrics.NewOkxRESTWeightTracker(func() int64 {
-			limit := cfg.ExchangeRateLimit.Okx.RequestWeight
-			if limit <= 0 {
-				limit = 40
-			}
-			return limit
-		}()),
 	}
 }
 
@@ -156,14 +147,12 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		return
 	}
 
-	r.weightTracker.RegisterRequest()
-	ratemetrics.ReportOkxSnapshotWeight(r.log, r.weightTracker, r.localIP)
-
-	book, err := r.getMarketBooksFull(symbol, snapshotCfg.Limit)
+	book, header, err := r.getMarketBooksFull(symbol, snapshotCfg.Limit)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
+	ratemetrics.ReportOkxSnapshotWeight(r.log, header, r.localIP)
 	if len(book.Bids) == 0 && len(book.Asks) == 0 {
 		log.Warn("received empty orderbook snapshot")
 		return
@@ -217,15 +206,15 @@ type okxOrderBook struct {
 
 // getMarketBooksFull retrieves the full depth order book snapshot for a symbol
 // by calling the OKX REST API directly.
-func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrderBook, error) {
+func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrderBook, http.Header, error) {
 	url := fmt.Sprintf("https://www.okx.com/api/v5/market/books-full?instId=%s&sz=%d", symbol, limit)
 	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	var wrapper struct {
@@ -233,12 +222,12 @@ func (r *Okx_FOBS_Reader) getMarketBooksFull(symbol string, limit int) (*okxOrde
 		Data []okxOrderBook `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
-		return nil, err
+		return nil, resp.Header, err
 	}
 	if len(wrapper.Data) == 0 {
-		return nil, fmt.Errorf("empty orderbook response")
+		return nil, resp.Header, fmt.Errorf("empty orderbook response")
 	}
-	return &wrapper.Data[0], nil
+	return &wrapper.Data[0], resp.Header, nil
 }
 
 func (r *Okx_FOBS_Reader) validateSymbols(symbols []string) []string {

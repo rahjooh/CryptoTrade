@@ -1,64 +1,37 @@
 package rate
 
 import (
+	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"cryptoflow/logger"
 )
 
-// OkxRESTWeightTracker tracks REST request counts within a two second window.
-type OkxRESTWeightTracker struct {
-	mu       sync.Mutex
-	window   time.Time
-	count    int64
-	limit    int64
-	interval time.Duration
-}
-
-// NewOkxRESTWeightTracker creates a tracker for REST snapshot weight usage.
-func NewOkxRESTWeightTracker(limit int64) *OkxRESTWeightTracker {
-	return &OkxRESTWeightTracker{
-		window:   time.Now(),
-		limit:    limit,
-		interval: 2 * time.Second,
+// ReportOkxSnapshotWeight parses rate-limit headers from OKX REST responses and
+// emits usage metrics. It looks for both standard and "X-" prefixed header
+// variants. If the headers are missing or unparsable, zero values are emitted.
+func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
+	limitStr := header.Get("Rate-Limit-Limit")
+	if limitStr == "" {
+		limitStr = header.Get("X-RateLimit-Limit")
 	}
-}
-
-// RegisterRequest records one REST request.
-func (t *OkxRESTWeightTracker) RegisterRequest() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := time.Now()
-	if now.Sub(t.window) >= t.interval {
-		t.count = 0
-		t.window = now
+	remainingStr := header.Get("Rate-Limit-Remaining")
+	if remainingStr == "" {
+		remainingStr = header.Get("X-RateLimit-Remaining")
 	}
-	t.count++
-}
-
-// Stats returns used and remaining weight within the current window.
-func (t *OkxRESTWeightTracker) Stats() (used, remaining int64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := time.Now()
-	if now.Sub(t.window) >= t.interval {
-		t.count = 0
-		t.window = now
+	limit, _ := strconv.ParseInt(limitStr, 10, 64)
+	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+	used := limit - remaining
+	if used < 0 {
+		used = 0
 	}
-	used = t.count
-	remaining = t.limit - t.count
-	if remaining < 0 {
-		remaining = 0
-	}
-	return
-}
-
-// ReportOkxSnapshotWeight emits metrics for REST snapshot weight usage.
-func ReportOkxSnapshotWeight(log *logger.Log, t *OkxRESTWeightTracker, ip string) {
-	used, remaining := t.Stats()
 	l := log.WithComponent("okx_reader")
 	fields := logger.Fields{"ip": ip}
+	if limit > 0 {
+		l.LogMetric("okx_reader", "limit", limit, "gauge", fields)
+	}
 	l.LogMetric("okx_reader", "used_weight", used, "gauge", fields)
 	l.LogMetric("okx_reader", "remaining_weight", remaining, "gauge", fields)
 	l.LogMetric("okx_reader", "endpoint_weight", 1, "gauge", fields)
