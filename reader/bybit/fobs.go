@@ -6,22 +6,20 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
-
-	bybit "github.com/bybit-exchange/bybit.go.api"
 )
 
 // Bybit_FOBS_Reader fetches futures order book snapshots from Bybit.
 type Bybit_FOBS_Reader struct {
 	config   *appconfig.Config
-	client   *bybit.Client
+	client   *http.Client
 	channels *fobs.Channels
 	ctx      context.Context
 	wg       *sync.WaitGroup
@@ -52,18 +50,9 @@ func Bybit_FOBS_NewReader(cfg *appconfig.Config, ch *fobs.Channels, symbols []st
 
 	httpClient := &http.Client{Transport: transport, Timeout: cfg.Reader.Timeout}
 
-	snapshotCfg := cfg.Source.Bybit.Future.Orderbook.Snapshots
-	base := snapshotCfg.URL
-	if parsed, err := url.Parse(snapshotCfg.URL); err == nil {
-		base = fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
-	}
-
-	client := bybit.NewBybitHttpClient("", "", bybit.WithBaseURL(base))
-	client.HTTPClient = httpClient
-
 	r := &Bybit_FOBS_Reader{
 		config:   cfg,
-		client:   client,
+		client:   httpClient,
 		channels: ch,
 		wg:       &sync.WaitGroup{},
 		log:      log,
@@ -152,31 +141,37 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 		"operation": "fetch_orderbook",
 	})
 
-	params := map[string]interface{}{
-		"category": "linear",
-		"symbol":   symbol,
-		"limit":    snapshotCfg.Limit,
+	reqURL := fmt.Sprintf("%s?category=linear&symbol=%s&limit=%d", snapshotCfg.URL, symbol, snapshotCfg.Limit)
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+	if err != nil {
+		log.WithError(err).Warn("failed to build request")
+		return
 	}
-
-	//start := time.Now()
-	resp, err := r.client.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(r.ctx)
+	req = req.WithContext(r.ctx)
+	resp, err := r.client.Do(req)
 	if err != nil {
 		log.WithError(err).Warn("failed to fetch orderbook")
 		return
 	}
-	//duration := time.Since(start)
-	//logger.LogPerformanceEntry(log, "bybit_reader", "api_request", duration, logger.Fields{"symbol": symbol})
+	defer resp.Body.Close()
 
-	payload, err := json.Marshal(resp.Result)
+	ratemetrics.ReportBybitSnapshotWeight(r.log, resp.Header, r.ip)
+
+	var body struct {
+		Result models.BybitFOBSresp `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		log.WithError(err).Warn("failed to decode orderbook")
+		return
+	}
+
+	payload, err := json.Marshal(body.Result)
 	if err != nil {
 		log.WithError(err).Warn("failed to marshal orderbook")
 		return
 	}
 
-	var book models.BybitFOBSresp
-	if err := json.Unmarshal(payload, &book); err != nil {
-		log.WithError(err).Warn("failed to unmarshal orderbook")
-	} else if len(book.Bids) == 0 && len(book.Asks) == 0 {
+	if len(body.Result.Bids) == 0 && len(body.Result.Asks) == 0 {
 		log.Warn("received empty orderbook from Bybit")
 	}
 

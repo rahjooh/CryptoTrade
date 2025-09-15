@@ -283,11 +283,11 @@ exchange_rate_limit:
     request_weight: 2400
     orders: 1200
   bybit:
-    request_weight: 0
-    orders: 0
+    request_weight: 120
+    orders: 60
   kucoin:
-    request_weight: 0
+    request_weight: 4000
     orders: 0
   okx:
-    request_weight: 0
-    orders: 0
+    request_weight: 60
+    orders: 30000
