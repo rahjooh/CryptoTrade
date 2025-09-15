@@ -165,7 +165,7 @@
       "type": "metric",
       "x": 0,
       "y": 21,
-      "width": 12,
+      "width": 24,
       "height": 6,
       "properties": {
         "view": "gauge",
@@ -188,9 +188,9 @@
     },
     {
       "type": "metric",
-      "x": 12,
-      "y": 21,
-      "width": 12,
+      "x": 0,
+      "y": 27,
+      "width": 24,
       "height": 6,
       "properties": {
         "view": "gauge",
@@ -214,8 +214,8 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 27,
-      "width": 12,
+      "y": 33,
+      "width": 24,
       "height": 6,
       "properties": {
         "view": "gauge",
@@ -238,9 +238,9 @@
     },
     {
       "type": "metric",
-      "x": 12,
-      "y": 27,
-      "width": 12,
+      "x": 0,
+      "y": 39,
+      "width": 24,
       "height": 6,
       "properties": {
         "view": "gauge",
