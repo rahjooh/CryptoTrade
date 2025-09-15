@@ -24,7 +24,6 @@ func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	if usedStr == "" {
 		usedStr = header.Get("X-RateLimit-Used")
 	}
-
 	limitVals := extractInts(limitStr)
 	remainingVals := extractInts(remainingStr)
 	usedVals := extractInts(usedStr)

@@ -259,7 +259,7 @@
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
-      },
+      }
     },
     {
       "type": "metric",
