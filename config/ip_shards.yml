@@ -82,8 +82,8 @@ shards:
     bybit_symbols:
       - WIFUSDT
       - ADAUSDT
-      - BTCPREP
-      - ETHPREP
+      - BTCPERP
+      - ETHPERP
     kucoin_symbols:
       - WIFUSDTM
       - ADAUSDTM
@@ -108,9 +108,9 @@ shards:
       - XRPUSDC
       - LTCUSDT
     bybit_symbols:
-      - SOLPREP
-      - SUIPREP
-      - XRPPREP
+      - SOLPERP
+      - SUIPERP
+      - XRPPERP
       - LTCUSDT
     kucoin_symbols:
       - SOLUSDCM
