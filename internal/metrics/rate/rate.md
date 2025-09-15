@@ -118,4 +118,5 @@ sequenceDiagram
     L->>CW: PutMetricData (ip)
     CW-->>D: Metric stored
     D-->>User: Gauge per IP
+
 ```
