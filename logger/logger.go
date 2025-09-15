@@ -171,6 +171,9 @@ func (e *Entry) LogMetric(component string, metric string, value interface{}, me
 	case float64:
 		val = v
 	default:
+		GetLogger().WithComponent("cloudwatch").
+			WithFields(Fields{"metric": metric}).
+			Debug("non-numeric metric value; skipping publish")
 		return
 	}
 
@@ -293,17 +296,6 @@ func LogDataFlowEntry(entry *Entry, source string, destination string, recordCou
 // Metric logging helper
 func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
 	l.WithComponent(component).LogMetric(component, metric, value, metricType, fields)
-// 	if fields == nil {
-// 		fields = make(Fields)
-// 	}
-// 	if metricType == "" {
-// 		metricType = "counter"
-// 	}
-// 	fields["metric"] = metric
-// 	fields["value"] = value
-// 	fields["metric_type"] = metricType
-
-// 	l.WithComponent(component).WithFields(fields).Info("metric")
 }
 
 // Set output for logger
