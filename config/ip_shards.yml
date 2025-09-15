@@ -93,8 +93,6 @@ shards:
       swap_orderbook_snapshot:
         - WIF-USDT-SWAP
         - ADA-USDT-SWAP
-        - BTC-USDC-SWAP
-        - ETH-USDC-SWAP
       swap_orderbook_delta:
         - WIF-USDT
         - ADA-USDT
