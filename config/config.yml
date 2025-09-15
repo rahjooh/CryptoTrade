@@ -33,7 +33,7 @@ source:
           connection: rest
           url: https://fapi.binance.com/fapi/v1/depth
           limit: 1000                   # Number of price levels
-          interval_ms: 60000             # Collect every 1000 mili seconds
+          interval_ms: 10000             # Collect every 1000 mili seconds
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 1000             #  Records per batch before writing
         delta:
@@ -82,7 +82,7 @@ source:
           connection: rest
           url: https://api.bybit.com/v5/market/orderbook
           limit: 500
-          interval_ms: 1000
+          interval_ms: 10000
         delta:
           enabled: true
           connection: websocket
@@ -129,7 +129,7 @@ source:
           connection: rest
           url: https://www.okx.com/api/v5/market/books
           limit: 5000
-          interval_ms: 6000
+          interval_ms: 10000
         delta:
           enabled: true
           connection: websocket
@@ -180,7 +180,7 @@ source:
           connection: rest
           url: https://api-futures.kucoin.com/api/v1/level2/snapshot
           limit: 1000
-          interval_ms: 60000
+          interval_ms: 10000
         delta:
           enabled: false
           connection: websocket
