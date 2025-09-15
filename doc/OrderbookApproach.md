@@ -35,9 +35,9 @@ CREATE TABLE order_book_history (
   price        NUMERIC(38,10) NOT NULL,
   quantity     NUMERIC(38,10) NOT NULL,
   valid_from   TIMESTAMPTZ   NOT NULL,
-  valid_to     TIMESTAMPTZ    NULL      -- NULL = still active
-);
-
+  valid_to     TIMESTAMPTZ    NULL ,     -- NULL = still active
+  type         VARCHAR(20) NOT Null   -- snapshot / delta / prev_day
+); 
 -- At most one active row per (exchange,symbol,side,price)
 CREATE UNIQUE INDEX uq_active_level
   ON order_book_history(exchange, symbol, side, price)
@@ -76,53 +76,59 @@ Below, each table shows **active rows** (i.e., `valid_to IS NULL`) immediately *
 
 #### Active rows **after T0 (snapshot)**
 
-| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To |
-|------------------|---------|------|------:|---------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |        5 | T0         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   101 |        2 | T0         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     |
+| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To | Type     |
+|------------------|---------|------|------:|---------:|------------|----------|----------|
+| binance_futures  | BTCUSDT | bid  |   100 |        5 | T0         | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | ask  |   101 |        2 | T0         | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     | Snapshot |
 
 #### Apply **T1** delta: `(bid 100: 5→7)`, `(ask 101: 2→0)`
 
-| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To |
-|------------------|---------|------|------:|---------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |        7 | T1         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     |
+| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To | Type             |
+|------------------|---------|------|------:|---------:|------------|----------|------------------|
+| binance_futures  | BTCUSDT | bid  |   100 |        5 | T0         | T1       | Snapshot=>Delta  |
+| binance_futures  | BTCUSDT | bid  |   100 |        7 | T1         | NULL     | Delta            |
+| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     | Snapshot         |
+| binance_futures  | BTCUSDT | ask  |   101 |        2 | T0         | T1       | Snapshot=>Delta  |
+| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     | Snapshot         |
 
 *Closed rows created by this step (for reference):*
 
-| Exchange         | Symbol  | Side | Price | Quantity (old) | Valid From | Valid To |
-|------------------|---------|------|------:|---------------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |              5 | T0         | T1       |
-| binance_futures  | BTCUSDT | ask  |   101 |              2 | T0         | T1       |
+| Exchange         | Symbol  | Side | Price | Quantity (old) | Valid From | Valid To | Type            |
+|------------------|---------|------|------:|---------------:|------------|----------|-----------------|
+| binance_futures  | BTCUSDT | bid  |   100 |              5 | T0         | T1       | Snapshot=>Delta |
+| binance_futures  | BTCUSDT | ask  |   101 |              2 | T0         | T1       | Snapshot=>Delta |
 
 #### Apply **T2** delta: `+ bid (98,6)`, `+ ask (103,2)`
 
-| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To |
-|------------------|---------|------|------:|---------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |        7 | T1         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    98 |        6 | T2         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   103 |        2 | T2         | NULL     |
+
+| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To | Type            |
+|------------------|---------|------|------:|---------:|------------|----------|-----------------|
+| binance_futures  | BTCUSDT | bid  |   100 |        5 | T0         | T1       | Snapshot=>Delta |
+| binance_futures  | BTCUSDT | bid  |   100 |        7 | T1         | NULL     | Delta           |
+| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     | Snapshot        |
+| binance_futures  | BTCUSDT | bid  |    98 |        6 | T2         | NULL     | Delta           |
+| binance_futures  | BTCUSDT | ask  |   101 |        2 | T0         | T1       | Snapshot=>Delta |
+| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     | Snapshot        |
+| binance_futures  | BTCUSDT | ask  |   103 |        2 | T2         | NULL     | Delta           |
+
 
 #### Apply **T3** delta: `(bid 100: 7→6)`
 
-| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To |
-|------------------|---------|------|------:|---------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |        6 | T3         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    98 |        6 | T2         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     |
-| binance_futures  | BTCUSDT | ask  |   103 |        2 | T2         | NULL     |
 
-*Closed row created by this step (for reference):*
+| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To | Type            |
+|------------------|---------|------|------:|---------:|------------|----------|-----------------|
+| binance_futures  | BTCUSDT | bid  |   100 |        5 | T0         | T1       | Snapshot=>Delta |
+| binance_futures  | BTCUSDT | bid  |   100 |        7 | T1         | T3       | Delta=>Delta    |
+| binance_futures  | BTCUSDT | bid  |   100 |        6 | T3         | NULL     | Delta           |
+| binance_futures  | BTCUSDT | bid  |    99 |        3 | T0         | NULL     | Snapshot        |
+| binance_futures  | BTCUSDT | bid  |    98 |        6 | T2         | NULL     | Delta           |
+| binance_futures  | BTCUSDT | ask  |   101 |        2 | T0         | T1       | Snapshot=>Delta |
+| binance_futures  | BTCUSDT | ask  |   102 |        4 | T0         | NULL     | Snapshot        |
+| binance_futures  | BTCUSDT | ask  |   103 |        2 | T2         | NULL     | Delta           |
 
-| Exchange         | Symbol  | Side | Price | Quantity (old) | Valid From | Valid To |
-|------------------|---------|------|------:|---------------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |              7 | T1         | T3       |
+
 
 #### Apply **T10** snapshot**
 
@@ -139,29 +145,29 @@ Rules at `T10`:
 
 **Active rows after T10:**
 
-| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To |
-|------------------|---------|------|------:|---------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |   100 |        6 | T3         | NULL     |
-| binance_futures  | BTCUSDT | bid  |    97 |        8 | T10        | NULL     |
-| binance_futures  | BTCUSDT | ask  |   102 |        5 | T10        | NULL     |
-| binance_futures  | BTCUSDT | ask  |   104 |        1 | T10        | NULL     |
+| Exchange         | Symbol  | Side | Price | Quantity | Valid From | Valid To | Type     |
+|------------------|---------|------|------:|---------:|------------|----------|----------|
+| binance_futures  | BTCUSDT | bid  |   100 |        6 | T3         | NULL     | Delta    |
+| binance_futures  | BTCUSDT | bid  |    97 |        8 | T10        | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | ask  |   102 |        5 | T10        | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | ask  |   104 |        1 | T10        | NULL     | Snapshot |
 
 *Rows closed at T10 (due to snapshot reconciliation):*
 
-| Exchange         | Symbol  | Side | Price | Quantity (old) | Valid From | Valid To |
-|------------------|---------|------|------:|---------------:|------------|----------|
-| binance_futures  | BTCUSDT | bid  |    99 |              3 | T0         | T10      |
-| binance_futures  | BTCUSDT | bid  |    98 |              6 | T2         | T10      |
-| binance_futures  | BTCUSDT | ask  |   103 |              2 | T2         | T10      |
-| binance_futures  | BTCUSDT | ask  |   102 |              4 | T0         | T10      |
+| Exchange         | Symbol  | Side | Price | Quantity (old) | Valid From | Valid To | Type               |
+|------------------|---------|------|------:|---------------:|------------|----------|--------------------|
+| binance_futures  | BTCUSDT | bid  |    99 |              3 | T0         | T10      | Snapshot=>Snapshot |
+| binance_futures  | BTCUSDT | bid  |    98 |              6 | T2         | T10      | Delta=>Snapshot    |
+| binance_futures  | BTCUSDT | ask  |   103 |              2 | T2         | T10      | Delta=>Snapshot    |
+| binance_futures  | BTCUSDT | ask  |   102 |              4 | T0         | T10      | Snapshot=>Snapshot |
 
 *Rows inserted at T10 (differences/new levels):*
 
-| Exchange         | Symbol  | Side | Price | Quantity (new) | Valid From | Valid To |
-|------------------|---------|------|------:|---------------:|------------|----------|
-| binance_futures  | BTCUSDT | ask  |   102 |              5 | T10        | NULL     |
-| binance_futures  | BTCUSDT | bid  |    97 |              8 | T10        | NULL     |
-| binance_futures  | BTCUSDT | ask  |   104 |              1 | T10        | NULL     |
+| Exchange         | Symbol  | Side | Price | Quantity (new) | Valid From | Valid To | Type     |
+|------------------|---------|------|------:|---------------:|------------|----------|----------|
+| binance_futures  | BTCUSDT | ask  |   102 |              5 | T10        | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | bid  |    97 |              8 | T10        | NULL     | Snapshot |
+| binance_futures  | BTCUSDT | ask  |   104 |              1 | T10        | NULL     | Snapshot |
 
 ---
 
@@ -169,19 +175,19 @@ Rules at `T10`:
 
 This table lists **all versions** of each price level and their validity windows `[valid_from, valid_to)`.
 
-| Side | Price | Quantity | Valid From | Valid To (exclusive) |
-|------|------:|---------:|------------|----------------------|
-| bid  |   100 |        5 | T0         | T1                   |
-| bid  |   100 |        7 | T1         | T3                   |
-| bid  |   100 |        6 | T3         | NULL                 |
-| bid  |    99 |        3 | T0         | T10                  |
-| bid  |    98 |        6 | T2         | T10                  |
-| bid  |    97 |        8 | T10        | NULL                 |
-| ask  |   101 |        2 | T0         | T1                   |
-| ask  |   102 |        4 | T0         | T10                  |
-| ask  |   102 |        5 | T10        | NULL                 |
-| ask  |   103 |        2 | T2         | T10                  |
-| ask  |   104 |        1 | T10        | NULL                 |
+| Side | Price | Quantity | Valid From | Valid To (exclusive) | Type               |
+|------|------:|---------:|------------|----------------------|--------------------|
+| bid  |   100 |        5 | T0         | T1                   | Snapshot=>Delta    |
+| bid  |   100 |        7 | T1         | T3                   | Delta              |
+| bid  |   100 |        6 | T3         | NULL                 | Delta              |
+| bid  |    99 |        3 | T0         | T10                  | Snapshot=>Snapshot |
+| bid  |    98 |        6 | T2         | T10                  | Delta=>Snapshot    |
+| bid  |    97 |        8 | T10        | NULL                 | Snapshot           |
+| ask  |   101 |        2 | T0         | T1                   | Snapshot=>Delta    |
+| ask  |   102 |        4 | T0         | T10                  | Snapshot=>Snapshot |
+| ask  |   102 |        5 | T10        | NULL                 | Snapshot           |
+| ask  |   103 |        2 | T2         | T10                  | Delta=>Snapshot    |
+| ask  |   104 |        1 | T10        | NULL                 | Snapshot           |
 
 > **Time‑travel query**: select all rows where `valid_from <= :T` and `valid_to IS NULL OR valid_to > :T` to reconstruct the book at `:T`.
 
