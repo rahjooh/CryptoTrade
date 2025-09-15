@@ -14,7 +14,7 @@ shards:
       - BNBUSDTM
       - ONDOUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - BTC-USDT-SWAP
 #        - XRP-USDT-SWAP
 #        - BNB-USDT-SWAP
@@ -38,7 +38,7 @@ shards:
       - SUIUSDTM
       - SHIBUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - ETH-USDT-SWAP
 #        - SHIB-USDT-SWAP
       swap_orderbook_delta:
@@ -62,7 +62,7 @@ shards:
       - PEPEUSDTM
       - DOGEUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - SOL-USDT
 #        - DOT-USDT-SWAP
 #        - PEPE-USDT-SWAP
@@ -90,7 +90,7 @@ shards:
       - XBTUSDCM
       - ETHUSDCM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - WIF-USDT-SWAP
 #        - ADA-USDT-SWAP
 #        - BTC-USDC-SWAP
@@ -119,9 +119,9 @@ shards:
       - LTCUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SOL-USDC-SWAP
-        - SUI-USDC-SWAP
-        - XRP-USDC-SWAP
+        - SOL-USDC
+        - SUI-USDC
+        - XRP-USDC
         - LTC-USDT-SWAP
       swap_orderbook_delta:
         - SOL-USDC
@@ -146,7 +146,7 @@ shards:
       - UNIUSDTM
       - XLMUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - AVAX-USDT-SWAP
 #        - LINK-USDT-SWAP
 #        - UNI-USDT-SWAP
@@ -174,7 +174,7 @@ shards:
       - BCHUSDTM
       - TRXUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - NEAR-USDT-SWAP
 #        - HYPE-USDT-SWAP
 #        - BCH-USDT-SWAP
@@ -202,7 +202,7 @@ shards:
       - ARBUSDTM
       - INJUSDTM
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - AAVE-USDT-SWAP
 #        - BONK-USDT-SWAP
 #        - OP-USDT-SWAP
@@ -225,7 +225,7 @@ shards:
       - ONDOUSDT
       - SUIUSDT
     okx_symbols:
-      swap_orderbook_snapshot:
+#      swap_orderbook_snapshot:
 #        - INJ-USDT-SWAP
 #        - ONDO-USDT-SWAP
 #        - SUI-USDT-SWAP
