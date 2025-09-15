@@ -259,6 +259,52 @@
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
+      },
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 45,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "title": "Rate Limit Exceeded",
+        "metrics": [
+          ["CryptoFlow", "rate_limit_exceeded", "component", "binance_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "binance_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "okx_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "okx_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "kucoin_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "kucoin_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "bybit_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "bybit_fobd", { "stat": "Sum" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 51,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "title": "IP Bans",
+        "metrics": [
+          ["CryptoFlow", "ip_ban", "component", "binance_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "binance_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "okx_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "okx_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "kucoin_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "kucoin_fobd", { "stat": "Sum" }],
+          [".", ".", "component", "bybit_fobs", { "stat": "Sum" }],
+          [".", ".", "component", "bybit_fobd", { "stat": "Sum" }]
+        ],
+        "period": 300
       }
     }
   ]
