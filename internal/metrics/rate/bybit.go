@@ -14,9 +14,29 @@ import (
 // X-Bapi-Limit-Reset-Timestamp which provide the current limit, remaining
 // requests and the reset timestamp in milliseconds respectively.
 func ReportBybitSnapshotWeight(log *logger.Log, header http.Header, ip string) {
-	limit, _ := strconv.ParseInt(header.Get("X-Bapi-Limit"), 10, 64)
-	remaining, _ := strconv.ParseInt(header.Get("X-Bapi-Limit-Status"), 10, 64)
-	resetTS, _ := strconv.ParseInt(header.Get("X-Bapi-Limit-Reset-Timestamp"), 10, 64)
+	// Bybit has changed header names over time; try both the old X-Bapi-*
+	// headers and the generic X-RateLimit-* variants. Missing headers are
+	// treated as zero which previously resulted in metrics always reading
+	// zero. Falling back ensures metrics are populated regardless of which
+	// set is returned by the API.
+	limitStr := header.Get("X-Bapi-Limit")
+	if limitStr == "" {
+		limitStr = header.Get("X-RateLimit-Limit")
+	}
+
+	remainingStr := header.Get("X-Bapi-Limit-Status")
+	if remainingStr == "" {
+		remainingStr = header.Get("X-RateLimit-Remaining")
+	}
+
+	resetTSStr := header.Get("X-Bapi-Limit-Reset-Timestamp")
+	if resetTSStr == "" {
+		resetTSStr = header.Get("X-RateLimit-Reset")
+	}
+
+	limit, _ := strconv.ParseInt(limitStr, 10, 64)
+	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+	resetTS, _ := strconv.ParseInt(resetTSStr, 10, 64)
 	used := limit - remaining
 
 	l := log.WithComponent("bybit_reader")

@@ -12,7 +12,8 @@ func TestReportKucoinSnapshotWeight(t *testing.T) {
 	header := http.Header{}
 	header.Set("gw-ratelimit-remaining", "1990")
 	header.Set("gw-ratelimit-reset", "1000")
-	ReportKucoinSnapshotWeight(log, header, 0, 2000, "")
+	header.Set("gw-ratelimit-limit", "2000")
+	ReportKucoinSnapshotWeight(log, header, 0, 0, "")
 }
 
 func TestReportKucoinWSWeight(t *testing.T) {
@@ -21,6 +22,26 @@ func TestReportKucoinWSWeight(t *testing.T) {
 	tracker.RegisterOutgoing(50)
 	tracker.RegisterConnectionAttempt()
 	ReportKucoinWSWeight(log, tracker, "")
+}
+
+func TestReportBybitSnapshotWeight(t *testing.T) {
+	log := logger.GetLogger()
+
+	t.Run("legacy_headers", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("X-Bapi-Limit", "120")
+		header.Set("X-Bapi-Limit-Status", "100")
+		header.Set("X-Bapi-Limit-Reset-Timestamp", "1000")
+		ReportBybitSnapshotWeight(log, header, "")
+	})
+
+	t.Run("rate_limit_headers", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("X-RateLimit-Limit", "120")
+		header.Set("X-RateLimit-Remaining", "100")
+		header.Set("X-RateLimit-Reset", "1000")
+		ReportBybitSnapshotWeight(log, header, "")
+	})
 }
 
 func TestReportRateLimitExceeded(t *testing.T) {
