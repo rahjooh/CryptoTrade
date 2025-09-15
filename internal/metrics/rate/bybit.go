@@ -9,10 +9,9 @@ import (
 	"cryptoflow/logger"
 )
 
-// ReportBybitSnapshotWeight parses Bybit rate-limit headers and emits metrics.
-// It expects headers X-Bapi-Limit, X-Bapi-Limit-Status and
-// X-Bapi-Limit-Reset-Timestamp which provide the current limit, remaining
-// requests and the reset timestamp in milliseconds respectively.
+// ReportBybitSnapshotWeight parses Bybit rate-limit headers and emits a
+// `used_weight` metric for the given IP. It falls back between legacy
+// X-Bapi-* headers and the newer X-RateLimit-* variants.
 func ReportBybitSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	// Bybit has changed header names over time; try both the old X-Bapi-*
 	// headers and the generic X-RateLimit-* variants. Missing headers are
@@ -29,26 +28,16 @@ func ReportBybitSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 		remainingStr = header.Get("X-RateLimit-Remaining")
 	}
 
-	resetTSStr := header.Get("X-Bapi-Limit-Reset-Timestamp")
-	if resetTSStr == "" {
-		resetTSStr = header.Get("X-RateLimit-Reset")
-	}
-
 	limit, _ := strconv.ParseInt(limitStr, 10, 64)
 	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
-	resetTS, _ := strconv.ParseInt(resetTSStr, 10, 64)
 	used := limit - remaining
+	if used < 0 {
+		used = 0
+	}
 
 	l := log.WithComponent("bybit_reader")
 	fields := logger.Fields{"ip": ip}
 	l.LogMetric("bybit_reader", "used_weight", used, "gauge", fields)
-	l.LogMetric("bybit_reader", "remaining_weight", remaining, "gauge", fields)
-	l.LogMetric("bybit_reader", "limit", limit, "gauge", fields)
-	l.LogMetric("bybit_reader", "reset_timestamp", resetTS, "gauge", fields)
-	if limit > 0 {
-		pct := float64(remaining) / float64(limit)
-		l.LogMetric("bybit_reader", "remaining_ratio", pct, "gauge", fields)
-	}
 }
 
 // BybitWSWeightTracker tracks outgoing websocket messages and connection

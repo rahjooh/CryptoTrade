@@ -254,7 +254,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		if limit == 0 {
 			limit = r.config.ExchangeRateLimit.Kucoin.RequestWeight
 		}
-		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, 0, limit, r.ip)
+		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, r.ip)
 	}
 
 	if resp == nil {

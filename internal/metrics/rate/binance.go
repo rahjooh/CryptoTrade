@@ -28,36 +28,15 @@ func FetchRequestWeightLimit(ctx context.Context, client *futures.Client) (int64
 	return 0, nil
 }
 
-// depthSnapshotWeight returns the request weight for the depth endpoint based
-// on the requested level limit. According to Binance docs the maximum 1000
-// levels cost 20 weight. The weight scales with the depth requested.
-func depthSnapshotWeight(limit int) int64 {
-	switch {
-	case limit <= 100:
-		return 1
-	case limit <= 500:
-		return 5
-	case limit <= 1000:
-		return 20
-	default:
-		return 20
-	}
-}
-
 // ReportSnapshotWeight parses the used weight from the HTTP response headers
-// and emits metrics for weight usage.
-func ReportSnapshotWeight(log *logger.Log, header http.Header, rateLimit int64, depthLimit int, ip string) {
+// and emits a single `used_weight` metric for the given IP address.
+func ReportSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	usedStr := header.Get("X-MBX-USED-WEIGHT-1m")
 	used, _ := strconv.ParseInt(usedStr, 10, 64)
-	remaining := rateLimit - used
-	endpointWeight := depthSnapshotWeight(depthLimit)
 
 	l := log.WithComponent("binance_reader")
 	fields := logger.Fields{"ip": ip}
 	l.LogMetric("binance_reader", "used_weight", used, "gauge", fields)
-	l.LogMetric("binance_reader", "remaining_weight", remaining, "gauge", fields)
-	fieldsWithLimit := logger.Fields{"limit": depthLimit, "ip": ip}
-	l.LogMetric("binance_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLimit)
 }
 
 // WSWeightTracker tracks the number of outgoing websocket messages and
