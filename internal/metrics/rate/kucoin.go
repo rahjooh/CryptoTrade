@@ -9,9 +9,6 @@ import (
 	"cryptoflow/logger"
 )
 
-// kucoinPublicPoolLimit is the default public pool quota per 30s window for VIP0 accounts.
-const kucoinPublicPoolLimit int64 = 2000
-
 // kucoinSnapshotWeight returns the request weight for KuCoin snapshot endpoints.
 // level 0 denotes a full L2 snapshot, while 20 and 100 correspond to partial
 // depth20 and depth100 snapshots respectively.
@@ -30,7 +27,7 @@ func kucoinSnapshotWeight(level int) int64 {
 
 // ReportKucoinSnapshotWeight parses rate limit headers from KuCoin REST
 // responses and emits metrics about weight usage and remaining quota.
-func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, ip string) {
+func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, limit int64, ip string) {
 	remainingStr := header.Get("gw-ratelimit-remaining")
 	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
 	resetStr := header.Get("gw-ratelimit-reset")
@@ -40,21 +37,15 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, level int, 
 
 	l := log.WithComponent("kucoin_reader")
 	fields := logger.Fields{"ip": ip}
+	used := limit - remaining
+	if used < 0 {
+		used = 0
+	}
+	l.LogMetric("kucoin_reader", "used_weight", used, "gauge", fields)
 	l.LogMetric("kucoin_reader", "remaining_weight", remaining, "gauge", fields)
 	l.LogMetric("kucoin_reader", "reset_ms", reset, "gauge", fields)
 	fieldsWithLevel := logger.Fields{"level": level, "ip": ip}
 	l.LogMetric("kucoin_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLevel)
-
-	near := int64(0)
-	if kucoinPublicPoolLimit > 0 && remaining < kucoinPublicPoolLimit/5 {
-		near = 1
-	}
-	l.LogMetric("kucoin_reader", "near_limit", near, "gauge", fields)
-	banned := int64(0)
-	if remaining <= 0 {
-		banned = 1
-	}
-	l.LogMetric("kucoin_reader", "banned", banned, "gauge", fields)
 }
 
 // KucoinWSWeightTracker tracks outgoing websocket messages and connection

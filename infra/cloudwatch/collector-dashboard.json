@@ -155,33 +155,110 @@
         "stat": "Maximum",
         "metrics": [
           ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
-          [ "Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem"} ],
-          [ "Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", {  "label": "Disk" } ]
-
-        ]
+          ["Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem" }],
+          ["Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
+        ],
+        "yAxis": { "left": { "label": "%", "min": 0, "max": 100 } }
       }
     },
     {
       "type": "metric",
       "x": 0,
       "y": 21,
-      "width": 24,
+      "width": 12,
       "height": 6,
       "properties": {
         "view": "gauge",
         "region": "ap-south-1",
-        "title": "Exchange Rate Limit Status",
+        "title": "Binance Used Weight",
         "metrics": [
-          ["CryptoFlow", "near_limit", "component", "binance_reader", "ip", "*", { "label": "Binance Near Limit", "stat": "Maximum" }],
-          ["CryptoFlow", "banned", "component", "binance_reader", "ip", "*", { "label": "Binance Banned", "stat": "Maximum" }],
-          ["CryptoFlow", "near_limit", "component", "bybit_reader", "ip", "*", { "label": "Bybit Near Limit", "stat": "Maximum" }],
-          ["CryptoFlow", "banned", "component", "bybit_reader", "ip", "*", { "label": "Bybit Banned", "stat": "Maximum" }],
-          ["CryptoFlow", "near_limit", "component", "kucoin_reader", "ip", "*", { "label": "Kucoin Near Limit", "stat": "Maximum" }],
-          ["CryptoFlow", "banned", "component", "kucoin_reader", "ip", "*", { "label": "Kucoin Banned", "stat": "Maximum" }],
-          ["CryptoFlow", "near_limit", "component", "okx_reader", "ip", "*", { "label": "OKX Near Limit", "stat": "Maximum" }],
-          ["CryptoFlow", "banned", "component", "okx_reader", "ip", "*", { "label": "OKX Banned", "stat": "Maximum" }]
+          ["CryptoFlow", "used_weight", "component", "binance_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 2400 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 21,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "gauge",
+        "region": "ap-south-1",
+        "title": "Bybit Used Weight",
+        "metrics": [
+          ["CryptoFlow", "used_weight", "component", "bybit_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
+        ],
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 120 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 27,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "gauge",
+        "region": "ap-south-1",
+        "title": "KuCoin Used Weight",
+        "metrics": [
+          ["CryptoFlow", "used_weight", "component", "kucoin_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
+        ],
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 4000 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 27,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "gauge",
+        "region": "ap-south-1",
+        "title": "OKX Used Weight",
+        "metrics": [
+          ["CryptoFlow", "used_weight", "component", "okx_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
+        ],
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
       }
     }
   ]
