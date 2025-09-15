@@ -58,16 +58,6 @@ func ReportSnapshotWeight(log *logger.Log, header http.Header, rateLimit int64, 
 	l.LogMetric("binance_reader", "remaining_weight", remaining, "gauge", fields)
 	fieldsWithLimit := logger.Fields{"limit": depthLimit, "ip": ip}
 	l.LogMetric("binance_reader", "endpoint_weight", endpointWeight, "gauge", fieldsWithLimit)
-	near := int64(0)
-	if rateLimit > 0 && remaining*5 <= rateLimit {
-		near = 1
-	}
-	l.LogMetric("binance_reader", "near_limit", near, "gauge", fields)
-	banned := int64(0)
-	if remaining <= 0 {
-		banned = 1
-	}
-	l.LogMetric("binance_reader", "banned", banned, "gauge", fields)
 }
 
 // WSWeightTracker tracks the number of outgoing websocket messages and

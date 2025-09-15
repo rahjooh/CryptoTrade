@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -45,7 +46,13 @@ func InitCloudWatch(region, namespace, dashboard string) {
 
 // publishMetrics sends the provided metric data to CloudWatch if a client is configured.
 func publishMetrics(ctx context.Context, data []cwtypes.MetricDatum) {
-	if cwClient == nil || len(data) == 0 {
+	log := GetLogger().WithComponent("cloudwatch")
+	if cwClient == nil {
+		log.Debug("CloudWatch client not initialized; skipping metric publish")
+		return
+	}
+	if len(data) == 0 {
+		log.Debug("no metric data to publish")
 		return
 	}
 	_, err := cwClient.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
@@ -53,8 +60,16 @@ func publishMetrics(ctx context.Context, data []cwtypes.MetricDatum) {
 		MetricData: data,
 	})
 	if err != nil {
-		GetLogger().WithComponent("cloudwatch").WithError(err).Warn("failed to publish CloudWatch metrics")
+		log.WithError(err).Warn("failed to publish CloudWatch metrics")
+		return
 	}
+	names := make([]string, 0, len(data))
+	for _, d := range data {
+		if d.MetricName != nil {
+			names = append(names, *d.MetricName)
+		}
+	}
+	log.WithField("metrics", strings.Join(names, ",")).Debug("published metrics to CloudWatch")
 }
 
 // CreateDefaultDashboard creates or updates a basic CloudWatch dashboard with
