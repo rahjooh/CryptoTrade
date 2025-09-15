@@ -172,3 +172,39 @@ CryptoFlow is released under the [Apache 2.0 License](LICENSE).
 
 _“Built for speed, clarity, and observability.”_
 
+| symbols      | binance | bybit | kucoin | okx |
+| ------------ | ------- |-------|--------|-----|
+| AAVEUSDT     | yes     | yes   | yes    | yes |
+| ADAUSDT      | yes     | yes   | yes    | yes |
+| ARBUSDT      | yes     | yes   | yes    | yes |
+| AVAXUSDT     | yes     | yes   | yes    | yes |
+| BCHUSDT      | yes     | yes   | yes    | yes |
+| BNBUSDT      | yes     | yes   | yes    | yes |
+| BONKUSDT     | yes     | yes   | yes    | yes |
+| BTCUSDC      | yes     | yes   | yes    | no  |
+| BTCUSDT      | yes     | yes   | yes    | yes |
+| DOGEUSDT     | yes     | yes   | yes    | yes |
+| DOTUSDT      | yes     | yes   | yes    | yes |
+| ETHUSDC      | yes     | yes   | yes    | no  |
+| ETHUSDT      | yes     | yes   | yes    | yes |
+| FARTCOINUSDT | yes     | yes   | no     | no  |
+| FTMUSDT      | no      | no    | no     | no  |
+| HYPEUSDT     | yes     | yes   | yes    | yes |
+| INJUSDT      | yes     | yes   | yes    | yes |
+| LINKUSDT     | yes     | yes   | yes    | yes |
+| LTCUSDT      | yes     | yes   | yes    | yes |
+| NEARUSDT     | yes     | yes   | yes    | yes |
+| ONDOUSDT     | yes     | yes   | yes    | yes |
+| OPUSDT       | yes     | yes   | yes    | yes |
+| PEPEUSDT     | yes     | yes   | yes    | yes |
+| SHIBUSDT     | yes     | yes   | yes    | yes |
+| SOLUSDC      | yes     | yes   | yes    | no  |
+| SOLUSDT      | yes     | yes   | yes    | yes |
+| SUIUSDC      | yes     | yes   | yes    | no  |
+| SUIUSDT      | yes     | yes   | yes    | yes |
+| TRXUSDT      | yes     | yes   | yes    | yes |
+| UNIUSDT      | yes     | yes   | yes    | yes |
+| WIFUSDT      | yes     | yes   | yes    | yes |
+| XLMUSDT      | yes     | yes   | yes    | yes |
+| XRPUSDC      | yes     | yes   | yes    | no  |
+| XRPUSDT      | yes     | yes   | yes    | yes |
