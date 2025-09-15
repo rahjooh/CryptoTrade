@@ -122,7 +122,7 @@ shards:
         - SOL-USDC
         - SUI-USDC
         - XRP-USDC
-        - LTC-USDT
+        - LTC-USDT-SWAP
       swap_orderbook_delta:
         - SOL-USDC
         - SUI-USDC
