@@ -2,7 +2,6 @@ package rate
 
 import (
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -12,12 +11,18 @@ import (
 // ReportKucoinSnapshotWeight parses rate limit headers from KuCoin REST
 // responses and emits a single `used_weight` metric for the given IP address.
 func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, ip string) {
-	remainingStr := header.Get("gw-ratelimit-remaining")
-	remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+	remainingVals := extractInts(header.Get("gw-ratelimit-remaining"))
+	limitVals := extractInts(header.Get("gw-ratelimit-limit"))
 
-	limitStr := header.Get("gw-ratelimit-limit")
-	limit, _ := strconv.ParseInt(limitStr, 10, 64)
-
+	var limit, remaining int64
+	if len(limitVals) > 0 {
+		limit = limitVals[0]
+	}
+	if len(remainingVals) > 0 {
+		remaining = remainingVals[0]
+	} else {
+		remaining = limit
+	}
 	used := limit - remaining
 	if used < 0 {
 		used = 0

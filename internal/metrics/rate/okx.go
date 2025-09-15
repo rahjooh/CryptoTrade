@@ -2,7 +2,6 @@ package rate
 
 import (
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -25,12 +24,20 @@ func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	if usedStr == "" {
 		usedStr = header.Get("X-RateLimit-Used")
 	}
-	var used int64
-	if usedStr != "" {
-		used, _ = strconv.ParseInt(usedStr, 10, 64)
-	} else {
-		limit, _ := strconv.ParseInt(limitStr, 10, 64)
-		remaining, _ := strconv.ParseInt(remainingStr, 10, 64)
+	limitVals := extractInts(limitStr)
+	remainingVals := extractInts(remainingStr)
+	usedVals := extractInts(usedStr)
+
+	var limit, remaining, used int64
+	if len(limitVals) > 0 {
+		limit = limitVals[0]
+	}
+	if len(remainingVals) > 0 {
+		remaining = remainingVals[0]
+	}
+	if len(usedVals) > 0 {
+		used = usedVals[0]
+	} else if limit > 0 {
 		used = limit - remaining
 	}
 	if used < 0 {
