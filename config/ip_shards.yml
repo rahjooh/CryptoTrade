@@ -15,9 +15,9 @@ shards:
       - ONDOUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - BTC-USDT-SWAP
-        - XRP-USDT-SWAP
-        - BNB-USDT-SWAP
+#        - BTC-USDT-SWAP
+#        - XRP-USDT-SWAP
+#        - BNB-USDT-SWAP
       swap_orderbook_delta:
         - BTC-USDT
         - XRP-USDT
@@ -39,8 +39,8 @@ shards:
       - SHIBUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - ETH-USDT-SWAP
-        - SHIB-USDT-SWAP
+#        - ETH-USDT-SWAP
+#        - SHIB-USDT-SWAP
       swap_orderbook_delta:
         - ETH-USDT
         - SHIB-USDT
@@ -63,10 +63,10 @@ shards:
       - DOGEUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SOL-USDT
-        - DOT-USDT-SWAP
-        - PEPE-USDT-SWAP
-        - DOGE-USDT-SWAP
+#        - SOL-USDT
+#        - DOT-USDT-SWAP
+#        - PEPE-USDT-SWAP
+#        - DOGE-USDT-SWAP
       swap_orderbook_delta:
         - SOL-USDT
         - DOT-USDT
@@ -91,10 +91,10 @@ shards:
       - ETHUSDCM
     okx_symbols:
       swap_orderbook_snapshot:
-        - WIF-USDT-SWAP
-        - ADA-USDT-SWAP
-        - BTC-USDC-SWAP
-        - ETH-USDC-SWAP
+#        - WIF-USDT-SWAP
+#        - ADA-USDT-SWAP
+#        - BTC-USDC-SWAP
+#        - ETH-USDC-SWAP
       swap_orderbook_delta:
         - WIF-USDT
         - ADA-USDT
@@ -119,9 +119,9 @@ shards:
       - LTCUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - SOL-USDC
-        - SUI-USDC
-        - XRP-USDC
+        - SOL-USDC-SWAP
+        - SUI-USDC-SWAP
+        - XRP-USDC-SWAP
         - LTC-USDT-SWAP
       swap_orderbook_delta:
         - SOL-USDC
@@ -147,10 +147,10 @@ shards:
       - XLMUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - AVAX-USDT-SWAP
-        - LINK-USDT-SWAP
-        - UNI-USDT-SWAP
-        - XLM-USDT-SWAP
+#        - AVAX-USDT-SWAP
+#        - LINK-USDT-SWAP
+#        - UNI-USDT-SWAP
+#        - XLM-USDT-SWAP
       swap_orderbook_delta:
         - AVAX-USDT
         - LINK-USDT
@@ -175,10 +175,10 @@ shards:
       - TRXUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - NEAR-USDT-SWAP
-        - HYPE-USDT-SWAP
-        - BCH-USDT-SWAP
-        - TRX-USDT-SWAP
+#        - NEAR-USDT-SWAP
+#        - HYPE-USDT-SWAP
+#        - BCH-USDT-SWAP
+#        - TRX-USDT-SWAP
       swap_orderbook_delta:
         - NEAR-USDT
         - HYPE-USDT-SWAP
@@ -203,10 +203,10 @@ shards:
       - INJUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
-        - AAVE-USDT-SWAP
-        - BONK-USDT-SWAP
-        - OP-USDT-SWAP
-        - ARB-USDT-SWAP
+#        - AAVE-USDT-SWAP
+#        - BONK-USDT-SWAP
+#        - OP-USDT-SWAP
+#        - ARB-USDT-SWAP
       swap_orderbook_delta:
         - AAVE-USDT
         - BONK-USDT-SWAP
@@ -226,9 +226,9 @@ shards:
       - SUIUSDT
     okx_symbols:
       swap_orderbook_snapshot:
-        - INJ-USDT-SWAP
-        - ONDO-USDT-SWAP
-        - SUI-USDT-SWAP
+#        - INJ-USDT-SWAP
+#        - ONDO-USDT-SWAP
+#        - SUI-USDT-SWAP
       swap_orderbook_delta:
         - INJ-USDT
         - ONDO-USDT
