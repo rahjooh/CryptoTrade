@@ -2,25 +2,61 @@ package rate
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 
 	"cryptoflow/logger"
 )
 
-func TestReportKucoinSnapshotWeight(t *testing.T) {
-	log := logger.GetLogger()
-	header := http.Header{}
-	header.Set("gw-ratelimit-remaining", "1990")
-	header.Set("gw-ratelimit-limit", "2000")
-	ReportKucoinSnapshotWeight(log, header, "")
+func TestExtractSignedInts(t *testing.T) {
+	cases := []struct {
+		input string
+		want  []int64
+	}{
+		{input: "", want: []int64{}},
+		{input: "2000", want: []int64{2000}},
+		{input: "-1", want: []int64{-1}},
+		{input: "2000;w=60", want: []int64{2000, 60}},
+		{input: "20, 4000", want: []int64{20, 4000}},
+	}
+
+	for _, c := range cases {
+		got := extractSignedInts(c.input)
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("extractSignedInts(%q) = %v, want %v", c.input, got, c.want)
+		}
+	}
 }
 
-func TestReportKucoinWSWeight(t *testing.T) {
-	log := logger.GetLogger()
-	tracker := NewKucoinWSWeightTracker()
-	tracker.RegisterOutgoing(50)
-	tracker.RegisterConnectionAttempt()
-	ReportKucoinWSWeight(log, tracker, "")
+func TestComputeKucoinUsedWeight(t *testing.T) {
+	cases := []struct {
+		name      string
+		limit     string
+		remaining string
+		want      int64
+	}{
+		{name: "basic", limit: "2000", remaining: "1990", want: 10},
+		{name: "negative_remaining", limit: "2000", remaining: "-1", want: 0},
+		{name: "multi_window", limit: "20, 4000;w=60", remaining: "18, 3995", want: 5},
+		{name: "missing_remaining", limit: "2000", remaining: "", want: 0},
+		{name: "missing_limit", limit: "", remaining: "1990", want: 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			header := http.Header{}
+			if c.limit != "" {
+				header.Set("gw-ratelimit-limit", c.limit)
+			}
+			if c.remaining != "" {
+				header.Set("gw-ratelimit-remaining", c.remaining)
+			}
+			got := computeKucoinUsedWeight(header)
+			if got != c.want {
+				t.Fatalf("computeKucoinUsedWeight(%v) = %d, want %d", header, got, c.want)
+			}
+		})
+	}
 }
 
 func TestReportBybitSnapshotWeight(t *testing.T) {
@@ -126,6 +162,28 @@ func TestComputeOkxSnapshotUsedWeight(t *testing.T) {
 		got := computeOkxSnapshotUsedWeight(header)
 		if got != 150 {
 			t.Fatalf("expected used weight 150, got %d", got)
+		}
+	})
+
+	t.Run("window_before_values", func(t *testing.T) {
+		header := http.Header{}
+		header.Add("Rate-Limit-Limit", "window=2s;type=public;limit=10")
+		header.Add("Rate-Limit-Remaining", "window=2s;type=public;remaining=4")
+		got := computeOkxSnapshotUsedWeight(header)
+		if got != 6 {
+			t.Fatalf("expected used weight 6, got %d", got)
+		}
+	})
+
+	t.Run("match_by_attributes", func(t *testing.T) {
+		header := http.Header{}
+		header.Add("Rate-Limit-Limit", "type=public;resource=orders;window=60s;limit=240")
+		header.Add("Rate-Limit-Limit", "type=private;resource=orders;window=60s;limit=100")
+		header.Add("Rate-Limit-Remaining", "resource=orders;remaining=120;type=public;window=60s")
+		header.Add("Rate-Limit-Remaining", "remaining=100;window=60s;resource=orders;type=private")
+		got := computeOkxSnapshotUsedWeight(header)
+		if got != 120 {
+			t.Fatalf("expected used weight 120, got %d", got)
 		}
 	})
 }

@@ -277,7 +277,7 @@ func parseBybitUsageText(source string) (bybitUsage, bool) {
 		}
 	}
 	if usage.Used == 0 {
-		if n, ok := extractValueByKeys(source, []string{"used", "consume", "usage", "cost"}); ok {
+		if n, ok := extractValueByKeys(source, []string{"remaining", "remain", "left", "available", "status"}); ok {
 			usage.Used = n
 		}
 	}
@@ -358,7 +358,7 @@ func parseUsageValue(val interface{}) (bybitUsage, bool) {
 					found = true
 					continue
 				}
-			case strings.Contains(lower, "remain") || strings.Contains(lower, "left") || strings.Contains(lower, "available"):
+			case strings.Contains(lower, "remain") || strings.Contains(lower, "left") || strings.Contains(lower, "available") || strings.Contains(lower, "status"):
 				if n, ok := toInt(child); ok {
 					usage.Remaining = n
 					found = true
