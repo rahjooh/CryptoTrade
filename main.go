@@ -147,11 +147,13 @@ func main() {
 
 	cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols = binanceAll
 	cfg.Source.Binance.Future.Orderbook.Delta.Symbols = binanceAll
+
 	cfg.Source.Bybit.Future.Orderbook.Snapshots.Symbols = bybitAll
 	cfg.Source.Bybit.Future.Orderbook.Delta.Symbols = bybitAll
+
 	cfg.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = kucoinAll
 	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
-	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
+
 	cfg.Source.Okx.Future.Orderbook.Snapshots.Symbols = okxAll
 	cfg.Source.Okx.Future.Orderbook.Delta.Symbols = okxAll
 
