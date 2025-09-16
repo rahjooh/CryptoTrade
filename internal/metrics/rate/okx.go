@@ -2,6 +2,8 @@ package rate
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,41 +14,187 @@ import (
 // emits a single `used_weight` metric for the originating IP. It accepts both
 // standard and "X-" prefixed header variants.
 func ReportOkxSnapshotWeight(log *logger.Log, header http.Header, ip string) {
-	limitStr := header.Get("Rate-Limit-Limit")
-	if limitStr == "" {
-		limitStr = header.Get("X-RateLimit-Limit")
-	}
-	remainingStr := header.Get("Rate-Limit-Remaining")
-	if remainingStr == "" {
-		remainingStr = header.Get("X-RateLimit-Remaining")
-	}
-	usedStr := header.Get("Rate-Limit-Used")
-	if usedStr == "" {
-		usedStr = header.Get("X-RateLimit-Used")
-	}
-	limitVals := extractInts(limitStr)
-	remainingVals := extractInts(remainingStr)
-	usedVals := extractInts(usedStr)
-
-	var limit, remaining, used int64
-	if len(limitVals) > 0 {
-		limit = limitVals[0]
-	}
-	if len(remainingVals) > 0 {
-		remaining = remainingVals[0]
-	}
-	if len(usedVals) > 0 {
-		used = usedVals[0]
-	} else if limit > 0 {
-		used = limit - remaining
-	}
-	if used < 0 {
-		used = 0
-	}
-
+	used := computeOkxSnapshotUsedWeight(header)
 	l := log.WithComponent("okx_reader")
 	fields := logger.Fields{"ip": ip}
 	l.LogMetric("okx_reader", "used_weight", used, "gauge", fields)
+}
+
+type okxRateEntry struct {
+	value  int64
+	window string
+}
+
+func computeOkxSnapshotUsedWeight(header http.Header) int64 {
+	limitEntries := parseOkxRateEntries(header, "Rate-Limit-Limit", "X-RateLimit-Limit")
+	remainingEntries := parseOkxRateEntries(header, "Rate-Limit-Remaining", "X-RateLimit-Remaining")
+	usedEntries := parseOkxRateEntries(header, "Rate-Limit-Used", "X-RateLimit-Used")
+
+	usedByWindow := buildOkxWindowValueMap(usedEntries)
+	remainingByWindow := buildOkxWindowValueMap(remainingEntries)
+	limitByWindow := buildOkxWindowValueMap(limitEntries)
+
+	best := int64(0)
+	for _, val := range usedByWindow {
+		if val > best {
+			best = val
+		}
+	}
+
+	for window, limit := range limitByWindow {
+		candidate := int64(0)
+		if used, ok := usedByWindow[window]; ok {
+			candidate = used
+		}
+		if limit > 0 {
+			if remaining, ok := remainingByWindow[window]; ok {
+				diff := limit - remaining
+				if diff < 0 {
+					diff = 0
+				}
+				if diff > candidate {
+					candidate = diff
+				}
+			}
+		}
+		if candidate > best {
+			best = candidate
+		}
+	}
+
+	if best > 0 {
+		return best
+	}
+
+	maxLen := len(limitEntries)
+	if len(remainingEntries) > maxLen {
+		maxLen = len(remainingEntries)
+	}
+	if len(usedEntries) > maxLen {
+		maxLen = len(usedEntries)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var (
+			limitVal, remainingVal, usedVal    int64
+			haveLimit, haveRemaining, haveUsed bool
+		)
+		if i < len(limitEntries) {
+			limitVal = limitEntries[i].value
+			haveLimit = true
+		}
+		if i < len(remainingEntries) {
+			remainingVal = remainingEntries[i].value
+			haveRemaining = true
+		}
+		if i < len(usedEntries) {
+			usedVal = usedEntries[i].value
+			haveUsed = true
+		}
+
+		candidate := int64(0)
+		if haveUsed {
+			candidate = usedVal
+		}
+		if (!haveUsed || candidate == 0) && haveLimit && haveRemaining {
+			diff := limitVal - remainingVal
+			if diff < 0 {
+				diff = 0
+			}
+			if diff > candidate {
+				candidate = diff
+			}
+		}
+		if candidate > best {
+			best = candidate
+		}
+	}
+
+	if best < 0 {
+		return 0
+	}
+	return best
+}
+
+func buildOkxWindowValueMap(entries []okxRateEntry) map[string]int64 {
+	m := make(map[string]int64)
+	for _, e := range entries {
+		key := e.window
+		if current, ok := m[key]; !ok || e.value > current {
+			m[key] = e.value
+		}
+	}
+	return m
+}
+
+func parseOkxRateEntries(header http.Header, names ...string) []okxRateEntry {
+	var entries []okxRateEntry
+	for _, name := range names {
+		for _, raw := range header.Values(name) {
+			for _, part := range strings.Split(raw, ",") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				value, ok := parseOkxFirstInt(part)
+				if !ok {
+					continue
+				}
+				entries = append(entries, okxRateEntry{
+					value:  value,
+					window: extractOkxWindow(part),
+				})
+			}
+		}
+	}
+	return entries
+}
+
+func parseOkxFirstInt(s string) (int64, bool) {
+	start := -1
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch >= '0' && ch <= '9' {
+			if start == -1 {
+				start = i
+			}
+		} else if start != -1 {
+			val, err := strconv.ParseInt(s[start:i], 10, 64)
+			if err != nil {
+				return 0, false
+			}
+			return val, true
+		}
+	}
+	if start != -1 {
+		val, err := strconv.ParseInt(s[start:], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return val, true
+	}
+	return 0, false
+}
+
+func extractOkxWindow(s string) string {
+	lower := strings.ToLower(s)
+	prefixes := []string{"window=", "w="}
+	for _, prefix := range prefixes {
+		if idx := strings.Index(lower, prefix); idx != -1 {
+			start := idx + len(prefix)
+			end := start
+			for end < len(lower) {
+				switch lower[end] {
+				case ';', ',', ' ':
+					goto done
+				}
+				end++
+			}
+		done:
+			return lower[idx:end]
+		}
+	}
+	return ""
 }
 
 // OkxWSWeightTracker tracks websocket connection attempts and operations.
