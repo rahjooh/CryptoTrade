@@ -33,7 +33,7 @@ source:
           connection: rest
           url: https://fapi.binance.com/fapi/v1/depth
           limit: 1000                   # Number of price levels
-          interval_ms: 10000             # Collect every 1000 mili seconds
+          interval_ms: 1000             # Collect every 1000 mili seconds
           concurrent_symbols: 5         # Max concurrent API calls
           batch_size: 1000             #  Records per batch before writing
         delta:
