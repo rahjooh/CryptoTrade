@@ -57,6 +57,7 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []stri
 		SetMaxConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost).
 		SetIdleConnTimeout(cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout).
 		SetTimeout(cfg.Reader.Timeout).
+		AddInterceptors(newKucoinRateMetricInterceptor(log, localIP)).
 		Build()
 
 	option := sdktype.NewClientOptionBuilder().
@@ -319,4 +320,28 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	} else {
 		log.Warn("raw channel is full, dropping data")
 	}
+}
+
+// newKucoinRateMetricInterceptor creates an HTTP interceptor that forwards
+// KuCoin REST rate-limit headers to the metrics package. The SDK strips the
+// window metadata when it converts headers into integers, so we tap the raw
+// response headers here before they are parsed incorrectly.
+func newKucoinRateMetricInterceptor(log *logger.Log, ip string) sdktype.Interceptor {
+	return &kucoinRateMetricInterceptor{log: log, ip: ip}
+}
+
+type kucoinRateMetricInterceptor struct {
+	log *logger.Log
+	ip  string
+}
+
+func (i *kucoinRateMetricInterceptor) Before(req *http.Request) (*http.Request, error) {
+	return req, nil
+}
+
+func (i *kucoinRateMetricInterceptor) After(req *http.Request, resp *http.Response, err error) (*http.Response, error) {
+	if err == nil && resp != nil && resp.Header != nil && resp.Header.Get("gw-ratelimit-limit") != "" {
+		ratemetrics.ReportKucoinSnapshotWeight(i.log, resp.Header, i.ip)
+	}
+	return resp, err
 }

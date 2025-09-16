@@ -126,9 +126,19 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		baseURL = fmt.Sprintf("https://%s", parsed.Host)
 	}
 
+	transportOpt := sdktype.NewTransportOptionBuilder().
+		SetMaxIdleConns(r.config.Source.Kucoin.ConnectionPool.MaxIdleConns).
+		SetMaxIdleConnsPerHost(r.config.Source.Kucoin.ConnectionPool.MaxIdleConns).
+		SetMaxConnsPerHost(r.config.Source.Kucoin.ConnectionPool.MaxConnsPerHost).
+		SetIdleConnTimeout(r.config.Source.Kucoin.ConnectionPool.IdleConnTimeout).
+		SetTimeout(r.config.Reader.Timeout).
+		AddInterceptors(newKucoinRateMetricInterceptor(r.log, r.localIP)).
+		Build()
+
 	wsOpt := sdktype.NewWebSocketClientOptionBuilder().Build()
 	option := sdktype.NewClientOptionBuilder().
 		WithFuturesEndpoint(baseURL).
+		WithTransportOption(transportOpt).
 		WithWebSocketClientOption(wsOpt).
 		Build()
 

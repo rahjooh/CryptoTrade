@@ -4,6 +4,8 @@ shards:
       - BTCUSDT
       - XRPUSDT
       - BNBUSDT
+      - SEIUSDT
+      - ETHUSDT
     bybit_symbols:
       - BTCUSDT
       - XRPUSDT
@@ -25,8 +27,6 @@ shards:
 
   - ip: 172.31.8.202
     binance_symbols:
-      - SEIUSDT
-      - ETHUSDT
       - 1000SHIBUSDT
     bybit_symbols:
       - SEIUSDT
