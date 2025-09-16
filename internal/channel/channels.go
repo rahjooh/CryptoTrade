@@ -1,8 +1,6 @@
 package channel
 
 import (
-	"context"
-
 	"cryptoflow/internal/channel/fobd"
 	"cryptoflow/internal/channel/fobs"
 )
@@ -16,15 +14,6 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	return &Channels{
 		FOBS: fobs.NewChannels(rawBufferSize, normBufferSize),
 		FOBD: fobd.NewChannels(rawBufferSize, normBufferSize),
-	}
-}
-
-func (c *Channels) StartMetricsReporting(ctx context.Context) {
-	if c.FOBS != nil {
-		c.FOBS.StartMetricsReporting(ctx)
-	}
-	if c.FOBD != nil {
-		c.FOBD.StartMetricsReporting(ctx)
 	}
 }
 

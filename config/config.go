@@ -17,7 +17,6 @@ type Config struct {
 	Writer            WriterConfig            `yaml:"writer"`
 	Source            SourceConfig            `yaml:"source"`
 	Storage           StorageConfig           `yaml:"storage"`
-	Monitoring        MonitoringConfig        `yaml:"monitoring"`
 	Logging           LoggingConfig           `yaml:"logging"`
 	ExchangeRateLimit ExchangeRateLimitConfig `yaml:"exchange_rate_limit"`
 }
@@ -289,37 +288,6 @@ type GCSConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	Bucket    string `yaml:"bucket"`
 	ProjectID string `yaml:"project_id"`
-}
-
-type MonitoringConfig struct {
-	Metrics MetricsConfig `yaml:"metrics"`
-	Health  HealthConfig  `yaml:"health"`
-	Alerts  AlertsConfig  `yaml:"alerts"`
-}
-
-type MetricsConfig struct {
-	Enabled            bool          `yaml:"enabled"`
-	Port               int           `yaml:"port"`
-	Path               string        `yaml:"path"`
-	CollectionInterval time.Duration `yaml:"collection_interval"`
-}
-
-type HealthConfig struct {
-	Port          int           `yaml:"port"`
-	Path          string        `yaml:"path"`
-	CheckInterval time.Duration `yaml:"check_interval"`
-}
-
-type AlertsConfig struct {
-	Enabled    bool                   `yaml:"enabled"`
-	WebhookURL string                 `yaml:"webhook_url"`
-	Thresholds AlertsThresholdsConfig `yaml:"thresholds"`
-}
-
-type AlertsThresholdsConfig struct {
-	ErrorRate   float64 `yaml:"error_rate"`
-	BufferUsage float64 `yaml:"buffer_usage"`
-	LatencyP99  int     `yaml:"latency_p99"`
 }
 
 type LoggingConfig struct {

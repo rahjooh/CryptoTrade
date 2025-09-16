@@ -12,7 +12,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	"cryptoflow/internal/metrics"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -30,12 +29,6 @@ type Flattener struct {
 	// Batching
 	batches   map[string]*models.BatchFOBSMessage
 	lastFlush map[string]time.Time
-
-	// Metrics
-	messagesProcessed int64
-	batchesProcessed  int64
-	errorsCount       int64
-	entriesProcessed  int64
 }
 
 func NewFlattener(cfg *appconfig.Config, ch *fobs.Channels) *Flattener {
@@ -79,9 +72,6 @@ func (f *Flattener) Start(ctx context.Context) error {
 	f.wg.Add(1)
 	go f.batchFlusher()
 
-	// Start metrics reporter
-	go f.metricsReporter(ctx)
-
 	log.Info("flattener started successfully")
 	return nil
 }
@@ -121,20 +111,7 @@ func (f *Flattener) worker(workerID int) {
 				return
 			}
 
-			start := time.Now()
-			entriesProcessed := f.processMessage(rawMsg)
-			duration := time.Since(start)
-
-			f.messagesProcessed++
-			f.entriesProcessed += int64(entriesProcessed)
-
-			logger.LogPerformanceEntry(log, "flattener", "process_message", duration, logger.Fields{
-				"worker_id":         workerID,
-				"exchange":          rawMsg.Exchange,
-				"symbol":            rawMsg.Symbol,
-				"entries_processed": entriesProcessed,
-				"message_type":      rawMsg.MessageType,
-			})
+			f.processMessage(rawMsg)
 		}
 	}
 }
@@ -156,7 +133,6 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 	case "bybit":
 		var bybitResp models.BybitFOBSresp
 		if err := json.Unmarshal(rawMsg.Data, &bybitResp); err != nil {
-			f.errorsCount++
 			log.WithError(err).Warn("failed to unmarshal orderbook data")
 			return 0
 		}
@@ -167,7 +143,6 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 		}
 	default:
 		if err := json.Unmarshal(rawMsg.Data, &book); err != nil {
-			f.errorsCount++
 			log.WithError(err).Warn("failed to unmarshal orderbook data")
 			return 0
 		}
@@ -189,8 +164,6 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 		"asks_count":    len(book.Asks),
 	}).Info("message processed successfully")
 
-	logger.LogDataFlowEntry(log, "raw_channel", "flattened_channel", len(entries), "flattened_entries")
-
 	return len(entries)
 }
 
@@ -202,7 +175,6 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 	for level, bid := range orderbook.Bids {
 		price, err := strconv.ParseFloat(bid[0], 64)
 		if err != nil {
-			f.errorsCount++
 			f.log.WithComponent("flattener").WithError(err).WithFields(logger.Fields{
 				"exchange":  rawMsg.Exchange,
 				"symbol":    rawMsg.Symbol,
@@ -215,7 +187,6 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 
 		quantity, err := strconv.ParseFloat(bid[1], 64)
 		if err != nil {
-			f.errorsCount++
 			f.log.WithComponent("flattener").WithError(err).WithFields(logger.Fields{
 				"exchange":     rawMsg.Exchange,
 				"symbol":       rawMsg.Symbol,
@@ -247,7 +218,6 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 	for level, ask := range orderbook.Asks {
 		price, err := strconv.ParseFloat(ask[0], 64)
 		if err != nil {
-			f.errorsCount++
 			f.log.WithComponent("flattener").WithError(err).WithFields(logger.Fields{
 				"exchange":  rawMsg.Exchange,
 				"symbol":    rawMsg.Symbol,
@@ -260,7 +230,6 @@ func (f *Flattener) flattenOrderbook(rawMsg models.RawFOBSMessage, orderbook mod
 
 		quantity, err := strconv.ParseFloat(ask[1], 64)
 		if err != nil {
-			f.errorsCount++
 			f.log.WithComponent("flattener").WithError(err).WithFields(logger.Fields{
 				"exchange":     rawMsg.Exchange,
 				"symbol":       rawMsg.Symbol,
@@ -375,12 +344,10 @@ func (f *Flattener) flushBatch(batchKey string) {
 	log.Info("flushing batch")
 
 	if f.channels.SendNorm(f.ctx, *batch) {
-		f.batchesProcessed++
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
 
 		log.Info("batch flushed successfully")
-		logger.LogDataFlowEntry(log, "flattener", "flattened_channel", batch.RecordCount, "batch")
 
 	} else if f.ctx.Err() != nil {
 		return
@@ -401,35 +368,4 @@ func (f *Flattener) flushAllBatches() {
 	}
 
 	log.WithFields(logger.Fields{"remaining_batches": len(f.batches)}).Info("all batches flushed")
-}
-
-func (f *Flattener) metricsReporter(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			f.reportMetrics()
-		}
-	}
-}
-
-func (f *Flattener) reportMetrics() {
-	f.mu.RLock()
-	stats := metrics.FOBSProcessorMetrics{
-		MessagesProcessed: f.messagesProcessed,
-		BatchesProcessed:  f.batchesProcessed,
-		ErrorsCount:       f.errorsCount,
-		EntriesProcessed:  f.entriesProcessed,
-		ActiveBatches:     len(f.batches),
-		RawChannelLen:     len(f.channels.Raw),
-		RawChannelCap:     cap(f.channels.Raw),
-		NormChannelLen:    len(f.channels.Norm),
-		NormChannelCap:    cap(f.channels.Norm),
-	}
-	f.mu.RUnlock()
-	metrics.ReportFOBSProcessorMetrics(f.log, stats)
 }
