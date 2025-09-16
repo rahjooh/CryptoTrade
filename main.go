@@ -5,7 +5,6 @@ import (
 	"flag"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -55,20 +54,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger.InitCloudWatch(cfg.Storage.S3.Region, cfg.Cryptoflow.Name, cfg.Logging.DashboardName)
-	logger.StartReport(ctx, log, 30*time.Second)
-
-	if strings.ToLower(cfg.Logging.Level) == "report" {
-		logger.StartReport(ctx, log, 30*time.Second)
-	}
-
 	channels := channel.NewChannels(
 		cfg.Channels.RawBuffer,
 		cfg.Channels.ProcessedBuffer,
 	)
 	defer channels.Close()
-
-	go channels.StartMetricsReporting(ctx)
 
 	shardCfg, err := config.LoadIPShards(*shardPath)
 	if err != nil {

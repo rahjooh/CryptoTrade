@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -22,7 +21,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	"cryptoflow/internal/metadata"
-	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -92,12 +90,6 @@ type snapshotWriter struct {
 	buffer      map[string][]models.NormFOBSMessage
 	flushTicker *time.Ticker
 	metaGen     *metadata.Generator
-
-	// Metrics
-	batchesWritten int64
-	filesWritten   int64
-	bytesWritten   int64
-	errorsCount    int64
 }
 
 // SnapshotWriter is an exported alias for snapshotWriter allowing external packages
@@ -267,9 +259,6 @@ func (w *snapshotWriter) start(ctx context.Context) error {
 	w.wg.Add(1)
 	go w.flushWorker()
 
-	// Start metrics reporter
-	go w.metricsReporter(ctx)
-
 	log.Info("s3 writer started successfully")
 	return nil
 }
@@ -309,8 +298,6 @@ func (w *snapshotWriter) worker(workerID int) {
 				return
 			}
 			w.addBatch(batch)
-			atomic.AddInt64(&w.batchesWritten, 1)
-			logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
 		}
 	}
 }
@@ -339,7 +326,6 @@ func (w *snapshotWriter) processBatch(batch models.BatchFOBSMessage) {
 	// Create parquet file in memory
 	parquetData, fileSize, err := w.createParquetFile(batch.Entries)
 	if err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		log.WithError(err).Error("failed to create parquet file")
 		return
 	}
@@ -347,7 +333,6 @@ func (w *snapshotWriter) processBatch(batch models.BatchFOBSMessage) {
 	// Upload to S3
 	err = w.uploadToS3(s3Key, parquetData)
 	if err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		log.WithError(err).
 			WithEnv("S3_BUCKET").
 			WithFields(logger.Fields{"bucket": w.config.Storage.S3.Bucket, "s3_key": s3Key}).
@@ -355,22 +340,9 @@ func (w *snapshotWriter) processBatch(batch models.BatchFOBSMessage) {
 		return
 	}
 
-	// Update metrics
-	atomic.AddInt64(&w.filesWritten, 1)
-	atomic.AddInt64(&w.bytesWritten, fileSize)
-
 	log.WithFields(logger.Fields{
 		"file_size": fileSize,
 	}).Info("batch processed and uploaded successfully")
-
-	logger.LogDataFlowEntry(log, "flattened_channel", "s3", batch.RecordCount, "parquet_file")
-	w.log.LogMetric("s3_writer", "file_uploaded", 1, "counter", logger.Fields{
-		"exchange":     batch.Exchange,
-		"symbol":       batch.Symbol,
-		"file_size":    fileSize,
-		"record_count": batch.RecordCount,
-	})
-	logger.IncrementS3WriteSnapshot(fileSize)
 
 	df := metadata.DataFile{
 		Path:        fmt.Sprintf("s3://%s/%s", w.config.Storage.S3.Bucket, s3Key),
@@ -531,32 +503,6 @@ func (w *snapshotWriter) uploadToS3(key string, data []byte) error {
 
 	log.Info("successfully uploaded to S3")
 	return nil
-}
-
-func (w *snapshotWriter) metricsReporter(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			w.reportMetrics()
-		}
-	}
-}
-
-func (w *snapshotWriter) reportMetrics() {
-	stats := metrics.WriterStats{
-		BatchesWritten: atomic.LoadInt64(&w.batchesWritten),
-		FilesWritten:   atomic.LoadInt64(&w.filesWritten),
-		BytesWritten:   atomic.LoadInt64(&w.bytesWritten),
-		ErrorsCount:    atomic.LoadInt64(&w.errorsCount),
-		NormChannelLen: len(w.NormFOBSch),
-		NormChannelCap: cap(w.NormFOBSch),
-	}
-	metrics.ReportWriter(w.log, "s3_writer", stats)
 }
 
 // Start exposes the start method of snapshotWriter.

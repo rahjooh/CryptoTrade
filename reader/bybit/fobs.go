@@ -11,7 +11,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -155,8 +154,6 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	}
 	defer resp.Body.Close()
 
-	ratemetrics.ReportBybitSnapshotWeight(r.log, resp.Header, r.ip)
-
 	var body struct {
 		Result models.BybitFOBSresp `json:"result"`
 	}
@@ -185,9 +182,10 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	}
 
 	if r.channels.SendRaw(r.ctx, raw) {
-		log.Debug("orderbook data sent to raw channel")
-		logger.LogDataFlowEntry(log, "bybit_api", "raw_channel", len(payload), "orderbook_entries")
-		logger.IncrementSnapshotRead(len(payload))
+		log.WithFields(logger.Fields{
+			"payload_bytes": len(payload),
+			"entries":       len(body.Result.Bids) + len(body.Result.Asks),
+		}).Info("orderbook data sent to raw channel")
 	} else if err := r.ctx.Err(); err != nil {
 		log.WithError(err).Warn("failed to send orderbook to raw channel")
 	} else {

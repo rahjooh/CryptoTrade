@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,7 +19,6 @@ import (
 	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
-	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 )
@@ -102,12 +100,6 @@ type DeltaWriter struct {
 	wg          *sync.WaitGroup
 	running     bool
 	log         *logger.Log
-
-	// Metrics counters updated atomically
-	batchesWritten int64
-	filesWritten   int64
-	bytesWritten   int64
-	errorsCount    int64
 }
 
 // Start launches workers and flush ticker.
@@ -127,9 +119,6 @@ func (w *DeltaWriter) start(ctx context.Context) error {
 
 	w.wg.Add(1)
 	go w.flushWorker()
-
-	w.wg.Add(1)
-	go w.metricsReporter()
 
 	w.log.WithComponent("delta_writer").Info("delta writer started")
 	return nil
@@ -164,7 +153,6 @@ func (w *DeltaWriter) worker() {
 				return
 			}
 			w.addBatch(batch)
-			atomic.AddInt64(&w.batchesWritten, 1)
 		}
 	}
 }
@@ -258,18 +246,14 @@ func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 	start := time.Now()
 	data, size, err := w.createParquet(batch.Entries)
 	if err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("create parquet failed")
 		return
 	}
 	key := w.s3Key(batch)
 	if err := w.upload(key, data); err != nil {
-		atomic.AddInt64(&w.errorsCount, 1)
 		w.log.WithComponent("delta_writer").WithError(err).Error("upload to s3 failed")
 		return
 	}
-	atomic.AddInt64(&w.filesWritten, 1)
-	atomic.AddInt64(&w.bytesWritten, size)
 	duration := time.Since(start)
 	fields := logger.Fields{
 		"s3_key":      key,
@@ -281,7 +265,6 @@ func (w *DeltaWriter) writeBatch(batch models.BatchFOBDMessage) {
 		fields["throughput_bytes_per_sec"] = float64(size) / duration.Seconds()
 	}
 	w.log.WithComponent("delta_writer").WithFields(fields).Info("delta batch uploaded")
-	logger.IncrementS3WriteDelta(size)
 }
 
 func (w *DeltaWriter) createParquet(entries []models.NormFOBDMessage) ([]byte, int64, error) {
@@ -322,32 +305,6 @@ func (w *DeltaWriter) upload(key string, data []byte) error {
 	ctx := context.WithoutCancel(w.ctx)
 	_, err := w.s3Client.PutObject(ctx, input)
 	return err
-}
-
-func (w *DeltaWriter) metricsReporter() {
-	defer w.wg.Done()
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-w.ctx.Done():
-			return
-		case <-ticker.C:
-			w.reportMetrics()
-		}
-	}
-}
-
-func (w *DeltaWriter) reportMetrics() {
-	stats := metrics.WriterStats{
-		BatchesWritten: atomic.LoadInt64(&w.batchesWritten),
-		FilesWritten:   atomic.LoadInt64(&w.filesWritten),
-		BytesWritten:   atomic.LoadInt64(&w.bytesWritten),
-		ErrorsCount:    atomic.LoadInt64(&w.errorsCount),
-		NormChannelLen: len(w.normChan),
-		NormChannelCap: cap(w.normChan),
-	}
-	metrics.ReportWriter(w.log, "delta_writer", stats)
 }
 
 // Start exposes the internal start method for external packages.

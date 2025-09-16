@@ -3,7 +3,6 @@ package fobd
 import (
 	"context"
 	"sync"
-	"time"
 
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -20,12 +19,9 @@ type Channels struct {
 	Raw  chan models.RawFOBDMessage
 	Norm chan models.BatchFOBDMessage
 
-	stats               ChannelStats
-	statsMutex          sync.RWMutex
-	log                 *logger.Log
-	ctx                 context.Context
-	metricsReportTicker *time.Ticker
-	depthReportTicker   *time.Ticker
+	stats      ChannelStats
+	statsMutex sync.RWMutex
+	log        *logger.Log
 }
 
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
@@ -44,61 +40,7 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	return c
 }
 
-func (c *Channels) StartMetricsReporting(ctx context.Context) {
-	c.ctx = ctx
-	c.metricsReportTicker = time.NewTicker(30 * time.Second)
-	c.depthReportTicker = time.NewTicker(5 * time.Second)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				c.metricsReportTicker.Stop()
-				return
-			case <-c.metricsReportTicker.C:
-				c.logChannelStats(c.log)
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				c.depthReportTicker.Stop()
-				return
-			case <-c.depthReportTicker.C:
-				logger.RecordChannelDepth("fobd_raw", len(c.Raw), cap(c.Raw))
-				logger.RecordChannelDepth("fobd_norm", len(c.Norm), cap(c.Norm))
-			}
-		}
-	}()
-}
-
-func (c *Channels) logChannelStats(log *logger.Log) {
-	c.statsMutex.RLock()
-	stats := c.stats
-	c.statsMutex.RUnlock()
-
-	log.WithComponent("fobd_channels").WithFields(logger.Fields{
-		"raw_sent":         stats.RawSent,
-		"norm_sent":        stats.NormSent,
-		"raw_dropped":      stats.RawDropped,
-		"norm_dropped":     stats.NormDropped,
-		"raw_channel_len":  len(c.Raw),
-		"raw_channel_cap":  cap(c.Raw),
-		"norm_channel_len": len(c.Norm),
-		"norm_channel_cap": cap(c.Norm),
-	}).Info("FOBD channel statistics")
-}
-
 func (c *Channels) Close() {
-	if c.metricsReportTicker != nil {
-		c.metricsReportTicker.Stop()
-	}
-	if c.depthReportTicker != nil {
-		c.depthReportTicker.Stop()
-	}
 	close(c.Raw)
 	close(c.Norm)
 	c.log.WithComponent("fobd_channels").Info("FOBD channels closed")
@@ -120,14 +62,12 @@ func (c *Channels) IncrementRawDropped() {
 	c.statsMutex.Lock()
 	c.stats.RawDropped++
 	c.statsMutex.Unlock()
-	logger.IncrementDroppedMessages()
 }
 
 func (c *Channels) IncrementNormDropped() {
 	c.statsMutex.Lock()
 	c.stats.NormDropped++
 	c.statsMutex.Unlock()
-	logger.IncrementDroppedMessages()
 }
 
 func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOBDMessage) bool {
