@@ -12,7 +12,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
-	"cryptoflow/internal/metrics"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -94,9 +93,6 @@ func (p *DeltaProcessor) start(ctx context.Context) error {
 
 	p.wg.Add(1)
 	go p.flusher()
-
-	p.wg.Add(1)
-	go p.metricsReporter(ctx)
 
 	log.Info("delta processor started successfully")
 	return nil
@@ -390,31 +386,5 @@ func (p *DeltaProcessor) flushAll() {
 	p.mu.RUnlock()
 	for _, k := range keys {
 		p.flush(k)
-	}
-}
-
-func (p *DeltaProcessor) metricsReporter(ctx context.Context) {
-	defer p.wg.Done()
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			p.mu.RLock()
-			running := p.running
-			p.mu.RUnlock()
-			if !running {
-				return
-			}
-			sizes := metrics.FOBDProcessorMetrics{
-				RawLen:  len(p.channels.Raw),
-				RawCap:  cap(p.channels.Raw),
-				NormLen: len(p.channels.Norm),
-				NormCap: cap(p.channels.Norm),
-			}
-			metrics.ReportFOBDProcessorMetrics(p.log, sizes)
-		}
 	}
 }

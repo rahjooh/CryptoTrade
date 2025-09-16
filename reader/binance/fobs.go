@@ -12,7 +12,6 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -21,17 +20,16 @@ import (
 
 // Binance_FOBS_Reader fetches futures order book snapshots from Binance.
 type Binance_FOBS_Reader struct {
-	config      *config.Config
-	client      *futures.Client
-	channels    *fobs.Channels
-	ctx         context.Context
-	wg          *sync.WaitGroup
-	mu          sync.RWMutex
-	running     bool
-	log         *logger.Log
-	symbols     []string
-	weightLimit int64
-	ip          string
+	config   *config.Config
+	client   *futures.Client
+	channels *fobs.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
+	ip       string
 }
 
 // Binance_FOBS_NewReader creates a new Binance_FOBS_Reader using the binance-go client.
@@ -106,16 +104,6 @@ func (br *Binance_FOBS_Reader) Binance_FOBS_Start(ctx context.Context) error {
 		log.Warn("binance futures orderbook snapshots are disabled")
 		return fmt.Errorf("binance futures orderbook snapshots are disabled")
 	}
-
-	limit := br.config.ExchangeRateLimit.Binance.RequestWeight
-	if limit == 0 {
-		if fetched, err := ratemetrics.FetchRequestWeightLimit(ctx, br.client); err == nil {
-			limit = fetched
-		} else {
-			log.WithError(err).Warn("failed to fetch request weight limit")
-		}
-	}
-	br.weightLimit = limit
 
 	log.WithFields(logger.Fields{
 		"symbols":  br.symbols,
@@ -206,11 +194,12 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 	}
 	duration := time.Since(start)
 	defer resp.Body.Close()
-	logger.LogPerformanceEntry(log, "binance_reader", "api_request", duration, logger.Fields{
-		"symbol": symbol,
-	})
-
-	ratemetrics.ReportSnapshotWeight(br.log, resp.Header, br.ip)
+	log.WithFields(logger.Fields{
+		"symbol":         symbol,
+		"duration_ms":    duration.Milliseconds(),
+		"http_status":    resp.StatusCode,
+		"content_length": resp.ContentLength,
+	}).Info("orderbook snapshot fetched")
 
 	var binanceResp models.BinanceFOBSresp
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
@@ -234,9 +223,11 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 	}
 
 	if br.channels.SendRaw(br.ctx, rawData) {
-		log.Info("orderbook data sent to raw channel")
-		logger.LogDataFlowEntry(log, "binance_api", "raw_channel", len(binanceResp.Bids)+len(binanceResp.Asks), "orderbook_entries")
-		logger.IncrementSnapshotRead(len(payload))
+		log.WithFields(logger.Fields{
+			"bids":          len(binanceResp.Bids),
+			"asks":          len(binanceResp.Asks),
+			"payload_bytes": len(payload),
+		}).Info("orderbook data sent to raw channel")
 	} else if br.ctx.Err() != nil {
 		return
 	} else {

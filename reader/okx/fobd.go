@@ -11,7 +11,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -31,7 +30,6 @@ type Okx_FOBD_Reader struct {
 	log      *logger.Log
 	symbols  []string
 	localIP  string
-	wsWeight *ratemetrics.OkxWSWeightTracker
 }
 
 // Okx_FOBD_NewReader creates a new delta reader. The localIP parameter is kept
@@ -44,7 +42,6 @@ func Okx_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []stri
 		log:      logger.GetLogger(),
 		symbols:  symbols,
 		localIP:  localIP,
-		wsWeight: ratemetrics.NewOkxWSWeightTracker(),
 	}
 }
 
@@ -101,9 +98,6 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		if r.ctx.Err() != nil {
 			return
 		}
-		r.wsWeight.RegisterConnectionAttempt()
-		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight, r.localIP)
-
 		dialer := websocket.Dialer{}
 		if r.localIP != "" {
 			if ip := net.ParseIP(r.localIP); ip != nil {
@@ -115,7 +109,7 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 		conn, _, err := dialer.Dial(wsURL, nil)
 		if err != nil {
 			log.WithError(err).Warn("failed to connect websocket, retrying")
-			logger.IncrementRetryCount()
+			// log will capture retry attempts for visibility
 			select {
 			case <-time.After(5 * time.Second):
 				continue
@@ -140,9 +134,6 @@ func (r *Okx_FOBD_Reader) stream(symbols []string, wsURL string) {
 			conn.Close()
 			continue
 		}
-		r.wsWeight.RegisterOp(1)
-		ratemetrics.ReportOkxWSWeight(r.log, r.wsWeight, r.localIP)
-
 		// Read subscription acknowledgement
 		if _, resp, err := conn.ReadMessage(); err != nil {
 			log.WithError(err).Warn("failed to read subscription response")
@@ -273,9 +264,17 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
 		Data:      payload,
 		Timestamp: time.Now(),
 	}
-	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{"symbol": resp.Symbol, "action": resp.Action, "bids": len(resp.Bids), "asks": len(resp.Asks)}).Debug("forwarding delta to channel")
+	r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{
+		"symbol": resp.Symbol,
+		"action": resp.Action,
+		"bids":   len(resp.Bids),
+		"asks":   len(resp.Asks),
+	}).Debug("forwarding delta to channel")
 	if r.channels.SendRaw(r.ctx, msg) {
-		logger.IncrementDeltaRead(len(payload))
+		r.log.WithComponent("okx_delta_reader").WithFields(logger.Fields{
+			"payload_bytes": len(payload),
+			"symbol":        resp.Symbol,
+		}).Debug("delta message forwarded to raw channel")
 	} else if r.ctx.Err() != nil {
 		return
 	} else {

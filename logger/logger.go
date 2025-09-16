@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/sirupsen/logrus"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
@@ -125,76 +122,13 @@ func (e *Entry) Info(args ...interface{}) {
 	e.Entry.Info(args...)
 }
 
-func (e *Entry) Warn(args ...interface{}) {
-	if component, ok := e.Entry.Data["component"].(string); ok {
-		recordWarn(component)
-	}
-	e.Entry.Warn(args...)
-}
+func (e *Entry) Warn(args ...interface{}) { e.Entry.Warn(args...) }
 
 func (e *Entry) Debug(args ...interface{}) {
 	e.Entry.Debug(args...)
 }
 
-func (e *Entry) Error(args ...interface{}) {
-	if component, ok := e.Entry.Data["component"].(string); ok {
-		recordError(component)
-	}
-	e.Entry.Error(args...)
-}
-
-// LogMetric method for Entry
-func (e *Entry) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
-	if fields == nil {
-		fields = make(Fields)
-	}
-	if metricType == "" {
-		metricType = "counter"
-	}
-	fields["metric"] = metric
-	fields["value"] = value
-	fields["metric_type"] = metricType
-
-	e.WithComponent(component).WithFields(fields).Info("metric")
-
-	// attempt to publish metric to CloudWatch
-	var val float64
-	switch v := value.(type) {
-	case int:
-		val = float64(v)
-	case int32:
-		val = float64(v)
-	case int64:
-		val = float64(v)
-	case float32:
-		val = float64(v)
-	case float64:
-		val = v
-	default:
-		GetLogger().WithComponent("cloudwatch").
-			WithFields(Fields{"metric": metric}).
-			Debug("non-numeric metric value; skipping publish")
-		return
-	}
-
-	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(component)}}
-	for k, v := range fields {
-		if k == "metric" || k == "metric_type" || k == "value" {
-			continue
-		}
-		if s, ok := v.(string); ok {
-			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
-		}
-	}
-
-	data := []cwtypes.MetricDatum{{
-		MetricName: aws.String(metric),
-		Dimensions: dims,
-		Unit:       cwtypes.StandardUnitCount,
-		Value:      aws.Float64(val),
-	}}
-	publishMetrics(context.Background(), data)
-}
+func (e *Entry) Error(args ...interface{}) { e.Entry.Error(args...) }
 
 // Configure sets up the logger with the provided configuration
 func (l *Log) Configure(level string, format string, output string, maxAge int) error {
@@ -269,33 +203,6 @@ func (l *Log) Configure(level string, format string, output string, maxAge int) 
 	}
 
 	return nil
-}
-
-// Performance logging helper
-func LogPerformanceEntry(entry *Entry, component string, operation string, duration time.Duration, fields Fields) {
-	if fields == nil {
-		fields = make(Fields)
-	}
-	fields["duration_ms"] = float64(duration.Nanoseconds()) / 1e6
-	fields["operation"] = operation
-
-	entry.WithFields(fields).WithComponent(component).Info("performance metric")
-}
-
-// Data flow logging helper
-func LogDataFlowEntry(entry *Entry, source string, destination string, recordCount int, dataType string) {
-	entry.WithFields(Fields{
-		"source":       source,
-		"destination":  destination,
-		"record_count": recordCount,
-		"data_type":    dataType,
-		"flow_type":    "data_flow",
-	}).Info("data flow metric")
-}
-
-// Metric logging helper
-func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
-	l.WithComponent(component).LogMetric(component, metric, value, metricType, fields)
 }
 
 // Set output for logger

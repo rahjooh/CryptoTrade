@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -12,7 +11,6 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -57,7 +55,6 @@ func Kucoin_FOBS_NewReader(cfg *config.Config, ch *fobs.Channels, symbols []stri
 		SetMaxConnsPerHost(cfg.Source.Kucoin.ConnectionPool.MaxConnsPerHost).
 		SetIdleConnTimeout(cfg.Source.Kucoin.ConnectionPool.IdleConnTimeout).
 		SetTimeout(cfg.Reader.Timeout).
-		AddInterceptors(newKucoinRateMetricInterceptor(log, localIP)).
 		Build()
 
 	option := sdktype.NewClientOptionBuilder().
@@ -231,7 +228,6 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		}
 
 		log.WithError(err).WithField("attempt", attempt).Warnf("retrying in %v", delay)
-		logger.IncrementRetryCount()
 
 		select {
 		case <-time.After(delay):
@@ -246,7 +242,6 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	}
 
 	if resp != nil {
-		header := http.Header{}
 		limit := r.config.ExchangeRateLimit.Kucoin.RequestWeight
 		var remaining, reset int64
 		if resp.CommonResponse != nil && resp.CommonResponse.RateLimit != nil {
@@ -257,10 +252,11 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 				limit = rl.Limit
 			}
 		}
-		header.Set("gw-ratelimit-remaining", strconv.FormatInt(remaining, 10))
-		header.Set("gw-ratelimit-reset", strconv.FormatInt(reset, 10))
-		header.Set("gw-ratelimit-limit", strconv.FormatInt(limit, 10))
-		ratemetrics.ReportKucoinSnapshotWeight(r.log, header, r.ip)
+		log.WithFields(logger.Fields{
+			"rate_limit":     limit,
+			"rate_remaining": remaining,
+			"rate_reset":     reset,
+		}).Debug("kucoin rate limit status")
 	}
 
 	if resp == nil {
@@ -312,36 +308,13 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	}
 
 	if r.channels.SendRaw(r.ctx, rawData) {
-		log.Info("orderbook data sent to raw channel")
-		logger.LogDataFlowEntry(log, "kucoin_api", "raw_channel", len(asks)+len(bids), "orderbook_entries")
-		logger.IncrementSnapshotRead(len(payload))
+		log.WithFields(logger.Fields{
+			"payload_bytes": len(payload),
+			"entries":       len(asks) + len(bids),
+		}).Info("orderbook data sent to raw channel")
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
 		log.Warn("raw channel is full, dropping data")
 	}
-}
-
-// newKucoinRateMetricInterceptor creates an HTTP interceptor that forwards
-// KuCoin REST rate-limit headers to the metrics package. The SDK strips the
-// window metadata when it converts headers into integers, so we tap the raw
-// response headers here before they are parsed incorrectly.
-func newKucoinRateMetricInterceptor(log *logger.Log, ip string) sdktype.Interceptor {
-	return &kucoinRateMetricInterceptor{log: log, ip: ip}
-}
-
-type kucoinRateMetricInterceptor struct {
-	log *logger.Log
-	ip  string
-}
-
-func (i *kucoinRateMetricInterceptor) Before(req *http.Request) (*http.Request, error) {
-	return req, nil
-}
-
-func (i *kucoinRateMetricInterceptor) After(req *http.Request, resp *http.Response, err error) (*http.Response, error) {
-	if err == nil && resp != nil && resp.Header != nil && resp.Header.Get("gw-ratelimit-limit") != "" {
-		ratemetrics.ReportKucoinSnapshotWeight(i.log, resp.Header, i.ip)
-	}
-	return resp, err
 }

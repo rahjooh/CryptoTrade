@@ -1,10 +1,6 @@
 package fobd
 
-import (
-	"context"
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestChannelsStats(t *testing.T) {
 	ch := NewChannels(2, 2)
@@ -20,9 +16,5 @@ func TestChannelsStats(t *testing.T) {
 
 func TestChannelsStartAndClose(t *testing.T) {
 	ch := NewChannels(1, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	ch.StartMetricsReporting(ctx)
-	time.Sleep(10 * time.Millisecond)
-	cancel()
 	ch.Close()
 }
