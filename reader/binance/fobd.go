@@ -10,7 +10,6 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -30,7 +29,6 @@ type Binance_FOBD_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
-	wsWeight *ratemetrics.WSWeightTracker
 	ip       string
 }
 
@@ -45,7 +43,6 @@ func Binance_FOBD_NewReader(cfg *appconfig.Config, ch *fobd.Channels, symbols []
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
-		wsWeight: ratemetrics.NewWSWeightTracker(),
 		ip:       localIP,
 	}
 }
@@ -114,9 +111,12 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 
 		if r.channels.SendRaw(r.ctx, msg) {
 			if log.Logger.IsLevelEnabled(logrus.DebugLevel) {
-				logger.LogDataFlowEntry(log, "binance_ws", "rawfobd", len(event.Bids)+len(event.Asks), "delta_entries")
+				log.WithFields(logger.Fields{
+					"bids":          len(event.Bids),
+					"asks":          len(event.Asks),
+					"payload_bytes": len(payload),
+				}).Debug("delta message forwarded to raw channel")
 			}
-			logger.IncrementDeltaRead(len(payload))
 		} else if r.ctx.Err() != nil {
 			return
 		} else {
@@ -131,9 +131,6 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 	}
 
 	for {
-		r.wsWeight.RegisterConnectionAttempt()
-		r.wsWeight.RegisterOutgoing(len(symbols))
-		ratemetrics.ReportWSWeight(r.log, r.wsWeight, r.ip)
 		doneC, stopC, err := futures.WsCombinedDiffDepthServe(symbols, handler, errHandler)
 		if err != nil {
 			log.WithError(err).Error("failed to subscribe to combined diff depth stream")

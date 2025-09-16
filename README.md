@@ -20,7 +20,7 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 1. **Reader** – polls the Binance depth endpoint at the configured interval and emits a `RawFOBSMessage`.
 2. **Flattener** – converts each message into a `BatchFOBSMessage`, expanding bids and asks into individual price levels.
 3. **S3 Writer** – buffers batches per `exchange/market/symbol` and periodically flushes them to S3 as Parquet files.
-4. **Channels** – provide back‑pressure aware communication between stages and expose lightweight metrics.
+4. **Channels** – provide back‑pressure aware communication between stages.
 
 ### Channels
 
@@ -40,7 +40,7 @@ CryptoFlow/
 ├── config/                # configuration files and loaders
 │   ├── config.yml         # runtime configuration
 │   └── ip_shards.yml      # per-IP symbol mappings
-├── internal/channel/      # channel definitions and monitoring
+├── internal/channel/      # channel definitions
 │   ├── fobs/              # snapshot channels
 │   └── fobd/              # delta channels
 ├── logger/                # zerolog wrapper
@@ -131,24 +131,7 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... S3_BUCKET=... \
   go run main.go -config config/config.yml
 ```
 
-Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).  Channel statistics are emitted every 30 seconds.
-
-### Monitoring
-
-names that all begin with the prefix `Hadi`. The namespace is set to the
-service name prefixed with `Hadi` (e.g. `Hadi-CryptoFlow`) and each metric name
-follows the same convention (such as `Hadi-CPUPercent` and
-`Hadi-ChannelMessages`). A sample CloudWatch agent configuration is provided in
-`infra/cloudwatch/cloudwatch-agent-config.json` for collecting host-level
-metrics on the EC2 instance running the service.
-
-A prebuilt dashboard template is available in
-`infra/cloudwatch/collector-dashboard.json`. Deploy it via the **Deploy
-Collector Dashboard** GitHub Action or by running `aws cloudwatch
-put-dashboard --dashboard-name Data --dashboard-body
-file://infra/cloudwatch/collector-dashboard.json`. When using
-`docker-compose`, the `cloudwatch` service runs the CloudWatch Agent with the
-provided configuration so the dashboard is populated with host metrics.
+Logging is handled by `logger` which wraps [zerolog](https://github.com/rs/zerolog).
 
 ---
 

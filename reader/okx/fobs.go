@@ -12,7 +12,6 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
-	ratemetrics "cryptoflow/internal/metrics/rate"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 	"golang.org/x/time/rate"
@@ -153,7 +152,13 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
-	ratemetrics.ReportOkxSnapshotWeight(r.log, header, r.localIP)
+	if header != nil {
+		log.WithFields(logger.Fields{
+			"rate_limit":     header.Get("Rate-Limit-Limit"),
+			"rate_remaining": header.Get("Rate-Limit-Remaining"),
+			"rate_reset":     header.Get("Rate-Limit-Reset"),
+		}).Debug("okx rate limit status")
+	}
 	if len(book.Bids) == 0 && len(book.Asks) == 0 {
 		log.Warn("received empty orderbook snapshot")
 		return
@@ -190,8 +195,10 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		MessageType: "snapshot",
 	}
 	if r.channels.SendRaw(r.ctx, msg) {
-		logger.LogDataFlowEntry(log, "okx_rest", "raw_channel", len(asks)+len(bids), "orderbook_entries")
-		logger.IncrementSnapshotRead(len(payload))
+		log.WithFields(logger.Fields{
+			"payload_bytes": len(payload),
+			"entries":       len(asks) + len(bids),
+		}).Info("orderbook data sent to raw channel")
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
