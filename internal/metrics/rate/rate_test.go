@@ -49,6 +49,87 @@ func TestReportBybitSnapshotWeight(t *testing.T) {
 	})
 }
 
+func TestComputeBybitUsed(t *testing.T) {
+	cases := []struct {
+		name   string
+		limit  string
+		status string
+		used   string
+		ip     string
+		want   int64
+	}{
+		{
+			name:   "remaining_only",
+			limit:  "120",
+			status: "100",
+			want:   20,
+		},
+		{
+			name:   "used_limit_pair",
+			status: "40/120",
+			want:   40,
+		},
+		{
+			name:   "ip_scoped_json",
+			limit:  "{\"per_ip\":{\"1.1.1.1\":{\"limit\":120},\"2.2.2.2\":{\"limit\":90}}}",
+			status: "{\"per_ip\":{\"1.1.1.1\":{\"limit\":120,\"remaining\":90},\"2.2.2.2\":{\"limit\":90,\"remaining\":80}}}",
+			ip:     "1.1.1.1",
+			want:   30,
+		},
+		{
+			name:  "used_header_json",
+			limit: "120",
+			used:  "{\"1.1.1.1\":55,\"2.2.2.2\":10}",
+			ip:    "1.1.1.1",
+			want:  55,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := computeBybitUsed(tc.limit, tc.status, tc.used, tc.ip)
+			if got != tc.want {
+				t.Fatalf("expected %d got %d", tc.want, got)
+			}
+		})
+	}
+}
+func TestComputeOkxSnapshotUsedWeight(t *testing.T) {
+	t.Run("single_window", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("Rate-Limit-Limit", "60;w=60")
+		header.Set("Rate-Limit-Remaining", "59;w=60")
+		got := computeOkxSnapshotUsedWeight(header)
+		if got != 1 {
+			t.Fatalf("expected used weight 1, got %d", got)
+		}
+	})
+
+	t.Run("multiple_windows", func(t *testing.T) {
+		header := http.Header{}
+		header.Add("Rate-Limit-Limit", "2;window=2s;type=public")
+		header.Add("Rate-Limit-Limit", "240;window=60s;type=public")
+		header.Add("Rate-Limit-Remaining", "2;window=2s;type=public")
+		header.Add("Rate-Limit-Remaining", "180;window=60s;type=public")
+		header.Add("Rate-Limit-Used", "0;window=2s;type=public")
+		header.Add("Rate-Limit-Used", "60;window=60s;type=public")
+		got := computeOkxSnapshotUsedWeight(header)
+		if got != 60 {
+			t.Fatalf("expected used weight 60, got %d", got)
+		}
+	})
+
+	t.Run("fallback_difference", func(t *testing.T) {
+		header := http.Header{}
+		header.Set("X-RateLimit-Limit", "600;w=60")
+		header.Set("X-RateLimit-Remaining", "450;w=60")
+		got := computeOkxSnapshotUsedWeight(header)
+		if got != 150 {
+			t.Fatalf("expected used weight 150, got %d", got)
+		}
+	})
+}
+
 func TestReportOkxSnapshotWeight(t *testing.T) {
 	log := logger.GetLogger()
 	header := http.Header{}

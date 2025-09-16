@@ -13,9 +13,16 @@ import (
 func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, ip string) {
 	remainingVals := extractInts(header.Get("gw-ratelimit-remaining"))
 	limitVals := extractInts(header.Get("gw-ratelimit-limit"))
+	used := kucoinUsedWeight(limitVals, remainingVals)
 
+	l := log.WithComponent("kucoin_reader")
+	fields := logger.Fields{"ip": ip}
+	l.LogMetric("kucoin_reader", "used_weight", used, "gauge", fields)
+}
+
+func kucoinUsedWeight(limitVals, remainingVals []int64) int64 {
 	var limit, remaining int64
-	if len(limitVals) > 0 {
+	if len(limitVals) > 0 && limitVals[0] > 0 {
 		limit = limitVals[0]
 	}
 	if len(remainingVals) > 0 {
@@ -23,14 +30,18 @@ func ReportKucoinSnapshotWeight(log *logger.Log, header http.Header, ip string) 
 	} else {
 		remaining = limit
 	}
+	if limit == 0 && remaining > 0 {
+		limit = remaining
+	}
+	if remaining < 0 {
+		remaining = limit
+	}
 	used := limit - remaining
 	if used < 0 {
 		used = 0
 	}
 
-	l := log.WithComponent("kucoin_reader")
-	fields := logger.Fields{"ip": ip}
-	l.LogMetric("kucoin_reader", "used_weight", used, "gauge", fields)
+	return used
 }
 
 // KucoinWSWeightTracker tracks outgoing websocket messages and connection
