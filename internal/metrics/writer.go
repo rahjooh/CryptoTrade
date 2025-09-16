@@ -34,7 +34,7 @@ func ReportWriter(log *logger.Log, component string, stats WriterStats) {
 	l.LogMetric(component, "avg_bytes_per_file", avgBytesPerFile, "gauge", logger.Fields{})
 	l.LogMetric(component, "norm_channel_len", stats.NormChannelLen, "gauge", logger.Fields{})
 
-	l.WithFields(logger.Fields{
+	entry := l.WithFields(logger.Fields{
 		"batches_written":    stats.BatchesWritten,
 		"files_written":      stats.FilesWritten,
 		"bytes_written":      stats.BytesWritten,
@@ -43,5 +43,12 @@ func ReportWriter(log *logger.Log, component string, stats WriterStats) {
 		"avg_bytes_per_file": avgBytesPerFile,
 		"norm_channel_len":   stats.NormChannelLen,
 		"norm_channel_cap":   stats.NormChannelCap,
-	}).Warn(component + " metrics")
+	})
+
+	if stats.ErrorsCount > 0 {
+		entry.Warn(component + " metrics")
+		return
+	}
+
+	entry.Info(component + " metrics")
 }
