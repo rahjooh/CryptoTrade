@@ -31,6 +31,8 @@ type Entry struct {
 
 var globalLogger *Log
 
+func enableReportLevel(l *Log) {}
+
 func init() {
 	globalLogger = Logger()
 }
@@ -44,15 +46,12 @@ func Logger() *Log {
 	if levelStr == "" {
 		levelStr = "info"
 	}
-	switch strings.ToLower(levelStr) {
-	case "report":
+	reportMode := false
+	if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
+		logger.SetLevel(lvl)
+	} else {
 		logger.SetLevel(logrus.InfoLevel)
-	default:
-		if lvl, err := logrus.ParseLevel(strings.ToLower(levelStr)); err == nil {
-			logger.SetLevel(lvl)
-		} else {
-			logger.SetLevel(logrus.InfoLevel)
-		}
+		reportMode = true
 	}
 
 	callerPrettyfier := func(f *runtime.Frame) (string, string) {
@@ -71,7 +70,12 @@ func Logger() *Log {
 		CallerPrettyfier: callerPrettyfier,
 	})
 	logger.AddHook(&callerHook{})
-	return &Log{Logger: logger}
+
+	log := &Log{Logger: logger}
+	if reportMode {
+		enableReportLevel(log)
+	}
+	return log
 }
 
 func GetLogger() *Log {
@@ -190,9 +194,11 @@ func (l *Log) Configure(level string, format string, output string, maxAge int) 
 	}
 
 	level = strings.ToLower(level)
+	reportMode := false
 	switch level {
 	case "report":
 		l.SetLevel(logrus.InfoLevel)
+		reportMode = true
 	default:
 		if lvl, err := logrus.ParseLevel(level); err == nil {
 			l.SetLevel(lvl)
@@ -253,6 +259,9 @@ func (l *Log) Configure(level string, format string, output string, maxAge int) 
 			}
 			l.SetOutput(file)
 		}
+	}
+	if reportMode {
+		enableReportLevel(l)
 	}
 
 	return nil
