@@ -16,17 +16,22 @@ import (
 	bybit "github.com/bybit-exchange/bybit.go.api"
 )
 
-// Bybit_FOBD_Reader streams futures order book deltas from Bybit.
+// ---------- Public Reader ----------
+
+// BybitFOBDReader streams futures order book deltas from Bybit and forwards them
+// to your Raw channel. It maintains per-symbol sequence state for gap detection.
 type Bybit_FOBD_Reader struct {
+	// Constructor inputs
 	config   *appconfig.Config
 	channels *fobd.Channels
-	ctx      context.Context
-	wg       *sync.WaitGroup
-	mu       sync.RWMutex
-	running  bool
 	log      *logger.Log
 	symbols  []string
 	ip       string
+	// Lifecycle
+	ctx     context.Context
+	wg      *sync.WaitGroup
+	mu      sync.RWMutex
+	running bool
 }
 
 // Bybit_FOBD_NewReader creates a new delta reader for Bybit futures.

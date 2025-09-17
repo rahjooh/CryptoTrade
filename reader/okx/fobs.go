@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	okxmetrics "cryptoflow/internal/metrics/okx"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 	"golang.org/x/time/rate"
@@ -153,6 +154,20 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		return
 	}
 	if header != nil {
+		rl := okxmetrics.ExtractRateLimit(header)
+		deltaCfg := r.config.Source.Okx.Future.Orderbook.Delta
+		symbolCount := len(deltaCfg.Symbols)
+		if symbolCount == 0 {
+			symbolCount = len(r.symbols)
+		}
+		var estimatedExtra float64
+		if symbolCount > 0 {
+			totalEstimate := okxmetrics.EstimateWebsocketConnectionPressure(1)
+			if totalEstimate > 0 {
+				estimatedExtra = totalEstimate / float64(symbolCount)
+			}
+		}
+		okxmetrics.ReportUsage(r.log, "okx_reader", symbol, "swap-orderbook-snapshot", r.localIP, rl, okxmetrics.SnapshotWeightPerRequest, estimatedExtra)
 		log.WithFields(logger.Fields{
 			"rate_limit":     header.Get("Rate-Limit-Limit"),
 			"rate_remaining": header.Get("Rate-Limit-Remaining"),

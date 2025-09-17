@@ -46,6 +46,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	logger.InitCloudWatch(cfg.Storage.S3.Region, cfg.Cryptoflow.Name, cfg.Logging.DashboardName)
+
 	log.WithFields(logger.Fields{
 		"service": cfg.Cryptoflow.Name,
 		"version": cfg.Cryptoflow.Version,

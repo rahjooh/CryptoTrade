@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	binancemetrics "cryptoflow/internal/metrics/binance"
 	"cryptoflow/logger"
 	"cryptoflow/models"
 
@@ -200,6 +201,17 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 		"http_status":    resp.StatusCode,
 		"content_length": resp.ContentLength,
 	}).Info("orderbook snapshot fetched")
+
+	deltaCfg := br.config.Source.Binance.Future.Orderbook.Delta
+	var estimatedExtra float64
+	if count := len(deltaCfg.Symbols); count > 0 {
+		totalEstimate := binancemetrics.EstimateWebsocketWeightPerMinute(count, deltaCfg.IntervalMs)
+		if totalEstimate > 0 {
+			estimatedExtra = totalEstimate / float64(count)
+		}
+	}
+
+	binancemetrics.ReportUsedWeight(br.log, resp, "binance_reader", symbol, market, br.ip, estimatedExtra)
 
 	var binanceResp models.BinanceFOBSresp
 	if err := json.NewDecoder(resp.Body).Decode(&binanceResp); err != nil {
