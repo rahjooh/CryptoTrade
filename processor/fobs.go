@@ -112,6 +112,7 @@ func (f *Flattener) worker(workerID int) {
 			}
 
 			f.processMessage(rawMsg)
+			time.Sleep(channelBacklogDelay)
 		}
 	}
 }
