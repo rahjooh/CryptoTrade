@@ -42,7 +42,6 @@ require (
 	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect

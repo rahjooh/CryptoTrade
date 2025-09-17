@@ -152,7 +152,7 @@ jobs:
       - name: Inject InstanceId into dashboard JSON
         if: contains(github.event.head_commit.message, '[CWdash]')
         run: |
-          cp infra/cloudwatch/collector-dashboard.json /tmp/dashboard.json
+          cp internal/metrics/CWdash.json /tmp/dashboard.json
           sed -i "s|<collector-instance-id>|${{ steps.ec2.outputs.instance_id }}|g" /tmp/dashboard.json
 
       - name: Put dashboard
