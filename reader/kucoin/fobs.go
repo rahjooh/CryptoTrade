@@ -11,6 +11,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	kucoinmetrics "cryptoflow/internal/metrics/kucoin"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -252,6 +253,36 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 				limit = rl.Limit
 			}
 		}
+
+		deltaCfg := r.config.Source.Kucoin.Future.Orderbook.Delta
+		symbolCount := len(deltaCfg.Symbols)
+		if symbolCount == 0 {
+			symbolCount = len(r.symbols)
+		}
+		var estimatedExtra float64
+		if symbolCount > 0 {
+			totalEstimate := kucoinmetrics.EstimateWeightPerMinute(symbolCount, deltaCfg.IntervalMs, kucoinmetrics.PartialDepthWeight)
+			if totalEstimate > 0 {
+				estimatedExtra = totalEstimate / float64(symbolCount)
+			}
+		}
+
+		rlSnapshot := kucoinmetrics.RateLimitSnapshot{
+			Limit:     limit,
+			Remaining: remaining,
+			Reset:     reset,
+		}
+		kucoinmetrics.ReportUsage(
+			r.log,
+			"kucoin_reader",
+			symbols.ToBinance("kucoin", symbol),
+			"future-orderbook-snapshot",
+			r.ip,
+			rlSnapshot,
+			kucoinmetrics.FullSnapshotWeight,
+			estimatedExtra,
+		)
+
 		log.WithFields(logger.Fields{
 			"rate_limit":     limit,
 			"rate_remaining": remaining,

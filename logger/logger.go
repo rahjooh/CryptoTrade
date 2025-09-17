@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/sirupsen/logrus"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
@@ -130,6 +133,56 @@ func (e *Entry) Debug(args ...interface{}) {
 
 func (e *Entry) Error(args ...interface{}) { e.Entry.Error(args...) }
 
+// LogMetric logs a metric entry and forwards it to CloudWatch when available.
+func (e *Entry) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
+	if fields == nil {
+		fields = make(Fields)
+	}
+	if metricType == "" {
+		metricType = "counter"
+	}
+	fields["metric"] = metric
+	fields["value"] = value
+	fields["metric_type"] = metricType
+
+	e.WithComponent(component).WithFields(fields).Info("metric")
+
+	var val float64
+	switch v := value.(type) {
+	case int:
+		val = float64(v)
+	case int32:
+		val = float64(v)
+	case int64:
+		val = float64(v)
+	case float32:
+		val = float64(v)
+	case float64:
+		val = v
+	default:
+		GetLogger().WithComponent("cloudwatch").WithFields(Fields{"metric": metric}).Debug("non-numeric metric value; skipping publish")
+		return
+	}
+
+	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(component)}}
+	for k, v := range fields {
+		if k == "metric" || k == "metric_type" || k == "value" {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
+		}
+	}
+
+	data := []cwtypes.MetricDatum{{
+		MetricName: aws.String(metric),
+		Dimensions: dims,
+		Unit:       cwtypes.StandardUnitCount,
+		Value:      aws.Float64(val),
+	}}
+	publishMetrics(context.Background(), data)
+}
+
 // Configure sets up the logger with the provided configuration
 func (l *Log) Configure(level string, format string, output string, maxAge int) error {
 	if env := os.Getenv("LOG_LEVEL"); env != "" {
@@ -218,4 +271,9 @@ func (l *Log) SetLevel(level logrus.Level) {
 // Set formatter for logger
 func (l *Log) SetFormatter(formatter logrus.Formatter) {
 	l.Logger.SetFormatter(formatter)
+}
+
+// LogMetric logs a metric using the root logger for convenience.
+func (l *Log) LogMetric(component string, metric string, value interface{}, metricType string, fields Fields) {
+	l.WithComponent(component).LogMetric(component, metric, value, metricType, fields)
 }
