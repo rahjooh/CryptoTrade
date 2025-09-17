@@ -13,6 +13,7 @@ import (
 
 	"cryptoflow/config"
 	"cryptoflow/internal/channel"
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 	"cryptoflow/processor"
 	"cryptoflow/reader/binance"
@@ -61,6 +62,7 @@ func main() {
 		cfg.Channels.ProcessedBuffer,
 	)
 	defer channels.Close()
+	metrics.StartChannelSizeMetrics(ctx, channels, time.Second)
 
 	shardCfg, err := config.LoadIPShards(*shardPath)
 	if err != nil {
