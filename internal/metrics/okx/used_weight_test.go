@@ -3,7 +3,9 @@ package okxmetrics
 import (
 	"net/http"
 	"testing"
+	"time"
 
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 )
 
@@ -54,7 +56,31 @@ func TestEstimateWebsocketConnectionPressure(t *testing.T) {
 func TestReportUsage(t *testing.T) {
 	log := logger.GetLogger()
 	rl := RateLimitSnapshot{Limit: 10, Remaining: 5, ResetUnixMs: 12345, WindowSecond: 2}
+	events := make(chan metrics.Metric, 1)
+	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
+	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
+
 	if !ReportUsage(log, "okx_reader", "BTC-USDT-SWAP", "swap-orderbook-snapshot", "127.0.0.1", rl, SnapshotWeightPerRequest, 50) {
 		t.Fatalf("expected metrics to be emitted")
+	}
+
+	select {
+	case event := <-events:
+		expected := (rl.Limit - rl.Remaining)
+		if expected < 0 {
+			expected = 0
+		}
+		expected = expected*SnapshotWeightPerRequest + 50
+		if event.Value != expected {
+			t.Fatalf("expected metric value %v, got %v", expected, event.Value)
+		}
+		if len(event.Fields) != 1 {
+			t.Fatalf("expected only ip field, got %v", event.Fields)
+		}
+		if ip, ok := event.Fields["ip"]; !ok || ip != "127.0.0.1" {
+			t.Fatalf("expected ip field to be 127.0.0.1, got %v", event.Fields)
+		}
+	case <-time.After(10 * time.Millisecond):
+		t.Fatal("expected metric event to be emitted")
 	}
 }

@@ -43,12 +43,7 @@ func ReportUsedWeight(log *logger.Log, resp *http.Response, component, symbol, m
 			continue
 		}
 
-		fields := logger.Fields{
-			"exchange": "binance",
-			"symbol":   symbol,
-			"market":   market,
-			"window":   h.window,
-		}
+		fields := logger.Fields{}
 		if ip != "" {
 			fields["ip"] = ip
 		}

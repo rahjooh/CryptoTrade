@@ -35,11 +35,7 @@ func ReportUsage(
 		return false
 	}
 
-	fields := logger.Fields{
-		"exchange": "kucoin",
-		"symbol":   symbol,
-		"market":   market,
-	}
+	fields := logger.Fields{}
 	if ip != "" {
 		fields["ip"] = ip
 	}
