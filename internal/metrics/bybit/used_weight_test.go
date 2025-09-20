@@ -83,3 +83,27 @@ func TestReportUsage_InvalidNumbers(t *testing.T) {
 	case <-time.After(10 * time.Millisecond):
 	}
 }
+
+func TestParseLeadingFloat(t *testing.T) {
+	cases := map[string]float64{
+		"120":            120,
+		"120-110":        120,
+		"110-108-0":      110,
+		"\t98 remaining": 98,
+		"+72":            72,
+	}
+
+	for input, expected := range cases {
+		got, ok := parseLeadingFloat(input)
+		if !ok {
+			t.Fatalf("expected parseLeadingFloat to succeed for %q", input)
+		}
+		if got != expected {
+			t.Fatalf("expected %v for %q, got %v", expected, input, got)
+		}
+	}
+
+	if _, ok := parseLeadingFloat("abc"); ok {
+		t.Fatal("expected parseLeadingFloat to fail for non-numeric prefix")
+	}
+}

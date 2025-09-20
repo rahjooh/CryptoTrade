@@ -21,8 +21,18 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	}
 
 	headerLimit := resp.Header.Get("X-Bapi-Limit")
+	if headerLimit == "" {
+		headerLimit = resp.Header.Get("X-Bapi-Limit-Quota")
+	}
 	headerRemaining := resp.Header.Get("X-Bapi-Limit-Status")
+	if headerRemaining == "" {
+		headerRemaining = resp.Header.Get("X-Bapi-Limit-Remaining")
+	}
 	if headerLimit == "" && headerRemaining == "" {
+		log.WithComponent(component).WithFields(logger.Fields{
+			"symbol": symbol,
+			"market": market,
+		}).Debug("missing bybit rate limit headers")
 		return 0, 0, false
 	}
 
@@ -32,24 +42,24 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	}
 
 	if headerLimit != "" {
-		if parsedLimit, err := strconv.ParseFloat(headerLimit, 64); err == nil {
+		if parsedLimit, ok := parseLeadingFloat(headerLimit); ok {
 			limit = parsedLimit
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit",
 				"value":  headerLimit,
-			}).WithError(err).Debug("failed to parse bybit limit header")
+			}).Debug("failed to parse bybit limit header")
 		}
 	}
 
 	if headerRemaining != "" {
-		if parsedRemaining, err := strconv.ParseFloat(headerRemaining, 64); err == nil {
+		if parsedRemaining, ok := parseLeadingFloat(headerRemaining); ok {
 			remaining = parsedRemaining
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit-Status",
 				"value":  headerRemaining,
-			}).WithError(err).Debug("failed to parse bybit remaining header")
+			}).Debug("failed to parse bybit remaining header")
 		}
 	}
 
@@ -58,8 +68,43 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		if used < 0 {
 			used = 0
 		}
+		log.WithComponent(component).WithFields(logger.Fields{
+			"symbol":    symbol,
+			"market":    market,
+			"limit":     limit,
+			"remaining": remaining,
+			"used":      used,
+		}).Debug("calculated bybit used weight")
 		metrics.EmitMetric(log, component, "used_weight", used, "gauge", fields)
 	}
 
 	return limit, remaining, true
+}
+
+func parseLeadingFloat(raw string) (float64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, false
+	}
+	start := 0
+	if trimmed[0] == '+' || trimmed[0] == '-' {
+		start = 1
+	}
+	end := start
+	for end < len(trimmed) {
+		ch := trimmed[end]
+		if (ch >= '0' && ch <= '9') || ch == '.' {
+			end++
+			continue
+		}
+		break
+	}
+	if end == start {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(trimmed[:end], 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
 }
