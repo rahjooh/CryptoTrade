@@ -46,14 +46,36 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	limit, limitOK := parseLimit(headerLimit, headerRemaining)
 	remaining, remainingOK := parseRemaining(headerLimit, headerRemaining)
 
-	if !limitOK || !remainingOK {
+	if !limitOK && !remainingOK {
 		log.WithComponent(component).WithFields(logger.Fields{
 			"symbol":           symbol,
 			"market":           market,
 			"limit_header":     headerLimit,
 			"remaining_header": headerRemaining,
 		}).Debug("unable to determine bybit rate limit numbers")
-		return limit, remaining, false
+		return 0, 0, false
+	}
+
+	if !limitOK && remainingOK {
+		limit = remaining
+		limitOK = true
+		log.WithComponent(component).WithFields(logger.Fields{
+			"symbol":           symbol,
+			"market":           market,
+			"limit_header":     headerLimit,
+			"remaining_header": headerRemaining,
+		}).Debug("defaulting bybit limit to remaining value")
+	}
+
+	if limitOK && !remainingOK {
+		remaining = limit
+		remainingOK = true
+		log.WithComponent(component).WithFields(logger.Fields{
+			"symbol":           symbol,
+			"market":           market,
+			"limit_header":     headerLimit,
+			"remaining_header": headerRemaining,
+		}).Debug("defaulting bybit remaining to limit value")
 	}
 
 	if limit > 0 && remaining >= 0 {

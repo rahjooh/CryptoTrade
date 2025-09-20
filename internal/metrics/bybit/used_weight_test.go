@@ -84,6 +84,40 @@ func TestReportUsage_InvalidNumbers(t *testing.T) {
 	}
 }
 
+func TestReportUsage_LimitOnlyFallback(t *testing.T) {
+	log := logger.GetLogger()
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("X-Bapi-Limit", "50")
+
+	events := make(chan metrics.Metric, 1)
+	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
+	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
+
+	limit, remaining, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "10.0.0.2")
+	if !emitted {
+		t.Fatalf("expected emission even when remaining missing")
+	}
+	if limit != 50 {
+		t.Fatalf("expected limit 50, got %v", limit)
+	}
+	if remaining != 50 {
+		t.Fatalf("expected fallback remaining to equal limit, got %v", remaining)
+	}
+
+	select {
+	case event := <-events:
+		weight, ok := event.Value.(float64)
+		if !ok {
+			t.Fatalf("expected metric value to be float64, got %T", event.Value)
+		}
+		if weight != 0 {
+			t.Fatalf("expected used weight 0 when limit equals remaining, got %v", weight)
+		}
+	case <-time.After(10 * time.Millisecond):
+		t.Fatal("expected metric emission with fallback")
+	}
+}
+
 func TestParseLimitAndRemainingFallback(t *testing.T) {
 	limit, ok := parseLimit("", "110-120-0")
 	if !ok || limit != 120 {
