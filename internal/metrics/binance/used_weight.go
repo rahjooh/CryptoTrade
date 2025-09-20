@@ -11,8 +11,8 @@ import (
 // ReportUsedWeight inspects Binance used-weight headers and emits metrics when a
 // numeric value is found. The function returns the parsed weight and a boolean
 // indicating whether a metric was recorded. When estimatedExtra is greater than
-// zero an additional gauge is emitted to represent websocket-derived load and a
-// combined estimate.
+// zero the emitted metric includes the websocket-derived load so CloudWatch
+// observes a single combined gauge.
 func ReportUsedWeight(log *logger.Log, resp *http.Response, component, symbol, market, ip string, estimatedExtra float64) (float64, bool) {
 	if log == nil || resp == nil {
 		return 0, false
@@ -53,13 +53,12 @@ func ReportUsedWeight(log *logger.Log, resp *http.Response, component, symbol, m
 			fields["ip"] = ip
 		}
 
-		metrics.EmitMetric(log, component, "used_weight", used, "gauge", fields)
+		total := used
 
 		if estimatedExtra > 0 {
-			metrics.EmitMetric(log, component, "used_weight_estimated_ws", estimatedExtra, "gauge", fields)
-			metrics.EmitMetric(log, component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
+			total += estimatedExtra
 		}
-
+		metrics.EmitMetric(log, component, "used_weight", total, "gauge", fields)
 		return used, true
 	}
 

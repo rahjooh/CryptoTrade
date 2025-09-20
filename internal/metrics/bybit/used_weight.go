@@ -1,12 +1,10 @@
 package bybitmetrics
 
 import (
-	"net/http"
-	"strconv"
-	"time"
-
 	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
+	"net/http"
+	"strconv"
 )
 
 // ReportUsage extracts Bybit REST rate-limit headers and emits the
@@ -35,7 +33,6 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	if headerLimit != "" {
 		if parsedLimit, err := strconv.ParseFloat(headerLimit, 64); err == nil {
 			limit = parsedLimit
-			metrics.EmitMetric(log, component, "requests_limit", limit, "gauge", fields)
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit",
@@ -47,7 +44,6 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	if headerRemaining != "" {
 		if parsedRemaining, err := strconv.ParseFloat(headerRemaining, 64); err == nil {
 			remaining = parsedRemaining
-			metrics.EmitMetric(log, component, "requests_remaining", remaining, "gauge", fields)
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit-Status",
@@ -61,20 +57,7 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		if used < 0 {
 			used = 0
 		}
-		metrics.EmitMetric(log, component, "requests_used", used, "gauge", fields)
-	}
-
-	if reset := resp.Header.Get("X-Bapi-Limit-Reset-Timestamp"); reset != "" {
-		if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
-			// Header is documented as milliseconds timestamp
-			resetTime := time.UnixMilli(ts)
-			metrics.EmitMetric(log, component, "limit_resets_at_unix_ms", float64(resetTime.UnixMilli()), "gauge", fields)
-		} else {
-			log.WithComponent(component).WithFields(logger.Fields{
-				"header": "X-Bapi-Limit-Reset-Timestamp",
-				"value":  reset,
-			}).WithError(err).Debug("failed to parse bybit reset header")
-		}
+		metrics.EmitMetric(log, component, "used_weight", used, "gauge", fields)
 	}
 
 	return limit, remaining, true
