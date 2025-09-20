@@ -134,7 +134,6 @@ func (p *DeltaProcessor) worker(id int) {
 				}
 			}
 			p.handleMessage(msg)
-			time.Sleep(channelBacklogDelay)
 		}
 	}
 }
