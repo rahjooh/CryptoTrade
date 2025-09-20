@@ -9,8 +9,6 @@ shards:
       - XRPUSDT
       - BNBUSDT
     kucoin_symbols:
-      - XBTUSDTM
-      - XRPUSDTM
       - BNBUSDTM
       - ONDOUSDTM
     okx_symbols:
@@ -214,6 +212,9 @@ shards:
       - FARTCOINUSDT
       - ONDOUSDT
       - SUIUSDT
+    kucoin_symbols:
+      - XBTUSDTM
+      - XRPUSDTM
     okx_symbols:
       swap_orderbook_snapshot:
         - INJ-USDT-SWAP

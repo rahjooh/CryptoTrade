@@ -31,6 +31,10 @@ type Flattener struct {
 	lastFlush map[string]time.Time
 }
 
+// channelBacklogDelay yields a small pause after each processed message so workers yield
+// CPU time when the inbound queue briefly empties. Adjust if throughput profiling warrants.
+const channelBacklogDelay = 5 * time.Millisecond
+
 func NewFlattener(cfg *appconfig.Config, ch *fobs.Channels) *Flattener {
 	return &Flattener{
 		config:    cfg,
@@ -112,7 +116,6 @@ func (f *Flattener) worker(workerID int) {
 			}
 
 			f.processMessage(rawMsg)
-			time.Sleep(channelBacklogDelay)
 		}
 	}
 }
