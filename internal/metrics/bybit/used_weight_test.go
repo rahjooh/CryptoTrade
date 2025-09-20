@@ -51,7 +51,7 @@ func TestReportUsage_NoHeaders(t *testing.T) {
 	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
 	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
 
-	if _, _, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", ""); emitted {
+	if _, _, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "10.0.0.1"); emitted {
 		t.Fatalf("expected no metrics when headers missing")
 	}
 
@@ -72,7 +72,7 @@ func TestReportUsage_InvalidNumbers(t *testing.T) {
 	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
 	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
 
-	_, _, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "")
+	_, _, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "10.0.0.1")
 	if !emitted {
 		t.Fatalf("expected emit flag even when parsing fails to maintain logging consistency")
 	}

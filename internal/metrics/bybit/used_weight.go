@@ -5,6 +5,7 @@ import (
 	"cryptoflow/logger"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // ReportUsage extracts Bybit REST rate-limit headers and emits the
@@ -12,6 +13,10 @@ import (
 // quota alongside a boolean indicating that metrics were emitted.
 func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market, ip string) (limit, remaining float64, emitted bool) {
 	if log == nil || resp == nil {
+		return 0, 0, false
+	}
+	if strings.TrimSpace(ip) == "" {
+		log.WithComponent(component).WithField("symbol", symbol).Debug("skipping used weight metric; IP not provided")
 		return 0, 0, false
 	}
 
