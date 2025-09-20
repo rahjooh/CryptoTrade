@@ -61,7 +61,11 @@ func ReportUsage(
 			used = 0
 		}
 		if weightPerCall > 0 {
-			metrics.EmitMetric(log, component, "used_weight", used*weightPerCall, "gauge", fields)
+			totalWeight := used * weightPerCall
+			if estimatedExtra > 0 {
+				totalWeight += estimatedExtra
+			}
+			metrics.EmitMetric(log, component, "used_weight", totalWeight, "gauge", fields)
 		} else {
 			metrics.EmitMetric(log, component, "requests_used", used, "gauge", fields)
 		}
@@ -70,10 +74,6 @@ func ReportUsage(
 
 	if estimatedExtra > 0 {
 		metrics.EmitMetric(log, component, "used_weight_estimated_extra", estimatedExtra, "gauge", fields)
-		if rl.Limit > 0 && rl.Remaining >= 0 && weightPerCall > 0 {
-			used := float64(rl.Limit-rl.Remaining) * weightPerCall
-			metrics.EmitMetric(log, component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
-		}
 		emitted = true
 	}
 
