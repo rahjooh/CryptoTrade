@@ -244,7 +244,10 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 
 	if resp != nil {
 		limit := r.config.ExchangeRateLimit.Kucoin.RequestWeight
-		var remaining, reset int64
+		var (
+			remaining int64 = -1
+			reset     int64
+		)
 		if resp.CommonResponse != nil && resp.CommonResponse.RateLimit != nil {
 			rl := resp.CommonResponse.RateLimit
 			remaining = rl.Remaining
