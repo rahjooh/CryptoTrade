@@ -65,12 +65,15 @@
       "properties": {
         "view": "timeSeries",
         "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "fobs_raw_buffer_length", "component", "channel_buffers", "buffer", "fobs_raw", {"stat": "Average"}],
-          [".", "fobs_norm_buffer_length", ".", ".", "buffer", "fobs_norm", {"stat": "Average"}]
-        ],
+        "title": "CPU / Memory / Disk %",
         "period": 60,
-        "title": "Snapshot Channel Depth"
+        "stat": "Maximum",
+        "metrics": [
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
+          ["Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem" }],
+          ["Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
+        ],
+        "yAxis": { "left": { "label": "%", "min": 0, "max": 100 } }
       }
     },
     {
@@ -83,128 +86,119 @@
         "view": "timeSeries",
         "region": "ap-south-1",
         "metrics": [
-          ["CryptoFlow", "fobd_raw_buffer_length", "component", "channel_buffers", "buffer", "fobd_raw", {"stat": "Average"}],
-          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"stat": "Average"}]
+          ["CryptoFlow", "fobs_raw_buffer_length", "component", "channel_buffers", "buffer", "fobs_raw", {"label": "FOBS.raw","stat": "Average"}],
+          [".", "fobs_norm_buffer_length", ".", ".", "buffer", "fobs_norm", {"label": "FOBS.norm","stat": "Average"}],
+          ["CryptoFlow", "fobd_raw_buffer_length", "component", "channel_buffers", "buffer", "fobd_raw", {"label": "FOBD.raw","stat": "Average"}],
+          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}]
         ],
         "period": 60,
-        "title": "Delta Channel Depth"
+        "title": "Channel Size"
       }
     },
     {
       "type": "metric",
       "x": 0,
       "y": 9,
-      "width": 12,
+      "width": 24,
       "height": 6,
       "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-ChannelMessages", "Channel", "snapshot_rest", {"stat": "Sum"}],
-          [".", ".", "Channel", "delta_ws", {"stat": "Sum"}],
-          [".", ".", "Channel", "s3_snapshot_write", {"stat": "Sum"}],
-          [".", ".", "Channel", "s3_delta_write", {"stat": "Sum"}]
-        ],
-        "period": 60,
-        "title": "Channel Messages"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12,
-      "y": 9,
-      "width": 12,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "metrics": [
-          ["CryptoFlow", "Hadi-ChannelBytes", "Channel", "snapshot_rest", {"stat": "Sum"}],
-          [".", ".", "Channel", "delta_ws", {"stat": "Sum"}],
-          [".", ".", "Channel", "s3_snapshot_write", {"stat": "Sum"}],
-          [".", ".", "Channel", "s3_delta_write", {"stat": "Sum"}]
-        ],
-        "period": 60,
-        "title": "Channel Bytes",
-        "yAxis": {"left": {"label": "bytes"}}
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 15,
-      "width": 12,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
+        "view": "gauge",
         "region": "ap-south-1",
         "title": "Binance Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "binance_reader", {"label": "Used", "stat": "Average"}],
-          ["CryptoFlow", "used_weight_estimated_ws", "component", "binance_reader", {"label": "WS Estimate", "stat": "Average"}],
-          ["CryptoFlow", "used_weight_total_estimate", "component", "binance_reader", {"label": "Combined", "stat": "Average"}]
+          ["CryptoFlow", "used_weight", "component", "binance_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 2400 } }
       }
     },
     {
       "type": "metric",
-      "x": 12,
+      "x": 0,
       "y": 15,
-      "width": 12,
+      "width": 24,
       "height": 6,
       "properties": {
-        "view": "timeSeries",
+        "view": "gauge",
         "region": "ap-south-1",
-        "title": "Bybit Request Usage",
+        "title": "Bybit Used Weight",
         "metrics": [
-          ["CryptoFlow", "requests_limit", "component", "bybit_reader", {"label": "Limit", "stat": "Average"}],
-          ["CryptoFlow", "requests_remaining", "component", "bybit_reader", {"label": "Remaining", "stat": "Average"}],
-          ["CryptoFlow", "requests_used", "component", "bybit_reader", {"label": "Used", "stat": "Average"}]
+          ["CryptoFlow", "used_weight", "component", "bybit_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 120 } }
       }
     },
     {
       "type": "metric",
       "x": 0,
       "y": 21,
-      "width": 12,
+      "width": 24,
       "height": 6,
       "properties": {
-        "view": "timeSeries",
+        "view": "gauge",
         "region": "ap-south-1",
         "title": "KuCoin Used Weight",
         "metrics": [
-          ["CryptoFlow", "used_weight", "component", "kucoin_reader", {"label": "Used", "stat": "Average"}],
-          ["CryptoFlow", "used_weight_estimated_extra", "component", "kucoin_reader", {"label": "Extra", "stat": "Average"}],
-          ["CryptoFlow", "used_weight_total_estimate", "component", "kucoin_reader", {"label": "Total", "stat": "Average"}]
+          ["CryptoFlow", "used_weight", "component", "kucoin_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
         ],
-        "period": 60
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12,
-      "y": 21,
-      "width": 12,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "title": "OKX Usage",
-        "metrics": [
-          ["CryptoFlow", "used_weight", "component", "okx_reader", {"label": "Used", "stat": "Average"}],
-          ["CryptoFlow", "used_weight_estimated_extra", "component", "okx_reader", {"label": "WS Pressure", "stat": "Average"}],
-          ["CryptoFlow", "request_remaining_window", "component", "okx_reader", {"label": "Remaining", "stat": "Average"}]
-        ],
-        "period": 60
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 4000 } }
       }
     },
     {
       "type": "metric",
       "x": 0,
       "y": 27,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "view": "gauge",
+        "region": "ap-south-1",
+        "title": "OKX Used Weight",
+        "metrics": [
+          ["CryptoFlow", "used_weight", "component", "okx_reader", "ip", "172.31.3.251", { "label": "172.31.3.251", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.202", { "label": "172.31.8.202", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.1.88", { "label": "172.31.1.88", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.14.157", { "label": "172.31.14.157", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.9.173", { "label": "172.31.9.173", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.4.116", { "label": "172.31.4.116", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.8.67", { "label": "172.31.8.67", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.5.194", { "label": "172.31.5.194", "stat": "Maximum" }],
+          [".", ".", ".", ".", ".", "172.31.15.240", { "label": "172.31.15.240", "stat": "Maximum" }]
+        ],
+        "period": 60,
+        "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 33,
       "width": 24,
       "height": 6,
       "properties": {
@@ -227,7 +221,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 33,
+      "y": 39,
       "width": 24,
       "height": 6,
       "properties": {
