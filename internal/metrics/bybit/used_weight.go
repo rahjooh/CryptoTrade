@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 )
 
@@ -34,7 +35,7 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	if headerLimit != "" {
 		if parsedLimit, err := strconv.ParseFloat(headerLimit, 64); err == nil {
 			limit = parsedLimit
-			log.LogMetric(component, "requests_limit", limit, "gauge", fields)
+			metrics.EmitMetric(log, component, "requests_limit", limit, "gauge", fields)
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit",
@@ -46,7 +47,7 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 	if headerRemaining != "" {
 		if parsedRemaining, err := strconv.ParseFloat(headerRemaining, 64); err == nil {
 			remaining = parsedRemaining
-			log.LogMetric(component, "requests_remaining", remaining, "gauge", fields)
+			metrics.EmitMetric(log, component, "requests_remaining", remaining, "gauge", fields)
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit-Status",
@@ -60,14 +61,14 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		if used < 0 {
 			used = 0
 		}
-		log.LogMetric(component, "requests_used", used, "gauge", fields)
+		metrics.EmitMetric(log, component, "requests_used", used, "gauge", fields)
 	}
 
 	if reset := resp.Header.Get("X-Bapi-Limit-Reset-Timestamp"); reset != "" {
 		if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
 			// Header is documented as milliseconds timestamp
 			resetTime := time.UnixMilli(ts)
-			log.LogMetric(component, "limit_resets_at_unix_ms", float64(resetTime.UnixMilli()), "gauge", fields)
+			metrics.EmitMetric(log, component, "limit_resets_at_unix_ms", float64(resetTime.UnixMilli()), "gauge", fields)
 		} else {
 			log.WithComponent(component).WithFields(logger.Fields{
 				"header": "X-Bapi-Limit-Reset-Timestamp",

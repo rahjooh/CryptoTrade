@@ -1,6 +1,9 @@
 package kucoinmetrics
 
-import "cryptoflow/logger"
+import (
+	"cryptoflow/internal/metrics"
+	"cryptoflow/logger"
+)
 
 const (
 	// FullSnapshotWeight represents KuCoin's documented weight for the futures
@@ -44,11 +47,11 @@ func ReportUsage(
 	emitted := false
 
 	if rl.Limit > 0 {
-		log.LogMetric(component, "request_weight_limit", float64(rl.Limit), "gauge", fields)
+		metrics.EmitMetric(log, component, "request_weight_limit", float64(rl.Limit), "gauge", fields)
 		emitted = true
 	}
 	if rl.Remaining >= 0 {
-		log.LogMetric(component, "request_weight_remaining", float64(rl.Remaining), "gauge", fields)
+		metrics.EmitMetric(log, component, "request_weight_remaining", float64(rl.Remaining), "gauge", fields)
 		emitted = true
 	}
 
@@ -58,29 +61,29 @@ func ReportUsage(
 			used = 0
 		}
 		if weightPerCall > 0 {
-			log.LogMetric(component, "used_weight", used*weightPerCall, "gauge", fields)
+			metrics.EmitMetric(log, component, "used_weight", used*weightPerCall, "gauge", fields)
 		} else {
-			log.LogMetric(component, "requests_used", used, "gauge", fields)
+			metrics.EmitMetric(log, component, "requests_used", used, "gauge", fields)
 		}
 		emitted = true
 	}
 
 	if estimatedExtra > 0 {
-		log.LogMetric(component, "used_weight_estimated_extra", estimatedExtra, "gauge", fields)
+		metrics.EmitMetric(log, component, "used_weight_estimated_extra", estimatedExtra, "gauge", fields)
 		if rl.Limit > 0 && rl.Remaining >= 0 && weightPerCall > 0 {
 			used := float64(rl.Limit-rl.Remaining) * weightPerCall
-			log.LogMetric(component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
+			metrics.EmitMetric(log, component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
 		}
 		emitted = true
 	}
 
 	if rl.Reset > 0 {
-		log.LogMetric(component, "limit_resets_at_unix_ms", float64(rl.Reset), "gauge", fields)
+		metrics.EmitMetric(log, component, "limit_resets_at_unix_ms", float64(rl.Reset), "gauge", fields)
 		emitted = true
 	}
 
 	if weightPerCall > 0 {
-		log.LogMetric(component, "weight_per_call", weightPerCall, "gauge", fields)
+		metrics.EmitMetric(log, component, "weight_per_call", weightPerCall, "gauge", fields)
 		emitted = true
 	}
 

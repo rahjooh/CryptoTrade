@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 )
 
@@ -52,11 +53,11 @@ func ReportUsedWeight(log *logger.Log, resp *http.Response, component, symbol, m
 			fields["ip"] = ip
 		}
 
-		log.LogMetric(component, "used_weight", used, "gauge", fields)
+		metrics.EmitMetric(log, component, "used_weight", used, "gauge", fields)
 
 		if estimatedExtra > 0 {
-			log.LogMetric(component, "used_weight_estimated_ws", estimatedExtra, "gauge", fields)
-			log.LogMetric(component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
+			metrics.EmitMetric(log, component, "used_weight_estimated_ws", estimatedExtra, "gauge", fields)
+			metrics.EmitMetric(log, component, "used_weight_total_estimate", used+estimatedExtra, "gauge", fields)
 		}
 
 		return used, true
