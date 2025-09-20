@@ -84,7 +84,7 @@ func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateL
 		if usedRequests < 0 {
 			usedRequests = 0
 		}
-		//log.LogMetric(component, "requests_used_window", usedRequests, "gauge", fields)
+		//EmitMetric(log,component, "requests_used_window", usedRequests, "gauge", fields)
 		emitted = true
 		haveUsage = true
 	}
