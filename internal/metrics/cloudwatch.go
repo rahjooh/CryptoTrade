@@ -129,29 +129,6 @@ func CreateDashboardFromTemplate(ctx context.Context) error {
 		return fmt.Errorf("dashboard template is not valid JSON after substitution")
 	}
 
-// CreateDashboardFromTemplate applies the embedded dashboard definition and updates the
-// configured CloudWatch dashboard. Invalid JSON or API failures are surfaced to the caller.
-func CreateDashboardFromTemplate(ctx context.Context) error {
-	state := cwState.Load()
-	if state == nil || state.client == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	body := dashboardTemplate
-	if state.namespace != "" {
-		body = strings.ReplaceAll(body, "\"CryptoFlow\"", fmt.Sprintf("%q", state.namespace))
-	}
-	if state.region != "" {
-		body = strings.ReplaceAll(body, "\"ap-south-1\"", fmt.Sprintf("%q", state.region))
-	}
-
-	if !json.Valid([]byte(body)) {
-		return fmt.Errorf("dashboard template is not valid JSON after substitution")
-	}
-
 	_, err := state.client.PutDashboard(ctx, &cloudwatch.PutDashboardInput{
 		DashboardName: aws.String(state.dashboardName),
 		DashboardBody: aws.String(body),
@@ -232,7 +209,6 @@ func publishMetrics(ctx context.Context, state *cloudWatchState, data []cwtypes.
 
 	logger.GetLogger().WithComponent("cloudwatch").WithField("metrics", strings.Join(names, ",")).Debug("published metrics to CloudWatch")
 }
-
 
 func toFloat64(value interface{}) (float64, bool) {
 	switch v := value.(type) {

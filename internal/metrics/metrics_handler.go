@@ -3,14 +3,8 @@ package metrics
 import (
 	"sync"
 	"time"
-)
-metrics
 
-import (
-"sync"
-"time"
-
-"cryptoflow/logger"
+	"cryptoflow/logger"
 )
 
 // Metric represents a structured metric event emitted within the application.
