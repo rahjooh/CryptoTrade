@@ -55,35 +55,26 @@ func ReportUsage(
 		emitted = true
 	}
 
-	if rl.Limit > 0 && rl.Remaining >= 0 {
+	var (
+		snapshotWeight float64
+		haveSnapshot   bool
+	)
+	if rl.Limit > 0 && rl.Remaining >= 0 && weightPerCall > 0 {
 		used := float64(rl.Limit - rl.Remaining)
 		if used < 0 {
 			used = 0
 		}
-		if weightPerCall > 0 {
-			totalWeight := used * weightPerCall
-			if estimatedExtra > 0 {
-				totalWeight += estimatedExtra
-			}
-			metrics.EmitMetric(log, component, "used_weight", totalWeight, "gauge", fields)
-		} else {
-			metrics.EmitMetric(log, component, "requests_used", used, "gauge", fields)
-		}
-		emitted = true
+		snapshotWeight = used * weightPerCall
+		haveSnapshot = true
 	}
 
+	totalWeight := snapshotWeight
 	if estimatedExtra > 0 {
-		metrics.EmitMetric(log, component, "used_weight_estimated_extra", estimatedExtra, "gauge", fields)
-		emitted = true
+		totalWeight += estimatedExtra
 	}
 
-	if rl.Reset > 0 {
-		metrics.EmitMetric(log, component, "limit_resets_at_unix_ms", float64(rl.Reset), "gauge", fields)
-		emitted = true
-	}
-
-	if weightPerCall > 0 {
-		metrics.EmitMetric(log, component, "weight_per_call", weightPerCall, "gauge", fields)
+	if haveSnapshot || estimatedExtra > 0 {
+		metrics.EmitMetric(log, component, "used_weight", estimatedExtra, "gauge", fields)
 		emitted = true
 	}
 
