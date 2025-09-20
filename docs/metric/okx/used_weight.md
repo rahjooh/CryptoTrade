@@ -1,22 +1,14 @@
 # OKX Swap Used Weight Metrics
 
-CryptoFlow captures OKX REST rate-limit headers for the full-depth swap order-book snapshot endpoint and projects additional load from websocket connection constraints.
+CryptoFlow captures OKX REST rate-limit headers for the full-depth swap order-book snapshot endpoint and combines them with websocket update estimates to publish a single load metric.
 
 ## Metric Overview
 
 | Metric | Description |
 |--------|-------------|
-| `request_limit_window` | Snapshot of the current REST quota (requests per window) from `Rate-Limit-Limit`. |
-| `request_remaining_window` | Remaining allocation before the window resets (`Rate-Limit-Remaining`). |
-| `requests_used_window` | Derived usage (`limit - remaining`). |
-| `used_weight` | Requests used multiplied by the documented weight-per-request (1). |
-| `used_weight_estimated_extra` | Heuristic websocket connection pressure (connection limit × 60 ÷ active connections ÷ symbols). |
-| `used_weight_total_estimate` | Combined REST weight and websocket estimate. |
-| `limit_resets_at_unix_ms` | Reset timestamp converted to Unix milliseconds. |
-| `limit_window_seconds` | Effective window length from `Rate-Limit-Interval`. |
-| `weight_per_call` | Snapshot weight used for calculations (defaults to 1). |
+| `used_weight` | Combined OKX weight usage from REST snapshots and websocket update estimates. |
 
-Dimensions attached to every metric:
+Dimensions attached to the metric:
 
 - `component`: `okx_reader`
 - `exchange`: `okx`
@@ -37,24 +29,21 @@ ws_pressure_per_min = (3 * 60) / active_connections
 per_symbol_ws = ws_pressure_per_min / n
 ```
 
-The per-symbol websocket estimate is combined with measured REST usage to form `used_weight_total_estimate`.
-
+The measured REST usage and websocket estimate are summed and emitted as `used_weight`.
 ## Flow Diagram
 
 ```mermaid
 flowchart TD
     A[OKX Snapshot Fetch] --> B{HTTP Response}
     B -->|Parse rate-limit headers| C[ExtractRateLimit]
-    C --> D[Log request_limit_window / remaining]
-    C --> E[Compute requests_used & used_weight]
-    D --> F[Estimate websocket pressure]
-    E --> F
-    F --> G[Logger.LogMetric]
+    C --> D[Compute snapshot weight]
+    D --> F[Combine with websocket estimate]
+    E[Websocket pressure heuristic] --> F
+    F --> G[Logger.LogMetric used_weight]
     G --> H[CloudWatch PutMetricData]
 ```
 
 ## Operational Guidance
 
-- Alert when `request_remaining_window` consistently approaches zero; exceeding the 10/2s rule triggers HTTP 429s.
-- Monitor `used_weight_total_estimate` to decide when to shard OKX polling across additional IPs.
-- Track websocket reconnect attempts alongside `used_weight_estimated_extra` to catch situations where the diff stream nears connection limits.
+- Monitor `used_weight` to decide when to shard OKX polling across additional IPs.
+- Track websocket reconnect attempts alongside `used_weight` to catch situations where the diff stream nears connection limits.

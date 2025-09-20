@@ -51,7 +51,7 @@ func ExtractRateLimit(header http.Header) RateLimitSnapshot {
 	return rl
 }
 
-// ReportUsage emits CloudWatch metrics for OKX REST usage and optional websocket load.
+// ReportUsage emits a single CloudWatch metric (used_weight) combining REST snapshots and websocket updates.
 func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateLimitSnapshot, weightPerCall, estimatedExtra float64) bool {
 	if log == nil {
 		return false
@@ -65,35 +65,20 @@ func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateL
 	if ip != "" {
 		fields["ip"] = ip
 	}
-	emitted := false
-
-	if rl.Limit > 0 {
-		metrics.EmitMetric(log, component, "request_limit_window", rl.Limit, "gauge", fields)
-		emitted = true
-	}
-	if rl.Remaining >= 0 {
-		metrics.EmitMetric(log, component, "request_remaining_window", rl.Remaining, "gauge", fields)
-		emitted = true
-	}
 	var (
-		usedRequests float64
-		haveUsage    bool
+		totalWeight float64
+		hasWeight   bool
 	)
-	if rl.Limit > 0 && rl.Remaining >= 0 {
-		usedRequests = rl.Limit - rl.Remaining
+
+	if rl.Limit > 0 && rl.Remaining >= 0 && weightPerCall > 0 {
+		usedRequests := rl.Limit - rl.Remaining
 		if usedRequests < 0 {
 			usedRequests = 0
 		}
-		//EmitMetric(log,component, "requests_used_window", usedRequests, "gauge", fields)
-		emitted = true
-		haveUsage = true
-	}
-	var totalWeight float64
-	hasWeight := false
-	if haveUsage && weightPerCall > 0 {
 		totalWeight = usedRequests * weightPerCall
 		hasWeight = true
 	}
+
 	if estimatedExtra > 0 {
 		if !hasWeight {
 			totalWeight = 0
@@ -101,25 +86,13 @@ func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateL
 		}
 		totalWeight += estimatedExtra
 	}
-	if hasWeight {
-		metrics.EmitMetric(component, "used_weight", totalWeight, "gauge", fields)
-		emitted = true
+
+	if !hasWeight {
+		return false
 	}
 
-	if rl.ResetUnixMs > 0 {
-		metrics.EmitMetric(log, component, "limit_resets_at_unix_ms", rl.ResetUnixMs, "gauge", fields)
-		emitted = true
-	}
-	if rl.WindowSecond > 0 {
-		metrics.EmitMetric(log, component, "limit_window_seconds", rl.WindowSecond, "gauge", fields)
-		emitted = true
-	}
-	if weightPerCall > 0 {
-		metrics.EmitMetric(log, component, "weight_per_call", weightPerCall, "gauge", fields)
-		emitted = true
-	}
-
-	return emitted
+	metrics.EmitMetric(log, component, "used_weight", totalWeight, "gauge", fields)
+	return true
 }
 
 // EstimateSnapshotWeightPerMinute converts polling frequency into weight per minute.
