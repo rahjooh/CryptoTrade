@@ -46,15 +46,6 @@ func ReportUsage(
 
 	emitted := false
 
-	if rl.Limit > 0 {
-		metrics.EmitMetric(log, component, "request_weight_limit", float64(rl.Limit), "gauge", fields)
-		emitted = true
-	}
-	if rl.Remaining >= 0 {
-		metrics.EmitMetric(log, component, "request_weight_remaining", float64(rl.Remaining), "gauge", fields)
-		emitted = true
-	}
-
 	var (
 		snapshotWeight float64
 		haveSnapshot   bool

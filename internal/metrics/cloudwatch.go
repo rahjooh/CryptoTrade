@@ -91,32 +91,43 @@ func InitCloudWatch(region, namespace, dashboard string) {
 
 // EmitMetric logs the metric locally and publishes it to CloudWatch when configured.
 func EmitMetric(log *logger.Log, component string, metric string, value interface{}, metricType string, fields logger.Fields) {
-	if fields == nil {
-		fields = make(logger.Fields)
-	} else {
-		fields = cloneFields(fields)
-	}
-	if metricType == "" {
-		metricType = "counter"
-	}
-	fields["metric"] = metric
-	fields["value"] = value
-	fields["metric_type"] = metricType
-
-	if log == nil {
-		log = logger.GetLogger()
-	}
-	log.WithComponent(component).WithFields(fields).Info("metric")
-
-	numericValue, ok := toFloat64(value)
+	metricEvent, ok := recordMetric(log, component, metric, value, metricType, fields)
 	if !ok {
-		logger.GetLogger().WithComponent("cloudwatch").WithFields(logger.Fields{"metric": metric}).Debug("non-numeric metric value; skipping publish")
+		return
+	}
+
+	numericValue, ok := toFloat64(metricEvent.Value)
+	if !ok {
+		logger.GetLogger().WithComponent("cloudwatch").WithFields(logger.Fields{"metric": metricEvent.Name}).Debug("non-numeric metric value; skipping publish")
 		return
 	}
 
 	ctx := context.Background()
-	publishMetricDatum(ctx, component, metric, numericValue, fields)
+	publishMetricDatum(ctx, metricEvent.Component, metricEvent.Name, numericValue, metricEvent.Fields)
 }
+
+// CreateDashboardFromTemplate applies the embedded dashboard definition and updates the
+// configured CloudWatch dashboard. Invalid JSON or API failures are surfaced to the caller.
+func CreateDashboardFromTemplate(ctx context.Context) error {
+	state := cwState.Load()
+	if state == nil || state.client == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	body := dashboardTemplate
+	if state.namespace != "" {
+		body = strings.ReplaceAll(body, "\"CryptoFlow\"", fmt.Sprintf("%q", state.namespace))
+	}
+	if state.region != "" {
+		body = strings.ReplaceAll(body, "\"ap-south-1\"", fmt.Sprintf("%q", state.region))
+	}
+
+	if !json.Valid([]byte(body)) {
+		return fmt.Errorf("dashboard template is not valid JSON after substitution")
+	}
 
 // CreateDashboardFromTemplate applies the embedded dashboard definition and updates the
 // configured CloudWatch dashboard. Invalid JSON or API failures are surfaced to the caller.
@@ -222,13 +233,6 @@ func publishMetrics(ctx context.Context, state *cloudWatchState, data []cwtypes.
 	logger.GetLogger().WithComponent("cloudwatch").WithField("metrics", strings.Join(names, ",")).Debug("published metrics to CloudWatch")
 }
 
-func cloneFields(fields logger.Fields) logger.Fields {
-	copy := make(logger.Fields, len(fields))
-	for k, v := range fields {
-		copy[k] = v
-	}
-	return copy
-}
 
 func toFloat64(value interface{}) (float64, bool) {
 	switch v := value.(type) {

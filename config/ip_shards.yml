@@ -96,8 +96,6 @@ shards:
       swap_orderbook_delta:
         - WIF-USDT
         - ADA-USDT
-        - BTC-USDC
-        - ETH-USDC
 
   - ip: 172.31.9.173
     binance_symbols:
