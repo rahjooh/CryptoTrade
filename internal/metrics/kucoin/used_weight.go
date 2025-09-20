@@ -40,8 +40,6 @@ func ReportUsage(
 		fields["ip"] = ip
 	}
 
-	emitted := false
-
 	var (
 		snapshotWeight float64
 		haveSnapshot   bool
@@ -56,16 +54,16 @@ func ReportUsage(
 	}
 
 	totalWeight := snapshotWeight
+	if !haveSnapshot {
+		return false
+	}
+
 	if estimatedExtra > 0 {
 		totalWeight += estimatedExtra
 	}
 
-	if haveSnapshot || estimatedExtra > 0 {
-		metrics.EmitMetric(log, component, "used_weight", estimatedExtra, "gauge", fields)
-		emitted = true
-	}
-
-	return emitted
+	metrics.EmitMetric(log, component, "used_weight", totalWeight, "gauge", fields)
+	return true
 }
 
 // EstimateWeightPerMinute converts call frequency into estimated weight per

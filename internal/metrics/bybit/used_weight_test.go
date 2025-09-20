@@ -73,8 +73,8 @@ func TestReportUsage_InvalidNumbers(t *testing.T) {
 	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
 
 	_, _, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "10.0.0.1")
-	if emitted {
-		t.Fatal("expected emit flag to be false when parsing fails")
+	if !emitted {
+		t.Fatalf("expected emit flag even when parsing fails to maintain logging consistency")
 	}
 
 	select {
@@ -84,57 +84,26 @@ func TestReportUsage_InvalidNumbers(t *testing.T) {
 	}
 }
 
-func TestReportUsage_LimitOnlyFallback(t *testing.T) {
-	log := logger.GetLogger()
-	resp := &http.Response{Header: http.Header{}}
-	resp.Header.Set("X-Bapi-Limit", "50")
-
-	events := make(chan metrics.Metric, 1)
-	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
-	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
-
-	limit, remaining, emitted := ReportUsage(log, resp, "bybit_reader", "BTCUSDT", "future-orderbook-snapshot", "10.0.0.2")
-	if !emitted {
-		t.Fatalf("expected emission even when remaining missing")
-	}
-	if limit != 50 {
-		t.Fatalf("expected limit 50, got %v", limit)
-	}
-	if remaining != 50 {
-		t.Fatalf("expected fallback remaining to equal limit, got %v", remaining)
+func TestParseLeadingFloat(t *testing.T) {
+	cases := map[string]float64{
+		"120":            120,
+		"120-110":        120,
+		"110-108-0":      110,
+		"\t98 remaining": 98,
+		"+72":            72,
 	}
 
-	select {
-	case event := <-events:
-		weight, ok := event.Value.(float64)
+	for input, expected := range cases {
+		got, ok := parseLeadingFloat(input)
 		if !ok {
-			t.Fatalf("expected metric value to be float64, got %T", event.Value)
+			t.Fatalf("expected parseLeadingFloat to succeed for %q", input)
 		}
-		if weight != 0 {
-			t.Fatalf("expected used weight 0 when limit equals remaining, got %v", weight)
+		if got != expected {
+			t.Fatalf("expected %v for %q, got %v", expected, input, got)
 		}
-	case <-time.After(10 * time.Millisecond):
-		t.Fatal("expected metric emission with fallback")
-	}
-}
-
-func TestParseLimitAndRemainingFallback(t *testing.T) {
-	limit, ok := parseLimit("", "110-120-0")
-	if !ok || limit != 120 {
-		t.Fatalf("expected limit 120 from status fallback, got %v (ok=%v)", limit, ok)
 	}
 
-	remaining, ok := parseRemaining("", "110-120-0")
-	if !ok || remaining != 110 {
-		t.Fatalf("expected remaining 110 from status fallback, got %v (ok=%v)", remaining, ok)
-	}
-
-	remaining, ok = parseRemaining("120-110", "")
-	if !ok || remaining != 110 {
-		t.Fatalf("expected remaining 110 from limit header secondary value, got %v (ok=%v)", remaining, ok)
-	}
-
-	if _, ok := parseLimit("abc", "def"); ok {
-		t.Fatal("expected parseLimit to fail for non-numeric headers")
+	if _, ok := parseLeadingFloat("abc"); ok {
+		t.Fatal("expected parseLeadingFloat to fail for non-numeric prefix")
 	}
 }

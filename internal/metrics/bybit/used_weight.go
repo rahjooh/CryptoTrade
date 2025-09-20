@@ -1,13 +1,11 @@
 package bybitmetrics
 
 import (
-	"net/http"
-	"regexp"
-	"strconv"
-	"strings"
-
 	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 // ReportUsage extracts Bybit REST rate-limit headers and emits the
@@ -18,23 +16,13 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		return 0, 0, false
 	}
 	if strings.TrimSpace(ip) == "" {
-		log.WithComponent(component).WithField("symbol", symbol).Debug("skipping used weight metric; IP not provided")
+		log.WithComponent(component).WithField("symbol", symbol).Debug("skipping used weight metric; IP not provided [todo]")
 		return 0, 0, false
 	}
 
 	headerLimit := resp.Header.Get("X-Bapi-Limit")
-	if headerLimit == "" {
-		headerLimit = resp.Header.Get("X-Bapi-Limit-Quota")
-	}
 	headerRemaining := resp.Header.Get("X-Bapi-Limit-Status")
-	if headerRemaining == "" {
-		headerRemaining = resp.Header.Get("X-Bapi-Limit-Remaining")
-	}
 	if headerLimit == "" && headerRemaining == "" {
-		log.WithComponent(component).WithFields(logger.Fields{
-			"symbol": symbol,
-			"market": market,
-		}).Debug("missing bybit rate limit headers")
 		return 0, 0, false
 	}
 
@@ -43,39 +31,27 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		fields["ip"] = ip
 	}
 
-	limit, limitOK := parseLimit(headerLimit, headerRemaining)
-	remaining, remainingOK := parseRemaining(headerLimit, headerRemaining)
-
-	if !limitOK && !remainingOK {
-		log.WithComponent(component).WithFields(logger.Fields{
-			"symbol":           symbol,
-			"market":           market,
-			"limit_header":     headerLimit,
-			"remaining_header": headerRemaining,
-		}).Debug("unable to determine bybit rate limit numbers")
-		return 0, 0, false
+	if headerLimit != "" {
+		if parsedLimit, ok := parseLeadingFloat(headerLimit); ok {
+			limit = parsedLimit
+		} else {
+			log.WithComponent(component).WithFields(logger.Fields{
+				"header": "X-Bapi-Limit",
+				"value":  headerLimit,
+			}).Debug("failed to parse bybit limit header")
+		}
 	}
 
-	if !limitOK && remainingOK {
-		limit = remaining
-		limitOK = true
-		log.WithComponent(component).WithFields(logger.Fields{
-			"symbol":           symbol,
-			"market":           market,
-			"limit_header":     headerLimit,
-			"remaining_header": headerRemaining,
-		}).Debug("defaulting bybit limit to remaining value")
-	}
+	if headerRemaining != "" {
+		if parsedRemaining, ok := parseLeadingFloat(headerRemaining); ok {
+			remaining = parsedRemaining
+		} else {
+			log.WithComponent(component).WithFields(logger.Fields{
+				"header": "X-Bapi-Limit-Status",
+				"value":  headerRemaining,
+			}).Debug("failed to parse bybit remaining header")
+		}
 
-	if limitOK && !remainingOK {
-		remaining = limit
-		remainingOK = true
-		log.WithComponent(component).WithFields(logger.Fields{
-			"symbol":           symbol,
-			"market":           market,
-			"limit_header":     headerLimit,
-			"remaining_header": headerRemaining,
-		}).Debug("defaulting bybit remaining to limit value")
 	}
 
 	if limit > 0 && remaining >= 0 {
@@ -83,65 +59,36 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		if used < 0 {
 			used = 0
 		}
-		log.WithComponent(component).WithFields(logger.Fields{
-			"symbol":    symbol,
-			"market":    market,
-			"limit":     limit,
-			"remaining": remaining,
-			"used":      used,
-		}).Debug("calculated bybit used weight")
 		metrics.EmitMetric(log, component, "used_weight", used, "gauge", fields)
 	}
 
 	return limit, remaining, true
 }
 
-var numberPattern = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
-
-func parseLimit(limitHeader, statusHeader string) (float64, bool) {
-	if v, ok := firstNumber(limitHeader); ok {
-		return v, true
-	}
-	if numbers := allNumbers(statusHeader); len(numbers) > 1 {
-		return numbers[1], true
-	}
-	return 0, false
-}
-
-func parseRemaining(limitHeader, statusHeader string) (float64, bool) {
-	if v, ok := firstNumber(statusHeader); ok {
-		return v, true
-	}
-	if numbers := allNumbers(limitHeader); len(numbers) > 1 {
-		return numbers[1], true
-	}
-	return 0, false
-}
-
-func firstNumber(raw string) (float64, bool) {
-	if raw == "" {
+func parseLeadingFloat(raw string) (float64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return 0, false
 	}
-	numbers := allNumbers(raw)
-	if len(numbers) == 0 {
-		return 0, false
+	start := 0
+	if trimmed[0] == '+' || trimmed[0] == '-' {
+		start = 1
 	}
-	return numbers[0], true
-}
-
-func allNumbers(raw string) []float64 {
-	if raw == "" {
-		return nil
-	}
-	matches := numberPattern.FindAllString(raw, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	values := make([]float64, 0, len(matches))
-	for _, m := range matches {
-		if v, err := strconv.ParseFloat(m, 64); err == nil {
-			values = append(values, v)
+	end := start
+	for end < len(trimmed) {
+		ch := trimmed[end]
+		if (ch >= '0' && ch <= '9') || ch == '.' {
+			end++
+			continue
 		}
+		break
 	}
-	return values
+	if end == start {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(trimmed[:end], 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
 }
