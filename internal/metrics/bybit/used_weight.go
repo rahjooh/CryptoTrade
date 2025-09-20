@@ -16,7 +16,7 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		return 0, 0, false
 	}
 	if strings.TrimSpace(ip) == "" {
-		log.WithComponent(component).WithField("symbol", symbol).Debug("skipping used weight metric; IP not provided")
+		log.WithComponent(component).WithField("symbol", symbol).Debug("skipping used weight metric; IP not provided [todo]")
 		return 0, 0, false
 	}
 
