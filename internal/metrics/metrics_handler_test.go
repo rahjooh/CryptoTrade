@@ -3,14 +3,8 @@ package metrics
 import (
 	"testing"
 	"time"
-)
-metrics
 
-import (
-"testing"
-"time"
-
-"cryptoflow/logger"
+	"cryptoflow/logger"
 )
 
 func resetMetricHandlers() {
@@ -122,4 +116,3 @@ func TestEmitMetricWithoutName(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
-
