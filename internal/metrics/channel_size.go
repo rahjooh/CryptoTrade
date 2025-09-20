@@ -31,21 +31,21 @@ func StartChannelSizeMetrics(ctx context.Context, channels *channel.Channels, in
 				return
 			case <-ticker.C:
 				if channels.FOBS != nil {
-					log.LogMetric(component, "fobs_raw_buffer_length", len(channels.FOBS.Raw), "gauge", logger.Fields{
+					EmitMetric(log, component, "fobs_raw_buffer_length", len(channels.FOBS.Raw), "gauge", logger.Fields{
 						"buffer":   "fobs_raw",
 						"capacity": cap(channels.FOBS.Raw),
 					})
-					log.LogMetric(component, "fobs_norm_buffer_length", len(channels.FOBS.Norm), "gauge", logger.Fields{
+					EmitMetric(log, component, "fobs_norm_buffer_length", len(channels.FOBS.Norm), "gauge", logger.Fields{
 						"buffer":   "fobs_norm",
 						"capacity": cap(channels.FOBS.Norm),
 					})
 				}
 				if channels.FOBD != nil {
-					log.LogMetric(component, "fobd_raw_buffer_length", len(channels.FOBD.Raw), "gauge", logger.Fields{
+					EmitMetric(log, component, "fobd_raw_buffer_length", len(channels.FOBD.Raw), "gauge", logger.Fields{
 						"buffer":   "fobd_raw",
 						"capacity": cap(channels.FOBD.Raw),
 					})
-					log.LogMetric(component, "fobd_norm_buffer_length", len(channels.FOBD.Norm), "gauge", logger.Fields{
+					EmitMetric(log, component, "fobd_norm_buffer_length", len(channels.FOBD.Norm), "gauge", logger.Fields{
 						"buffer":   "fobd_norm",
 						"capacity": cap(channels.FOBD.Norm),
 					})
