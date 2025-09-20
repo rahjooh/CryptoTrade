@@ -21,11 +21,7 @@ func ReportUsage(log *logger.Log, resp *http.Response, component, symbol, market
 		return 0, 0, false
 	}
 
-	fields := logger.Fields{
-		"exchange": "bybit",
-		"symbol":   symbol,
-		"market":   market,
-	}
+	fields := logger.Fields{}
 	if ip != "" {
 		fields["ip"] = ip
 	}

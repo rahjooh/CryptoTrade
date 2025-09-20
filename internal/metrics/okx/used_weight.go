@@ -57,11 +57,7 @@ func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateL
 		return false
 	}
 
-	fields := logger.Fields{
-		"exchange": "okx",
-		"symbol":   symbol,
-		"market":   market,
-	}
+	fields := logger.Fields{}
 	if ip != "" {
 		fields["ip"] = ip
 	}
