@@ -18,7 +18,7 @@ source:
           connection: rest
           url: https://api.binance.com/api/v3/depth
           limit: 1000      # Max allowed for spot order book depth
-          interval_ms: 1000
+          interval_ms: 10000
           symbols: [ BTCUSDT, ETHUSDT ]
         delta:
           enabled: false
