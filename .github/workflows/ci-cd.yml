@@ -100,6 +100,25 @@ jobs:
       - name: Checkout code for docker-compose
         uses: actions/checkout@v4
 
+      - name: Prepare remote workspace
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+              git reset --hard HEAD
+              git clean -fd
+            else
+              find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
+            fi
+
       - name: Transfer files to EC2 via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
