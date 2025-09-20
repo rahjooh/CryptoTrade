@@ -39,8 +39,7 @@ flowchart TD
     C --> D[Compute snapshot weight]
     D --> F[Combine with websocket estimate]
     E[Websocket pressure heuristic] --> F
-    F --> G[Logger.LogMetric used_weight]
-    G --> H[CloudWatch PutMetricData]
+    F --> H[CloudWatch PutMetricData]
 ```
 
 ## Operational Guidance

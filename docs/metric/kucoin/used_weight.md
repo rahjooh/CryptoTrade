@@ -44,9 +44,7 @@ flowchart TD
     B -->|Extract limit, remaining, reset| C[Build RateLimitSnapshot]
     C --> D[Compute used_weight]
     C --> E[Estimate extra weight]
-    D --> F[Logger.LogMetric]
-    E --> F
-    F --> G[CloudWatch PutMetricData]
+    D --> G[CloudWatch PutMetricData]
 ```
 
 ## Operational Guidance

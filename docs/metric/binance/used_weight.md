@@ -42,9 +42,7 @@ flowchart TD
     D --> F[Compute websocket estimate]
     F -->|Interval + symbol config| G[Estimate used_weight_estimated_ws]
     G --> H[Log metrics used_weight_estimated_ws & used_weight_total_estimate]
-    D --> H
-    H --> I[Logger.LogMetric]
-    I --> J[CloudWatch PutMetricData]
+    D --> J[CloudWatch PutMetricData]
 ```
 
 ## Alerts & Dashboards

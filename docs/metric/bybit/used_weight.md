@@ -33,9 +33,7 @@ flowchart TD
     E --> F
     C --> G[Parse reset timestamp]
     G --> H[Log limit_resets_at_unix_ms]
-    F --> I[Logger.LogMetric]
-    H --> I
-    I --> J[CloudWatch PutMetricData]
+    F --> J[CloudWatch PutMetricData]
 ```
 
 ## Operational Guidance
