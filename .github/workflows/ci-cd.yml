@@ -50,6 +50,35 @@ jobs:
       - name: Build binary
         run: go build -o cryptoflow .
 
+      - name: Remove cached Go toolchains
+        if: always()
+        run: |
+          set -euo pipefail
+
+          if ! command -v go >/dev/null 2>&1; then
+            echo "Go binary not available; skipping toolchain cleanup."
+            exit 0
+          fi
+
+          MODCACHE=$(go env GOMODCACHE)
+          TOOLCHAIN_PARENT="$MODCACHE/golang.org"
+
+          if [ ! -d "$TOOLCHAIN_PARENT" ]; then
+            echo "No golang.org directory in module cache; nothing to prune."
+            exit 0
+          fi
+
+          found=0
+          while IFS= read -r -d '' dir; do
+            echo "Removing cached Go toolchain directory: $dir"
+            rm -rf "$dir"
+            found=1
+          done < <(find "$TOOLCHAIN_PARENT" -maxdepth 1 -type d -name 'toolchain@*' -print0)
+
+          if [ "$found" -eq 0 ]; then
+            echo "No downloaded Go toolchains found in module cache."
+          fi
+
       - name: Cleanup old binary artifacts
         uses: actions/github-script@v7
         with:
