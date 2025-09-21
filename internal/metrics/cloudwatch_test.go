@@ -1,21 +1,14 @@
-package metricspackage
+package metrics
 
 import (
 	"context"
 	"testing"
 	"time"
-)
-metrics
 
-import (
-"context"
-"testing"
-"time"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 
-"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
-cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
-
-"cryptoflow/logger"
+	"cryptoflow/logger"
 )
 
 func TestPublishMetricDatumThrottlesToInterval(t *testing.T) {
