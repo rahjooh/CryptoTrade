@@ -4,62 +4,6 @@
       "type": "metric",
       "x": 0,
       "y": 0,
-      "width": 6,
-      "height": 3,
-      "properties": {
-        "view": "singleValue",
-        "region": "ap-south-1",
-        "metrics": [["CryptoFlow", "Hadi-IngestRate", {"stat": "Sum"}]],
-        "period": 60,
-        "title": "Ingest Rate (msg/s)"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 6,
-      "y": 0,
-      "width": 6,
-      "height": 3,
-      "properties": {
-        "view": "singleValue",
-        "region": "ap-south-1",
-        "metrics": [["CryptoFlow", "Hadi-ParquetWriteErrors", {"stat": "Sum"}]],
-        "period": 300,
-        "title": "Parquet Write Errors"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12,
-      "y": 0,
-      "width": 6,
-      "height": 3,
-      "properties": {
-        "view": "singleValue",
-        "region": "ap-south-1",
-        "metrics": [["CryptoFlow", "Hadi-RetryCount", {"stat": "Sum"}]],
-        "period": 300,
-        "title": "Retries"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 18,
-      "y": 0,
-      "width": 6,
-      "height": 3,
-      "properties": {
-        "view": "singleValue",
-        "region": "ap-south-1",
-        "metrics": [["CryptoFlow", "Hadi-DroppedMessages", {"stat": "Sum"}]],
-        "period": 60,
-        "title": "Dropped Messages"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 3,
       "width": 12,
       "height": 6,
       "properties": {
@@ -79,7 +23,7 @@
     {
       "type": "metric",
       "x": 12,
-      "y": 3,
+      "y": 0,
       "width": 12,
       "height": 6,
       "properties": {
@@ -98,7 +42,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 9,
+      "y": 6,
       "width": 24,
       "height": 6,
       "properties": {
@@ -123,7 +67,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 15,
+      "y": 12,
       "width": 24,
       "height": 6,
       "properties": {
@@ -148,7 +92,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 21,
+      "y": 18,
       "width": 24,
       "height": 6,
       "properties": {
@@ -173,7 +117,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 27,
+      "y": 24,
       "width": 24,
       "height": 6,
       "properties": {
@@ -193,52 +137,6 @@
         ],
         "period": 60,
         "yAxis": { "left": { "label": "weight", "min": 0, "max": 60 } }
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 33,
-      "width": 24,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "title": "Rate Limit Exceeded",
-        "metrics": [
-          ["CryptoFlow", "rate_limit_exceeded", "component", "binance_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "binance_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "okx_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "okx_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "kucoin_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "kucoin_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "bybit_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "bybit_fobd", {"stat": "Sum"}]
-        ],
-        "period": 300
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 39,
-      "width": 24,
-      "height": 6,
-      "properties": {
-        "view": "timeSeries",
-        "region": "ap-south-1",
-        "title": "IP Bans",
-        "metrics": [
-          ["CryptoFlow", "ip_ban", "component", "binance_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "binance_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "okx_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "okx_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "kucoin_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "kucoin_fobd", {"stat": "Sum"}],
-          [".", ".", "component", "bybit_fobs", {"stat": "Sum"}],
-          [".", ".", "component", "bybit_fobd", {"stat": "Sum"}]
-        ],
-        "period": 300
       }
     }
   ]
