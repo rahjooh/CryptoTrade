@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -27,7 +30,16 @@ type cloudWatchState struct {
 	region        string
 }
 
-var cwState atomic.Pointer[cloudWatchState]
+const cloudWatchMaxMetricBatch = 20
+
+var (
+	cwState                   atomic.Pointer[cloudWatchState]
+	publishMetricsFunc        = publishMetrics
+	cloudWatchPublishInterval = time.Minute
+	metricPublishTimesMu      sync.Mutex
+	metricPublishTimes        = make(map[string]time.Time)
+	timeNow                   = time.Now
+)
 
 func init() {
 	cwState.Store(&cloudWatchState{
@@ -78,6 +90,7 @@ func InitCloudWatch(region, namespace, dashboard string) {
 	}
 
 	cwState.Store(&state)
+	resetMetricPublishTimes()
 
 	log.WithFields(logger.Fields{
 		"region":    state.region,
@@ -102,8 +115,7 @@ func EmitMetric(log *logger.Log, component string, metric string, value interfac
 		return
 	}
 
-	ctx := context.Background()
-	publishMetricDatum(ctx, metricEvent.Component, metricEvent.Name, numericValue, metricEvent.Fields)
+	publishMetricDatum(metricEvent, numericValue)
 }
 
 // CreateDashboardFromTemplate applies the embedded dashboard definition and updates the
@@ -141,43 +153,18 @@ func CreateDashboardFromTemplate(ctx context.Context) error {
 	return nil
 }
 
-func publishMetricDatum(ctx context.Context, component, metric string, value float64, fields logger.Fields) {
+func publishMetricDatum(metric Metric, value float64) {
 	state := cwState.Load()
 	if state == nil || state.client == nil {
 		return
 	}
-	if ctx == nil {
-		ctx = context.Background()
+
+	datum := buildMetricDatum(metric, value)
+	if !shouldPublishMetric(metric, datum) {
+		return
 	}
 
-	unit := cwtypes.StandardUnitCount
-	if rawUnit, ok := fields["unit"]; ok {
-		if unitStr, ok := rawUnit.(string); ok {
-			if parsedUnit, found := metricUnitFromString(unitStr); found {
-				unit = parsedUnit
-			} else {
-				logger.GetLogger().WithComponent("cloudwatch").WithFields(logger.Fields{"metric": metric, "unit": unitStr}).Debug("unsupported metric unit; defaulting to Count")
-			}
-		}
-	}
-
-	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(component)}}
-	for k, v := range fields {
-		if k == "metric" || k == "metric_type" || k == "value" || k == "unit" {
-			continue
-		}
-		if s, ok := v.(string); ok && s != "" {
-			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
-		}
-	}
-
-	data := []cwtypes.MetricDatum{{
-		MetricName: aws.String(metric),
-		Dimensions: dims,
-		Unit:       unit,
-		Value:      aws.Float64(value),
-	}}
-	publishMetrics(ctx, state, data)
+	publishMetricsFunc(context.Background(), state, []cwtypes.MetricDatum{datum})
 }
 
 func publishMetrics(ctx context.Context, state *cloudWatchState, data []cwtypes.MetricDatum) {
@@ -192,22 +179,137 @@ func publishMetrics(ctx context.Context, state *cloudWatchState, data []cwtypes.
 		ctx = context.Background()
 	}
 
-	if _, err := state.client.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
-		Namespace:  aws.String(state.namespace),
-		MetricData: data,
-	}); err != nil {
-		logger.GetLogger().WithComponent("cloudwatch").WithError(err).Warn("failed to publish CloudWatch metrics")
-		return
-	}
-
 	names := make([]string, 0, len(data))
-	for _, datum := range data {
-		if datum.MetricName != nil {
-			names = append(names, *datum.MetricName)
+	for start := 0; start < len(data); start += cloudWatchMaxMetricBatch {
+		end := start + cloudWatchMaxMetricBatch
+		if end > len(data) {
+			end = len(data)
+		}
+		batch := data[start:end]
+
+		if _, err := state.client.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
+			Namespace:  aws.String(state.namespace),
+			MetricData: batch,
+		}); err != nil {
+			logger.GetLogger().WithComponent("cloudwatch").WithError(err).Warn("failed to publish CloudWatch metrics")
+			return
+		}
+
+		for _, datum := range batch {
+			if datum.MetricName != nil {
+				names = append(names, *datum.MetricName)
+			}
 		}
 	}
 
 	logger.GetLogger().WithComponent("cloudwatch").WithField("metrics", strings.Join(names, ",")).Debug("published metrics to CloudWatch")
+}
+
+func buildMetricDatum(metric Metric, value float64) cwtypes.MetricDatum {
+	fields := metric.Fields
+	unit := cwtypes.StandardUnitCount
+	if fields != nil {
+		if rawUnit, ok := fields["unit"]; ok {
+			if unitStr, ok := rawUnit.(string); ok {
+				if parsedUnit, found := metricUnitFromString(unitStr); found {
+					unit = parsedUnit
+				} else {
+					logger.GetLogger().WithComponent("cloudwatch").WithFields(logger.Fields{"metric": metric.Name, "unit": unitStr}).Debug("unsupported metric unit; defaulting to Count")
+				}
+			}
+		}
+	}
+
+	dims := []cwtypes.Dimension{{Name: aws.String("component"), Value: aws.String(metric.Component)}}
+	for k, v := range fields {
+		if k == "metric" || k == "metric_type" || k == "value" || k == "unit" {
+			continue
+		}
+		if s, ok := v.(string); ok && s != "" {
+			dims = append(dims, cwtypes.Dimension{Name: aws.String(k), Value: aws.String(s)})
+		}
+	}
+
+	datum := cwtypes.MetricDatum{
+		MetricName: aws.String(metric.Name),
+		Dimensions: dims,
+		Unit:       unit,
+		Value:      aws.Float64(value),
+	}
+	if !metric.Timestamp.IsZero() {
+		ts := metric.Timestamp
+		datum.Timestamp = aws.Time(ts)
+	}
+	return datum
+}
+
+func shouldPublishMetric(metric Metric, datum cwtypes.MetricDatum) bool {
+	key := metricThrottleKey(metric, datum)
+	if key == "" {
+		return true
+	}
+
+	interval := cloudWatchPublishInterval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+
+	metricPublishTimesMu.Lock()
+	defer metricPublishTimesMu.Unlock()
+
+	now := timeNow()
+	if last, ok := metricPublishTimes[key]; ok {
+		if now.Sub(last) < interval {
+			return false
+		}
+	}
+
+	metricPublishTimes[key] = now
+	return true
+}
+
+func metricThrottleKey(metric Metric, datum cwtypes.MetricDatum) string {
+	if datum.MetricName == nil {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(64)
+	builder.WriteString(metric.Component)
+	builder.WriteString("|")
+	builder.WriteString(*datum.MetricName)
+
+	if len(datum.Dimensions) > 0 {
+		dims := make([]string, 0, len(datum.Dimensions))
+		for _, dim := range datum.Dimensions {
+			var name, value string
+			if dim.Name != nil {
+				name = *dim.Name
+			}
+			if dim.Value != nil {
+				value = *dim.Value
+			}
+			dims = append(dims, name+"="+value)
+		}
+		sort.Strings(dims)
+		for _, dim := range dims {
+			builder.WriteString("|")
+			builder.WriteString(dim)
+		}
+	}
+
+	if datum.Unit != "" {
+		builder.WriteString("|unit=")
+		builder.WriteString(string(datum.Unit))
+	}
+
+	return builder.String()
+}
+
+func resetMetricPublishTimes() {
+	metricPublishTimesMu.Lock()
+	metricPublishTimes = make(map[string]time.Time)
+	metricPublishTimesMu.Unlock()
 }
 
 func toFloat64(value interface{}) (float64, bool) {
