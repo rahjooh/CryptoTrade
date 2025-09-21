@@ -13,6 +13,9 @@ jobs:
   test-build:
     name: Test & Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
     steps:
@@ -47,6 +50,43 @@ jobs:
       - name: Build binary
         run: go build -o cryptoflow .
 
+      - name: Cleanup old binary artifacts
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const maxArtifactsToKeep = 5;
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              },
+              (response) => response.data.artifacts ?? []
+            );
+
+            const binaryArtifacts = artifacts
+              .filter((artifact) => artifact.name === "cryptoflow-binary" && !artifact.expired)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const artifactsToDelete = binaryArtifacts.slice(maxArtifactsToKeep);
+
+            core.info(
+              `Found ${binaryArtifacts.length} cryptoflow-binary artifacts. Keeping ${binaryArtifacts.length - artifactsToDelete.length} latest and deleting ${artifactsToDelete.length}.`
+            );
+
+            for (const artifact of artifactsToDelete) {
+              core.info(`Deleting artifact ${artifact.id} created at ${artifact.created_at}`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+
+            core.info('Cleanup complete.');
+
       # This step stores the built binary as an artifact.
       # The deploy job will download this exact file, ensuring
       # consistency between build and deployment.
@@ -55,6 +95,7 @@ jobs:
         with:
           name: cryptoflow-binary
           path: cryptoflow
+          retention-days: 7
 
 
 
