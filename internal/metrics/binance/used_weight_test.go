@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"cryptoflow/config"
 	"cryptoflow/internal/metrics"
 	"cryptoflow/logger"
 )
@@ -91,5 +92,28 @@ func TestEstimateWebsocketWeightPerMinute(t *testing.T) {
 
 	if EstimateWebsocketWeightPerMinute(2, 0) != 0 {
 		t.Fatalf("expected zero weight for zero interval")
+	}
+}
+
+func TestReportUsedWeight_Disabled(t *testing.T) {
+	log := logger.GetLogger()
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set("X-MBX-USED-WEIGHT-1M", "123.5")
+
+	metrics.Configure(config.MetricsConfig{UsedWeight: false, ChannelSize: true})
+	t.Cleanup(func() { metrics.Configure(config.MetricsConfig{UsedWeight: true, ChannelSize: true}) })
+
+	events := make(chan metrics.Metric, 1)
+	id := metrics.RegisterMetricHandler(func(m metrics.Metric) { events <- m })
+	t.Cleanup(func() { metrics.UnregisterMetricHandler(id) })
+
+	if weight, reported := ReportUsedWeight(log, resp, "binance_reader", "BTCUSDT", "snapshot", "127.0.0.1", 10); reported || weight != 0 {
+		t.Fatalf("expected metrics to be disabled")
+	}
+
+	select {
+	case <-events:
+		t.Fatal("did not expect metric emission when feature disabled")
+	case <-time.After(10 * time.Millisecond):
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	metrics "cryptoflow/internal/metrics"
 	kucoinmetrics "cryptoflow/internal/metrics/kucoin"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
@@ -242,7 +243,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 		}
 	}
 
-	if resp != nil {
+	if metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) && resp != nil {
 		limit := r.config.ExchangeRateLimit.Kucoin.RequestWeight
 		var (
 			remaining int64 = -1

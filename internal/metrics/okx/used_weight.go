@@ -56,6 +56,9 @@ func ReportUsage(log *logger.Log, component, symbol, market, ip string, rl RateL
 	if log == nil {
 		return false
 	}
+	if !metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) {
+		return false
+	}
 
 	fields := logger.Fields{}
 	if ip != "" {
