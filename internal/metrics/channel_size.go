@@ -12,6 +12,9 @@ import (
 // delta (FOBD) channel buffers. Metrics are logged every `interval` until the
 // context is cancelled. When interval <=0, a one-second cadence is used.
 func StartChannelSizeMetrics(ctx context.Context, channels *channel.Channels, interval time.Duration) {
+	if !IsFeatureEnabled(FeatureChannelSize) {
+		return
+	}
 	if channels == nil {
 		return
 	}

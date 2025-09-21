@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"cryptoflow/config"
 	"cryptoflow/logger"
 )
 
@@ -114,5 +115,29 @@ func TestEmitMetricWithoutName(t *testing.T) {
 	case <-events:
 		t.Fatal("handler should not receive metrics without a name")
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestEmitMetricDisabledFeature(t *testing.T) {
+	resetMetricHandlers()
+
+	Configure(config.MetricsConfig{UsedWeight: false, ChannelSize: false})
+	t.Cleanup(func() { Configure(config.MetricsConfig{UsedWeight: true, ChannelSize: true}) })
+
+	events := make(chan Metric, 1)
+	id := RegisterMetricHandler(func(m Metric) {
+		events <- m
+	})
+	t.Cleanup(func() {
+		UnregisterMetricHandler(id)
+	})
+
+	EmitMetric(nil, "component", "used_weight", 1, "counter", nil)
+	EmitMetric(nil, "component", "fobs_raw_buffer_length", 1, "gauge", nil)
+
+	select {
+	case <-events:
+		t.Fatal("expected no metrics to be emitted when feature disabled")
+	case <-time.After(20 * time.Millisecond):
 	}
 }

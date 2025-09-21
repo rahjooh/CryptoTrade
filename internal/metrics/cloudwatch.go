@@ -104,6 +104,9 @@ func InitCloudWatch(region, namespace, dashboard string) {
 
 // EmitMetric logs the metric locally and publishes it to CloudWatch when configured.
 func EmitMetric(log *logger.Log, component string, metric string, value interface{}, metricType string, fields logger.Fields) {
+	if !isMetricEnabled(metric) {
+		return
+	}
 	metricEvent, ok := recordMetric(log, component, metric, value, metricType, fields)
 	if !ok {
 		return

@@ -4,6 +4,11 @@ app:
   version: "1.0.0"
   environment: "development"
 
+# Metrics configuration
+metrics:
+  used_weight: true
+  channel_size: true
+
 # Source Configuration
 source:
   binance:

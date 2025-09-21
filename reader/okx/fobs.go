@@ -12,6 +12,7 @@ import (
 
 	"cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	metrics "cryptoflow/internal/metrics"
 	okxmetrics "cryptoflow/internal/metrics/okx"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -153,7 +154,7 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 		log.WithError(err).Warn("failed to fetch orderbook from okx")
 		return
 	}
-	if header != nil {
+	if metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) && header != nil {
 		rl := okxmetrics.ExtractRateLimit(header)
 		deltaCfg := r.config.Source.Okx.Future.Orderbook.Delta
 		symbolCount := len(deltaCfg.Symbols)
