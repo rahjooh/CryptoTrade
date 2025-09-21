@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
 )
 
@@ -37,9 +36,9 @@ func LoadIPShards(path string) (*IPShards, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse shards file: %w", err)
 	}
-	for i := range cfg.Shards {
-		cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot = cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot
-		cfg.Shards[i].OkxSymbols.SwapOrderbookDelta = cfg.Shards[i].OkxSymbols.SwapOrderbookDelta
-	}
+	//for i := range cfg.Shards {
+	//	cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot = cfg.Shards[i].OkxSymbols.SwapOrderbookSnapshot
+	//	cfg.Shards[i].OkxSymbols.SwapOrderbookDelta = cfg.Shards[i].OkxSymbols.SwapOrderbookDelta
+	//}
 	return &cfg, nil
 }
