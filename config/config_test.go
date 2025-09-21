@@ -58,6 +58,63 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Reader.MaxWorkers != 1 {
 		t.Errorf("unexpected max workers: %d", cfg.Reader.MaxWorkers)
 	}
+	if !cfg.Metrics.UsedWeight {
+		t.Errorf("expected used_weight metrics to default to enabled")
+	}
+	if !cfg.Metrics.ChannelSize {
+		t.Errorf("expected channel_size metrics to default to enabled")
+	}
+}
+
+func TestLoadConfig_DisableMetrics(t *testing.T) {
+	content := `cryptoflow:
+  name: "TestApp"
+  version: "1.0"
+metrics:
+  used_weight: false
+  channel_size: true
+channels:
+  raw_buffer: 1
+  processed_buffer: 1
+  error_buffer: 1
+  pool_size: 1
+reader:
+  max_workers: 1
+processor:
+  max_workers: 1
+  batch_size: 1
+  batch_timeout: 1s
+writer:
+  buffer:
+    snapshot_flush_interval: 1s
+    delta_flush_interval: 1s
+storage:
+  s3:
+    enabled: false
+`
+
+	f, err := os.CreateTemp("", "cfg-metrics-*.yml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+
+	cfg, err := LoadConfig(f.Name())
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.Metrics.UsedWeight {
+		t.Errorf("expected used_weight metrics to be disabled")
+	}
+	if !cfg.Metrics.ChannelSize {
+		t.Errorf("expected channel_size metrics to remain enabled")
+	}
 }
 
 func TestLoadIPShards(t *testing.T) {
