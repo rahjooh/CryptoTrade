@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+        "gopkg.in/yaml.v3"
+
 )
 
 // OkxSymbolSet groups OKX swap order book symbols for snapshot and delta streams.
