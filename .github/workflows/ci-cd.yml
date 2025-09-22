@@ -2,46 +2,61 @@ name: cryptoflow CI/CD
 
 on:
   push:
-    branches: ["main", "s3-table"]
+    branches: ["main", "prod"]
   workflow_dispatch:
 
+# Cancel older runs for the same branch/workflow
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
+# Least-privilege defaults; jobs can widen if needed
+permissions:
+  contents: read
+
 jobs:
-  test-build:
+  build-test:
     name: Test & Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write
+      # upload-artifact/download-artifact do NOT require 'actions: write'
     env:
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      # Use the toolchain specified by your repo (recommended). If you want to force 1.22, switch to go-version + GOTOOLCHAIN=local.
+      # GOTOOLCHAIN: local
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Show ref info
         run: |
           echo "ref=${{ github.ref }}"
           echo "ref_name=${{ github.ref_name }}"
           echo "event=${{ github.event_name }}"
 
-      - uses: actions/checkout@v4
-
-      - name: Clean Go module cache
-        run: rm -rf ~/go/pkg/mod || true
-
+      # Align with `toolchain goX.Y` in go.mod. Disable caching for hermetic builds.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-          cache: true
-          cache-dependency-path: go.sum
+          go-version-file: go.mod
+          cache: false
 
-      # This step configures git to use the private Go module PAT.
-      - name: Configure Git PAT token for private modules
+      # Keep Go caches inside the workspace so a single rm -rf is enough
+      - name: Isolate Go caches in workspace
+        run: |
+          echo "GOMODCACHE=$PWD/.gomodcache" >> "$GITHUB_ENV"
+          echo "GOCACHE=$PWD/.gobuildcache" >> "$GITHUB_ENV"
+
+      - name: Clean workspace & caches (pre)
+        run: |
+          rm -rf ./.gomodcache ./.gobuildcache ./cryptoflow || true
+
+      # Access private Go modules via PAT
+      - name: Configure Git PAT for private modules
         run: git config --global url.https://${{ secrets.GO_PAT }}@github.com.insteadOf https://github.com
 
-      - name: Install deps
+      - name: Download deps
         run: go mod download
 
       - name: Run tests
@@ -50,75 +65,7 @@ jobs:
       - name: Build binary
         run: go build -o cryptoflow .
 
-      - name: Remove cached Go toolchains
-        if: always()
-        run: |
-          set -euo pipefail
-
-          if ! command -v go >/dev/null 2>&1; then
-            echo "Go binary not available; skipping toolchain cleanup."
-            exit 0
-          fi
-
-          MODCACHE=$(go env GOMODCACHE)
-          TOOLCHAIN_PARENT="$MODCACHE/golang.org"
-
-          if [ ! -d "$TOOLCHAIN_PARENT" ]; then
-            echo "No golang.org directory in module cache; nothing to prune."
-            exit 0
-          fi
-
-          found=0
-          while IFS= read -r -d '' dir; do
-            echo "Removing cached Go toolchain directory: $dir"
-            rm -rf "$dir"
-            found=1
-          done < <(find "$TOOLCHAIN_PARENT" -maxdepth 1 -type d -name 'toolchain@*' -print0)
-
-          if [ "$found" -eq 0 ]; then
-            echo "No downloaded Go toolchains found in module cache."
-          fi
-
-      - name: Cleanup old binary artifacts
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const maxArtifactsToKeep = 5;
-            const artifacts = await github.paginate(
-              github.rest.actions.listArtifactsForRepo,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                per_page: 100,
-              },
-              (response) => response.data.artifacts ?? []
-            );
-
-            const binaryArtifacts = artifacts
-              .filter((artifact) => artifact.name === "cryptoflow-binary" && !artifact.expired)
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-            const artifactsToDelete = binaryArtifacts.slice(maxArtifactsToKeep);
-
-            core.info(
-              `Found ${binaryArtifacts.length} cryptoflow-binary artifacts. Keeping ${binaryArtifacts.length - artifactsToDelete.length} latest and deleting ${artifactsToDelete.length}.`
-            );
-
-            for (const artifact of artifactsToDelete) {
-              core.info(`Deleting artifact ${artifact.id} created at ${artifact.created_at}`);
-              await github.rest.actions.deleteArtifact({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                artifact_id: artifact.id,
-              });
-            }
-
-            core.info('Cleanup complete.');
-
-      # This step stores the built binary as an artifact.
-      # The deploy job will download this exact file, ensuring
-      # consistency between build and deployment.
+      # Upload only the built artifact (keep retention short)
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
@@ -126,7 +73,12 @@ jobs:
           path: cryptoflow
           retention-days: 7
 
-
+      # Belt & suspenders: nuke caches generated during this job
+      - name: Clean workspace & caches (post)
+        if: always()
+        run: |
+          go clean -modcache -cache -testcache -fuzzcache || true
+          rm -rf ./.gomodcache ./.gobuildcache || true
 
   test-ssh:
     name: Test SSH
@@ -147,8 +99,7 @@ jobs:
   deploy-main:
     name: Deploy (main)
     runs-on: ubuntu-latest
-    # This job now depends on a successful build.
-    needs: [test-build, test-ssh]
+    needs: [build-test, test-ssh]
     if: ${{ github.ref_name == 'main' }}
     env:
       AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -158,19 +109,18 @@ jobs:
       S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
       DASHBOARD_NAME:        Data
-
     steps:
-      # Download the binary that was built and tested in the previous job.
+      # Pull the exact binary that passed tests
       - name: Download binary artifact
         uses: actions/download-artifact@v4
         with:
           name: cryptoflow-binary
 
-      # Checkout the code to get the docker-compose.yml file.
-      - name: Checkout code for docker-compose
+      # Get docker-compose and any other needed files
+      - name: Checkout repo (for compose/configs)
         uses: actions/checkout@v4
 
-      - name: Prepare remote workspace
+      - name: Prepare remote workspace (clean except .env/data)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -181,45 +131,41 @@ jobs:
             APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
+            # Remove everything except .env and data (if present)
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
 
-            if command -v git >/dev/null 2>&1 && [ -d .git ]; then
-              git reset --hard HEAD
-              git clean -fd
-            else
-              find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
-            fi
-
-      - name: Transfer files to EC2 via SCP
+      # Ship only what you need: repo files + the built binary
+      - name: Transfer files to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: ".,cryptoflow" # This will copy all files from root and the cryptoflow binary
+          source: ".,cryptoflow"
           target: "/home/${{ secrets.EC2_USER }}/cryptoflow"
 
-      - name: Deploy on EC2 via SSH
+      - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: REPO,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
           script: |
             set -euo pipefail
             APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
             cd "$APP_DIR"
-            
-            # Stop the running container(s)
+
+            # Hard stop & prune Docker state
             docker compose down --rmi all --volumes || true
             docker system prune -af --volumes || true
-            
-            
-            # Start the container(s) with the newly transferred files
+            docker network prune -f || true
+
+            # Fresh start
             docker compose up -d --build
-            
             echo "✅ Deploy complete"
 
+      # --- Optional CloudWatch dashboard refresh (commit with [CWdash]) ---
       - name: Configure AWS creds
         if: contains(github.event.head_commit.message, '[CWdash]')
         uses: aws-actions/configure-aws-credentials@v4
@@ -251,7 +197,7 @@ jobs:
             --dashboard-name "$DASHBOARD_NAME" \
             --dashboard-body file:///tmp/dashboard.json
 
-      - name: Validate
+      - name: Validate dashboard
         if: contains(github.event.head_commit.message, '[CWdash]')
         run: |
           aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
