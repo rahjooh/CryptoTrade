@@ -125,7 +125,7 @@ jobs:
         with:
           name: cryptoflow-binary
           path: cryptoflow
-          retention-days: 7
+          retention-days: 1
 
       # Belt & suspenders: nuke caches generated during this job
       - name: Clean workspace & caches (post)
