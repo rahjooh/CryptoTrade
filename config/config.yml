@@ -6,7 +6,7 @@ app:
 
 # Metrics configuration
 metrics:
-  used_weight: true
+  used_weight: false
   channel_size: true
 
 # Source Configuration
