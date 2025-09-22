@@ -17,6 +17,9 @@ func ReportUsedWeight(log *logger.Log, resp *http.Response, component, symbol, m
 	if log == nil || resp == nil {
 		return 0, false
 	}
+	if !metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) {
+		return 0, false
+	}
 
 	headers := []struct {
 		key    string
