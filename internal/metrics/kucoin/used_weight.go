@@ -34,6 +34,9 @@ func ReportUsage(
 	if log == nil {
 		return false
 	}
+	if !metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) {
+		return false
+	}
 
 	fields := logger.Fields{}
 	if ip != "" {

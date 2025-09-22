@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	Cryptoflow        CryptoflowConfig        `yaml:"cryptoflow"`
+	Metrics           MetricsConfig           `yaml:"metrics"`
 	Channels          ChannelsConfig          `yaml:"channels"`
 	Reader            ReaderConfig            `yaml:"reader"`
 	Processor         ProcessorConfig         `yaml:"processor"`
@@ -24,6 +25,11 @@ type Config struct {
 type CryptoflowConfig struct {
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
+}
+
+type MetricsConfig struct {
+	UsedWeight  bool `yaml:"used_weight"`
+	ChannelSize bool `yaml:"channel_size"`
 }
 
 type ChannelsConfig struct {
@@ -306,7 +312,12 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config Config
+	config := Config{
+		Metrics: MetricsConfig{
+			UsedWeight:  true,
+			ChannelSize: true,
+		},
+	}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}

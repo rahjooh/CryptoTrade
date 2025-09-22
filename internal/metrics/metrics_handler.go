@@ -2,9 +2,18 @@ package metrics
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"cryptoflow/config"
 	"cryptoflow/logger"
+)
+
+type Feature string
+
+const (
+	FeatureUsedWeight  Feature = "used_weight"
+	FeatureChannelSize Feature = "channel_size"
 )
 
 // Metric represents a structured metric event emitted within the application.
@@ -24,10 +33,61 @@ type MetricHandler func(Metric)
 type MetricHandlerID uint64
 
 var (
+	defaultMetricsConfig = config.MetricsConfig{
+		UsedWeight:  true,
+		ChannelSize: true,
+	}
+	metricsConfig atomic.Pointer[config.MetricsConfig]
+
 	metricHandlersMu    sync.RWMutex
 	metricHandlers      = make(map[MetricHandlerID]MetricHandler)
 	nextMetricHandlerID MetricHandlerID
 )
+
+func init() {
+	cfg := defaultMetricsConfig
+	metricsConfig.Store(&cfg)
+}
+
+// Configure updates the metrics feature switches used by the metrics package.
+func Configure(cfg config.MetricsConfig) {
+	copyCfg := cfg
+	metricsConfig.Store(&copyCfg)
+}
+
+// IsFeatureEnabled reports whether the provided feature flag is enabled.
+func IsFeatureEnabled(feature Feature) bool {
+	if feature == "" {
+		return true
+	}
+	cfg := metricsConfig.Load()
+	if cfg == nil {
+		return true
+	}
+	switch feature {
+	case FeatureUsedWeight:
+		return cfg.UsedWeight
+	case FeatureChannelSize:
+		return cfg.ChannelSize
+	default:
+		return true
+	}
+}
+
+func metricFeature(name string) Feature {
+	switch name {
+	case "used_weight":
+		return FeatureUsedWeight
+	case "fobs_raw_buffer_length", "fobs_norm_buffer_length", "fobd_raw_buffer_length", "fobd_norm_buffer_length":
+		return FeatureChannelSize
+	default:
+		return ""
+	}
+}
+
+func isMetricEnabled(name string) bool {
+	return IsFeatureEnabled(metricFeature(name))
+}
 
 // RegisterMetricHandler registers a handler that will receive every emitted metric.
 // A zero identifier is returned when the provided handler is nil.

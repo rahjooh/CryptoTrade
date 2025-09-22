@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	metrics "cryptoflow/internal/metrics"
 	bybitmetrics "cryptoflow/internal/metrics/bybit"
 	"cryptoflow/logger"
 	"cryptoflow/models"
@@ -155,7 +156,9 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	}
 	defer resp.Body.Close()
 
-	bybitmetrics.ReportUsage(r.log, resp, "bybit_reader", symbol, "future-orderbook-snapshot", r.ip)
+	if metrics.IsFeatureEnabled(metrics.FeatureUsedWeight) {
+		bybitmetrics.ReportUsage(r.log, resp, "bybit_reader", symbol, "future-orderbook-snapshot", r.ip)
+	}
 
 	var body struct {
 		Result models.BybitFOBSresp `json:"result"`
