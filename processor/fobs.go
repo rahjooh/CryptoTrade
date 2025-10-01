@@ -129,7 +129,7 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 		"operation":    "process_message",
 	})
 
-	log.Info("processing raw message")
+	log.Debug("processing raw message")
 
 	// Parse the raw orderbook data
 	var book models.BinanceFOBSresp
@@ -166,7 +166,7 @@ func (f *Flattener) processMessage(rawMsg models.RawFOBSMessage) int {
 		"entries_count": len(entries),
 		"bids_count":    len(book.Bids),
 		"asks_count":    len(book.Asks),
-	}).Info("message processed successfully")
+	}).Debug("message processed successfully")
 
 	return len(entries)
 }
@@ -345,13 +345,13 @@ func (f *Flattener) flushBatch(batchKey string) {
 		"operation":    "flush_batch",
 	})
 
-	log.Info("flushing batch")
+	log.Debug("flushing batch")
 
 	if f.channels.SendNorm(f.ctx, *batch) {
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
 
-		log.Info("batch flushed successfully")
+		log.Debug("batch flushed successfully")
 
 	} else if f.ctx.Err() != nil {
 		return
