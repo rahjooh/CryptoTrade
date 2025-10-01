@@ -191,6 +191,8 @@ source:
           connection: websocket
           url: wss://api-futures.kucoin.com/endpoint
           interval_ms: 100
+          read_buffer_bytes: 4194304
+
 
   coinbase:
     spot:
