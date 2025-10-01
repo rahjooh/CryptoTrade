@@ -351,7 +351,7 @@ func (f *Flattener) flushBatch(batchKey string) {
 		delete(f.batches, batchKey)
 		delete(f.lastFlush, batchKey)
 
-		log.Debug("batch flushed successfully")
+		log.Info("batch flushed successfully")
 
 	} else if f.ctx.Err() != nil {
 		return
