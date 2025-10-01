@@ -239,7 +239,7 @@ cryptoflow:
   version: "1.0.0"
 
 channels:
-  raw_buffer: 10000
+  raw_buffer: 2500
   processed_buffer: 2000
 
 reader:
