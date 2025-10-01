@@ -131,7 +131,11 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		SetTimeout(r.config.Reader.Timeout).
 		Build()
 
-	wsOpt := sdktype.NewWebSocketClientOptionBuilder().Build()
+	wsOptBuilder := sdktype.NewWebSocketClientOptionBuilder()
+	if cfg.ReadBufferBytes > 0 {
+		wsOptBuilder = wsOptBuilder.WithReadBufferBytes(cfg.ReadBufferBytes)
+	}
+	wsOpt := wsOptBuilder.Build()
 	option := sdktype.NewClientOptionBuilder().
 		WithFuturesEndpoint(baseURL).
 		WithTransportOption(transportOpt).
