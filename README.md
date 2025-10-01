@@ -8,13 +8,13 @@ CryptoFlow is a Go service that streams high‑frequency order book snapshots fr
 
 ```
 ┌─────────────┐   RawFOBSMessage    ┌─────────────┐   BatchFOBSMessage   ┌───────────┐
-│ Binance API │ ───────────────────────▶ │   Reader    │ ───────────────────────────▶ │ Flattener │
-└─────────────┘                         └─────────────┘                               └─────┬─────┘
-                                                                                         │
-                                                                                         ▼
-                                                                                ┌────────────┐
-                                                                                │  S3 Writer │
-                                                                                └────────────┘
+│ Binance API │ ──────────────────▶ │   Reader    │ ───────────────────▶ │ Flattener │
+└─────────────┘                     └─────────────┘                      └─────┬─────┘
+                                                                               │
+                                                                               ▼
+                                                                         ┌────────────┐
+                                                                         │  S3 Writer │
+                                                                         └────────────┘
 ```
 
 1. **Reader** – polls the Binance depth endpoint at the configured interval and emits a `RawFOBSMessage`.
