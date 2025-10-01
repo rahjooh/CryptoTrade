@@ -239,7 +239,7 @@ cryptoflow:
   version: "1.0.0"
 
 channels:
-  raw_buffer: 2500
+  raw_buffer: 10000
   processed_buffer: 2000
 
 reader:
@@ -266,8 +266,8 @@ writer:
     max_memory: "1MB"
   buffer:
     max_size: 10
-    snapshot_flush_interval: "3m"
-    delta_flush_interval: "3m"
+    snapshot_flush_interval: "10m"
+    delta_flush_interval: "5m"
     memory_threshold: 0.8
   partitioning:
     scheme: "time"
