@@ -266,7 +266,7 @@ writer:
     max_memory: "1MB"
   buffer:
     max_size: 10
-    snapshot_flush_interval: "10m"
+    snapshot_flush_interval: "3m"
     delta_flush_interval: "5m"
     memory_threshold: 0.8
   partitioning:
