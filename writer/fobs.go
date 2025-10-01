@@ -389,7 +389,7 @@ func (w *snapshotWriter) generateS3Key(batch models.BatchFOBSMessage) string {
 	parts = append(parts, timePath)
 
 	// Add filename
-	ts := "1" + timestamp.UTC().Format("20060102150405")
+	ts := timestamp.UTC().Format("20060102150405")
 	filename := fmt.Sprintf("%s_fobs_%s_%s.parquet",
 		batch.Exchange,
 		batch.Symbol,
