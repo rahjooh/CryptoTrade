@@ -93,9 +93,6 @@ go test  ./...
 go run main.go
 ```
 
-### Deploying with Docker on EC2
-
-If you want to build the Docker image locally and run it on an Ubuntu-based EC2 instance, follow the step-by-step guide in [`docs/docker-deployment.md`](docs/docker-deployment.md).
 
 When running in Docker and sharding traffic across multiple Elastic IPs, ensure the container uses the host network so the secondary private addresses are available. The provided `docker-compose.yml` sets `network_mode: host`, allowing the application to bind each symbol to the IP defined in `config/ip_shards.yml`.
 
