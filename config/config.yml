@@ -192,6 +192,7 @@ source:
           url: wss://api-futures.kucoin.com/endpoint
           interval_ms: 100
           read_buffer_bytes: 4194304
+          read_message_buffer: 4096
 
 
   coinbase:

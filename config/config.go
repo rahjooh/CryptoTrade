@@ -2,11 +2,10 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"regexp"
 	"strings"
-	"time"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -258,12 +257,13 @@ type BybitDeltaConfig struct {
 }
 
 type KucoinDeltaConfig struct {
-	Enabled         bool     `yaml:"enabled"`
-	Connection      string   `yaml:"connection"`
-	URL             string   `yaml:"url"`
-	IntervalMs      int      `yaml:"interval_ms"`
-	Symbols         []string `yaml:"symbols"`
-	ReadBufferBytes int      `yaml:"read_buffer_bytes"`
+	Enabled           bool     `yaml:"enabled"`
+	Connection        string   `yaml:"connection"`
+	URL               string   `yaml:"url"`
+	IntervalMs        int      `yaml:"interval_ms"`
+	Symbols           []string `yaml:"symbols"`
+	ReadBufferBytes   int      `yaml:"read_buffer_bytes"`
+	ReadMessageBuffer int      `yaml:"read_message_buffer"`
 }
 
 type OkxDeltaConfig struct {
