@@ -11,9 +11,9 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	sdkapi "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/api"
 	futurespublic "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/futures/futurespublic"
@@ -118,6 +118,8 @@ func parseChange(change string) (side, price, quantity string) {
 func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL string) {
 	defer r.wg.Done()
 
+	deltaCfg := r.config.Source.Kucoin.Future.Orderbook.Delta
+
 	baseURL := wsURL
 	if parsed, err := url.Parse(wsURL); err == nil {
 		baseURL = fmt.Sprintf("https://%s", parsed.Host)
@@ -132,8 +134,8 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 		Build()
 
 	wsOptBuilder := sdktype.NewWebSocketClientOptionBuilder()
-	if cfg.ReadBufferBytes > 0 {
-		wsOptBuilder = wsOptBuilder.WithReadBufferBytes(cfg.ReadBufferBytes)
+	if deltaCfg.ReadBufferBytes > 0 {
+		wsOptBuilder = wsOptBuilder.WithReadBufferBytes(deltaCfg.ReadBufferBytes)
 	}
 	wsOpt := wsOptBuilder.Build()
 	option := sdktype.NewClientOptionBuilder().

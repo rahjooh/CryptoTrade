@@ -13,9 +13,9 @@ import (
 	fobs "cryptoflow/internal/channel/fobs"
 	metrics "cryptoflow/internal/metrics"
 	kucoinmetrics "cryptoflow/internal/metrics/kucoin"
+	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	sdkapi "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/api"
 	futuresmarket "github.com/Kucoin/kucoin-universal-sdk/sdk/golang/pkg/generate/futures/market"

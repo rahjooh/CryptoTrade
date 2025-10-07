@@ -13,8 +13,8 @@ import (
 	fobs "cryptoflow/internal/channel/fobs"
 	metrics "cryptoflow/internal/metrics"
 	bybitmetrics "cryptoflow/internal/metrics/bybit"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 // Bybit_FOBS_Reader fetches futures order book snapshots from Bybit.

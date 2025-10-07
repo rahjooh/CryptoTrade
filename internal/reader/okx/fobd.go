@@ -11,8 +11,8 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	"github.com/gorilla/websocket"
 )

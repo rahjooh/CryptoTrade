@@ -10,8 +10,8 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	futures "github.com/adshao/go-binance/v2/futures"
 	"github.com/sirupsen/logrus"

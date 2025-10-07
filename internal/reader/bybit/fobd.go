@@ -10,8 +10,8 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	bybit "github.com/bybit-exchange/bybit.go.api"
 )

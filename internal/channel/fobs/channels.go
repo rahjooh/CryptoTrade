@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 type ChannelStats struct {

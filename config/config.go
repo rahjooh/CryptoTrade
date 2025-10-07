@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
