@@ -137,6 +137,9 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 	if deltaCfg.ReadBufferBytes > 0 {
 		wsOptBuilder = wsOptBuilder.WithReadBufferBytes(deltaCfg.ReadBufferBytes)
 	}
+	if deltaCfg.ReadMessageBuffer > 0 {
+		wsOptBuilder = wsOptBuilder.WithReadMessageBuffer(deltaCfg.ReadMessageBuffer)
+	}
 	wsOpt := wsOptBuilder.Build()
 	option := sdktype.NewClientOptionBuilder().
 		WithFuturesEndpoint(baseURL).
