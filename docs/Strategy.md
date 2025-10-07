@@ -136,7 +136,7 @@ source:
           symbols: [ BTCUSDT, ETHUSDT ]
 ```
 
-More example config is available in [`config.yml`](./config/config.yml).
+More example config is available in [`config.yml`](../config/config.yml).
 
 ---
 
