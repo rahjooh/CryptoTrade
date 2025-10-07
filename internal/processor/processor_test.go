@@ -9,7 +9,7 @@ import (
 	appconfig "cryptoflow/config"
 	fobdchan "cryptoflow/internal/channel/fobd"
 	fobschan "cryptoflow/internal/channel/fobs"
-	"cryptoflow/models"
+	"cryptoflow/internal/models"
 )
 
 func minimalDeltaConfig() *appconfig.Config {

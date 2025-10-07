@@ -3,8 +3,8 @@ package writer
 import (
 	"testing"
 
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 func TestAddBatchAndBufferKey(t *testing.T) {

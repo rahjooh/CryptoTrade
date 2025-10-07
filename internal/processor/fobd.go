@@ -12,9 +12,9 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 // DeltaProcessor normalizes order book delta messages and batches them

@@ -14,8 +14,8 @@ import (
 	fobs "cryptoflow/internal/channel/fobs"
 	metrics "cryptoflow/internal/metrics"
 	binancemetrics "cryptoflow/internal/metrics/binance"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 
 	futures "github.com/adshao/go-binance/v2/futures"
 )

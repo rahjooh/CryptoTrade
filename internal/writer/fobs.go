@@ -21,8 +21,8 @@ import (
 
 	appconfig "cryptoflow/config"
 	"cryptoflow/internal/metadata"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 // ParquetRecord represents the structure of our parquet file

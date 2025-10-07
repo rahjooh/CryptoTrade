@@ -14,8 +14,8 @@ import (
 	fobs "cryptoflow/internal/channel/fobs"
 	metrics "cryptoflow/internal/metrics"
 	okxmetrics "cryptoflow/internal/metrics/okx"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 	"golang.org/x/time/rate"
 )
 

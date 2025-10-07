@@ -9,8 +9,8 @@ import (
 	appconfig "cryptoflow/config"
 	fobdchan "cryptoflow/internal/channel/fobd"
 	fobschan "cryptoflow/internal/channel/fobs"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 // minimalConfig returns a minimal configuration required for testing.

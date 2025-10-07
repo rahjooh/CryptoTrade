@@ -14,13 +14,13 @@ import (
 	"cryptoflow/config"
 	"cryptoflow/internal/channel"
 	"cryptoflow/internal/metrics"
+	"cryptoflow/internal/processor"
+	"cryptoflow/internal/reader/binance"
+	bybitreader "cryptoflow/internal/reader/bybit"
+	"cryptoflow/internal/reader/kucoin"
+	okxreader "cryptoflow/internal/reader/okx"
+	"cryptoflow/internal/writer"
 	"cryptoflow/logger"
-	"cryptoflow/processor"
-	"cryptoflow/reader/binance"
-	bybitreader "cryptoflow/reader/bybit"
-	"cryptoflow/reader/kucoin"
-	okxreader "cryptoflow/reader/okx"
-	"cryptoflow/writer"
 )
 
 func main() {

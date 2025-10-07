@@ -19,8 +19,8 @@ import (
 	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
+	"cryptoflow/internal/models"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 // deltaRecord defines parquet schema for order book delta entries

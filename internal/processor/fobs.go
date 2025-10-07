@@ -12,9 +12,9 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobs "cryptoflow/internal/channel/fobs"
+	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
-	"cryptoflow/models"
 )
 
 type Flattener struct {
