@@ -1,8 +1,6 @@
 name: cryptoflow CI/CD
 
 on:
-  push:
-    branches: ["main", "prod"]
   workflow_dispatch:
 
 # Cancel older runs for the same branch/workflow
