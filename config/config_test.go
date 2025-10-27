@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -8,9 +9,13 @@ import (
 // writeTempConfig creates a minimal configuration file required for LoadConfig
 // and returns its path.
 func writeTempConfig(t *testing.T) string {
+	return writeTempConfigWithName(t, "TestApp")
+}
+
+func writeTempConfigWithName(t *testing.T, name string) string {
 	t.Helper()
-	content := `cryptoflow:
-  name: "TestApp"
+	content := fmt.Sprintf(`cryptoflow:
+  name: "%s"
   version: "1.0"
 channels:
   raw_buffer: 1
@@ -30,7 +35,7 @@ writer:
 storage:
   s3:
     enabled: false
-`
+`, name)
 	f, err := os.CreateTemp("", "cfg-*.yml")
 	if err != nil {
 		t.Fatalf("create temp file: %v", err)
@@ -170,5 +175,56 @@ func TestIsValidS3Bucket(t *testing.T) {
 		if got := isValidS3Bucket(c.name); got != c.valid {
 			t.Errorf("isValidS3Bucket(%q) = %v, want %v", c.name, got, c.valid)
 		}
+	}
+}
+
+func TestLoadConfig_UsesEnvironmentSpecificFile(t *testing.T) {
+	t.Setenv(appEnvVar, environmentProduction)
+	path := writeTempConfigWithName(t, "ProdApp")
+	original := configEnvPaths
+	configEnvPaths = map[string]string{
+		environmentProduction: path,
+	}
+	t.Cleanup(func() { configEnvPaths = original })
+	cfg, err := LoadConfig(defaultConfigPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if cfg.Cryptoflow.Name != "ProdApp" {
+		t.Fatalf("expected production config to load, got %s", cfg.Cryptoflow.Name)
+	}
+}
+
+func TestLoadIPShards_UsesEnvironmentSpecificFile(t *testing.T) {
+	t.Setenv(appEnvVar, environmentStaging)
+	content := `shards:
+- ip: "2.2.2.2"
+  binance_symbols: ["ETHUSDT"]
+  kucoin_symbols: ["ETHUSDTM"]
+  okx_symbols:
+    swap_orderbook_snapshot: ["ETH-USDT-SWAP"]
+    swap_orderbook_delta: ["ETH-USDT"]
+`
+	f, err := os.CreateTemp("", "shards-env-*.yml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+	original := ipShardsEnvPaths
+	ipShardsEnvPaths = map[string]string{
+		environmentStaging: f.Name(),
+	}
+	t.Cleanup(func() { ipShardsEnvPaths = original })
+	shards, err := LoadIPShards(defaultIPShardsPath)
+	if err != nil {
+		t.Fatalf("LoadIPShards failed: %v", err)
+	}
+	if len(shards.Shards) != 1 || shards.Shards[0].IP != "2.2.2.2" {
+		t.Fatalf("expected staging shard configuration to be used")
 	}
 }
