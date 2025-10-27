@@ -2,12 +2,23 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"regexp"
 	"strings"
 	"time"
-	"gopkg.in/yaml.v3"
 )
+
+const (
+	defaultConfigPath    = "config/config.yml"
+	productionConfigPath = "config/production.yml"
+	stagingConfigPath    = "config/staging.yml"
+)
+
+var configEnvPaths = map[string]string{
+	environmentProduction: productionConfigPath,
+	environmentStaging:    stagingConfigPath,
+}
 
 type Config struct {
 	Cryptoflow        CryptoflowConfig        `yaml:"cryptoflow"`
@@ -308,10 +319,11 @@ type LoggingConfig struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
+	configPath := resolveEnvSpecificPath(path, defaultConfigPath, configEnvPaths)
 	// Read configuration file
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("failed to read config file %q: %w", configPath, err)
 	}
 
 	config := Config{

@@ -2,10 +2,20 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
-        "gopkg.in/yaml.v3"
-
 )
+
+const (
+	defaultIPShardsPath    = "config/ip_shards.yml"
+	productionIPShardsPath = "config/ip_shards.production.yml"
+	stagingIPShardsPath    = "config/ip_shards.staging.yml"
+)
+
+var ipShardsEnvPaths = map[string]string{
+	environmentProduction: productionIPShardsPath,
+	environmentStaging:    stagingIPShardsPath,
+}
 
 // OkxSymbolSet groups OKX swap order book symbols for snapshot and delta streams.
 type OkxSymbolSet struct {
@@ -30,9 +40,10 @@ type IPShards struct {
 
 // LoadIPShards loads shard configuration from the given path.
 func LoadIPShards(path string) (*IPShards, error) {
-	data, err := os.ReadFile(path)
+	shardPath := resolveEnvSpecificPath(path, defaultIPShardsPath, ipShardsEnvPaths)
+	data, err := os.ReadFile(shardPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read shards file: %w", err)
+		return nil, fmt.Errorf("failed to read shards file %q: %w", shardPath, err)
 	}
 	var cfg IPShards
 	if err := yaml.Unmarshal(data, &cfg); err != nil {

@@ -1,0 +1,301 @@
+# Application Settings
+app:
+  name: "CryptoFlow"
+  version: "1.0.1"
+  environment: "production"
+
+# Metrics configuration
+metrics:
+  used_weight: true
+  channel_size: true
+
+# Source Configuration
+source:
+  binance:
+    connection_pool:
+      max_idle_conns: 10
+      max_conns_per_host: 10
+      idle_conn_timeout: 90s
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.binance.com/api/v3/depth
+          limit: 1000      # Max allowed for spot order book depth
+          interval_ms: 10000
+          symbols: [ BTCUSDT, ETHUSDT ]
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://stream.binance.com:9443/ws
+          interval_ms: 100
+          symbols: [ BTCUSDT, ETHUSDT ]
+    future:
+      orderbook:
+        snapshots:
+          enabled: true
+          connection: rest
+          url: https://fapi.binance.com/fapi/v1/depth
+          limit: 1000                   # Number of price levels
+          interval_ms: 10000            # Collect every 1000 mili seconds
+          concurrent_symbols: 5         # Max concurrent API calls
+          batch_size: 1000              #  Records per batch before writing
+        delta:
+          enabled: true
+          connection: websocket
+          url: wss://fstream.binance.com/ws
+          interval_ms: 100
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/exchangeInfo
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://fstream.binance.com/ws
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/openInterest
+        interval_minutes: 5
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/fundingRate
+        interval_minutes: 60
+
+  bybit:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.bybit.com/spot/v3/public/quote/depth
+          limit: 1000
+          interval_ms: 1000
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://stream.bybit.com/spot/quote/ws/v1
+          interval_ms: 100
+    future:
+      orderbook:
+        snapshots:
+          enabled: true
+          connection: rest
+          url: https://api.bybit.com/v5/market/orderbook
+          limit: 500
+          interval_ms: 10000
+        delta:
+          enabled: true
+          connection: websocket
+          url: wss://stream.bybit.com/v5/public/linear
+          interval_ms: 1000
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/instruments-info
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://stream.bybit.com/v5/public/linear
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/open-interest
+        interval_minutes: 5
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://api.bybit.com/v5/market/funding/history
+        interval_minutes: 60
+
+  okx:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://www.okx.com/api/v5/market/books
+          limit: 5000
+          interval_ms: 60000
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws.okx.com:8443/ws/v5/public
+          interval_ms: 100
+    future:
+      orderbook:
+        snapshots:
+          enabled: true
+          connection: rest
+          url: https://www.okx.com/api/v5/market/books
+          limit: 5000
+          interval_ms: 10000
+        delta:
+          enabled: true
+          connection: websocket
+          url: wss://ws.okx.com:8443/ws/v5/public
+          interval_ms: 1000
+      contracts:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/instruments
+        interval_minutes: 10
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://ws.okx.com:8443/ws/v5/public
+      open_interest:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/open-interest
+        interval_minutes: 5
+      funding_rate:
+        enabled: false
+        connection: rest
+        url: https://www.okx.com/api/v5/public/funding-rate
+        interval_minutes: 60
+
+  kucoin:
+    connection_pool:
+      max_idle_conns: 10
+      max_conns_per_host: 10
+      idle_conn_timeout: 90s
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.kucoin.com/api/v1/market/orderbook/level2_100
+          limit: 1000
+          interval_ms: 1000
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws-api.kucoin.com/endpoint
+          interval_ms: 100
+    future:
+      orderbook:
+        snapshots:
+          enabled: true
+          connection: rest
+          url: https://api-futures.kucoin.com/api/v1/level2/snapshot
+          limit: 1000
+          interval_ms: 10000
+        delta:
+          enabled: true
+          connection: websocket
+          url: wss://api-futures.kucoin.com/endpoint
+          interval_ms: 100
+          read_buffer_bytes: 4194304
+          read_message_buffer: 4096
+
+
+  coinbase:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.exchange.coinbase.com/products/BTC-USD/book
+          limit: 100
+          interval_ms: 1000
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws-feed.exchange.coinbase.com
+          interval_ms: 100
+
+  kraken:
+    spot:
+      orderbook:
+        snapshots:
+          enabled: false
+          connection: rest
+          url: https://api.kraken.com/0/public/Depth
+          limit: 100
+          interval_ms: 1000
+        delta:
+          enabled: false
+          connection: websocket
+          url: wss://ws.kraken.com
+          interval_ms: 100
+
+
+# Logging Configuration
+logging:
+  level: "warn"
+  format: "json"
+  output: "stdout"
+  file_path: "logs/collector.log"
+  include_caller: true
+  max_age: 7
+  dashboard_name: Data  # optional existing CloudWatch dashboard
+
+# CryptoFlow pipeline configuration
+cryptoflow:
+  name: "CryptoFlow"
+  version: "1.0.0"
+
+channels:
+  raw_buffer: 10000
+  processed_buffer: 2000
+
+reader:
+  max_workers: 1
+  timeout: "5s"
+
+processor:
+  max_workers: 1
+  batch_size: 100
+  batch_timeout: "5s"
+
+storage:
+  s3:
+    enabled: true
+
+    # bucket, region, and credentials are loaded from environment variables:
+    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and S3_BUCKET
+
+writer:
+  max_workers: 1
+  batch:
+    size: 100
+    timeout: "30s"
+    max_memory: "1MB"
+  buffer:
+    max_size: 10
+    snapshot_flush_interval: "3m"
+    delta_flush_interval: "3m"
+    memory_threshold: 0.8
+  partitioning:
+    scheme: "time"
+    time_format: "date={year}-{month}-{day}"
+    additional_keys: ["exchange", "market", "symbol"]
+  formats:
+    parquet:
+      enabled: true
+      compression: "snappy"
+      page_size: 0
+    avro:
+      enabled: false
+      compression: ""
+  compression: ""
+
+exchange_rate_limit:
+  binance:
+    request_weight: 2400
+    orders: 1200
+  bybit:
+    request_weight: 120
+    orders: 60
+  kucoin:
+    request_weight: 4000
+    orders: 0
+  okx:
+    request_weight: 60
+    orders: 30000
