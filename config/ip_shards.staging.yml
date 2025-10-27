@@ -1,0 +1,226 @@
+shards:
+  - ip: 172.31.3.251
+    binance_symbols:
+      - BTCUSDT
+      - XRPUSDT
+      - BNBUSDT
+    bybit_symbols:
+      - BTCUSDT
+      - XRPUSDT
+      - BNBUSDT
+    kucoin_symbols:
+      - BNBUSDTM
+      - ONDOUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - BTC-USDT-SWAP
+        - XRP-USDT-SWAP
+        - BNB-USDT-SWAP
+      swap_orderbook_delta:
+        - BTC-USDT
+        - XRP-USDT
+        - BNB-USDT
+
+  - ip: 172.31.8.202
+    binance_symbols:
+      - SEIUSDT
+      - ETHUSDT
+      - 1000SHIBUSDT
+    bybit_symbols:
+      - SEIUSDT
+      - ETHUSDT
+      - SHIB1000USDT
+    kucoin_symbols:
+      - SEIUSDTM
+      - ETHUSDTM
+      - SUIUSDTM
+      - SHIBUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - ETH-USDT-SWAP
+        - SHIB-USDT-SWAP
+      swap_orderbook_delta:
+        - ETH-USDT
+        - SHIB-USDT
+
+  - ip: 172.31.1.88
+    binance_symbols:
+      - SOLUSDT
+      - DOTUSDT
+      - 1000PEPEUSDT
+      - DOGEUSDT
+    bybit_symbols:
+      - SOLUSDT
+      - DOTUSDT
+      - 1000PEPEUSDT
+      - DOGEUSDT
+    kucoin_symbols:
+      - SOLUSDTM
+      - DOTUSDTM
+      - PEPEUSDTM
+      - DOGEUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - SOL-USDT
+        - DOT-USDT-SWAP
+        - PEPE-USDT-SWAP
+        - DOGE-USDT-SWAP
+      swap_orderbook_delta:
+        - SOL-USDT
+        - DOT-USDT
+        - PEPE-USDT
+        - DOGE-USDT
+
+  - ip: 172.31.14.157
+    binance_symbols:
+      - WIFUSDT
+      - ADAUSDT
+      - BTCUSDC
+      - ETHUSDC
+    bybit_symbols:
+      - WIFUSDT
+      - ADAUSDT
+      - BTCPERP
+      - ETHPERP
+    kucoin_symbols:
+      - WIFUSDTM
+      - ADAUSDTM
+      - XBTUSDCM
+      - ETHUSDCM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - WIF-USDT-SWAP
+        - ADA-USDT-SWAP
+      swap_orderbook_delta:
+        - WIF-USDT
+        - ADA-USDT
+
+  - ip: 172.31.9.173
+    binance_symbols:
+      - SOLUSDC
+      - SUIUSDC
+      - XRPUSDC
+      - LTCUSDT
+    bybit_symbols:
+      - SOLPERP
+      - SUIPERP
+      - XRPPERP
+      - LTCUSDT
+    kucoin_symbols:
+      - SOLUSDCM
+      - SUIUSDCM
+      - XRPUSDCM
+      - LTCUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - LTC-USDT-SWAP
+      swap_orderbook_delta:
+        - LTC-USDT
+
+  - ip: 172.31.4.116
+    binance_symbols:
+      - AVAXUSDT
+      - LINKUSDT
+      - UNIUSDT
+      - XLMUSDT
+    bybit_symbols:
+      - AVAXUSDT
+      - LINKUSDT
+      - UNIUSDT
+      - XLMUSDT
+    kucoin_symbols:
+      - AVAXUSDTM
+      - LINKUSDTM
+      - UNIUSDTM
+      - XLMUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - AVAX-USDT-SWAP
+        - LINK-USDT-SWAP
+        - UNI-USDT-SWAP
+        - XLM-USDT-SWAP
+      swap_orderbook_delta:
+        - AVAX-USDT
+        - LINK-USDT
+        - UNI-USDT
+        - XLM-USDT
+
+  - ip: 172.31.8.67
+    binance_symbols:
+      - NEARUSDT
+      - HYPEUSDT
+      - BCHUSDT
+      - TRXUSDT
+    bybit_symbols:
+      - NEARUSDT
+      - HYPEUSDT
+      - BCHUSDT
+      - TRXUSDT
+    kucoin_symbols:
+      - NEARUSDTM
+      - HYPEUSDTM
+      - BCHUSDTM
+      - TRXUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - NEAR-USDT-SWAP
+        - HYPE-USDT-SWAP
+        - BCH-USDT-SWAP
+        - TRX-USDT-SWAP
+      swap_orderbook_delta:
+        - NEAR-USDT
+        - HYPE-USDT-SWAP
+        - BCH-USDT
+        - TRX-USDT
+
+  - ip: 172.31.5.194
+    binance_symbols:
+      - AAVEUSDT
+      - 1000BONKUSDT
+      - OPUSDT
+      - ARBUSDT
+    bybit_symbols:
+      - AAVEUSDT
+      - 1000BONKUSDT
+      - OPUSDT
+      - ARBUSDT
+    kucoin_symbols:
+      - AAVEUSDTM
+      - OPUSDTM
+      - ARBUSDTM
+      - INJUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - AAVE-USDT-SWAP
+        - BONK-USDT-SWAP
+        - OP-USDT-SWAP
+        - ARB-USDT-SWAP
+      swap_orderbook_delta:
+        - AAVE-USDT
+        - BONK-USDT-SWAP
+        - OP-USDT
+        - ARB-USDT
+
+  - ip: 172.31.15.240
+    binance_symbols:
+      - INJUSDT
+      - FARTCOINUSDT
+      - ONDOUSDT
+      - SUIUSDT
+    bybit_symbols:
+      - INJUSDT
+      - FARTCOINUSDT
+      - ONDOUSDT
+      - SUIUSDT
+    kucoin_symbols:
+      - XBTUSDTM
+      - XRPUSDTM
+    okx_symbols:
+      swap_orderbook_snapshot:
+        - INJ-USDT-SWAP
+        - ONDO-USDT-SWAP
+        - SUI-USDT-SWAP
+      swap_orderbook_delta:
+        - INJ-USDT
+        - ONDO-USDT
+        - SUI-USDT
