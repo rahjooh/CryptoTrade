@@ -72,8 +72,21 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd "$APP_DIR"
+            cd "$APP_DIR/infra/podman"
             export APP_ENV=production
-            docker compose -f infra/docker/docker-compose.yml down --remove-orphans || true
-            docker compose -f infra/docker/docker-compose.yml up -d --build
+            if ! command -v podman >/dev/null 2>&1; then
+              echo "Podman is not installed on the target host." >&2
+              exit 1
+            fi
+            compose_file="podman-compose.production.yml"
+            if podman compose version >/dev/null 2>&1; then
+              podman compose -f "$compose_file" down --remove-orphans || true
+              podman compose -f "$compose_file" up -d --build
+            elif command -v podman-compose >/dev/null 2>&1; then
+              podman-compose -f "$compose_file" down --remove-orphans || true
+              podman-compose -f "$compose_file" up -d --build
+            else
+              echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
+              exit 1
+            fi
 
