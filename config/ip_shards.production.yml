@@ -1,5 +1,5 @@
 shards:
-  - ip: 172.31.3.251
+  - ip: 172.31.9.242
     binance_symbols:
       - BTCUSDT
       - XRPUSDT
@@ -21,7 +21,7 @@ shards:
         - XRP-USDT
         - BNB-USDT
 
-  - ip: 172.31.8.202
+  - ip: 172.31.8.233
     binance_symbols:
       - SEIUSDT
       - ETHUSDT
@@ -43,7 +43,7 @@ shards:
         - ETH-USDT
         - SHIB-USDT
 
-  - ip: 172.31.1.88
+  - ip: 172.31.11.8
     binance_symbols:
       - SOLUSDT
       - DOTUSDT
@@ -71,7 +71,7 @@ shards:
         - PEPE-USDT
         - DOGE-USDT
 
-  - ip: 172.31.14.157
+  - ip: 172.31.13.56
     binance_symbols:
       - WIFUSDT
       - ADAUSDT
@@ -95,7 +95,7 @@ shards:
         - WIF-USDT
         - ADA-USDT
 
-  - ip: 172.31.9.173
+  - ip: 172.31.8.120
     binance_symbols:
       - SOLUSDC
       - SUIUSDC
@@ -117,7 +117,7 @@ shards:
       swap_orderbook_delta:
         - LTC-USDT
 
-  - ip: 172.31.4.116
+  - ip: 172.31.10.134
     binance_symbols:
       - AVAXUSDT
       - LINKUSDT
@@ -145,7 +145,7 @@ shards:
         - UNI-USDT
         - XLM-USDT
 
-  - ip: 172.31.8.67
+  - ip: 172.31.12.133
     binance_symbols:
       - NEARUSDT
       - HYPEUSDT
@@ -173,7 +173,7 @@ shards:
         - BCH-USDT
         - TRX-USDT
 
-  - ip: 172.31.5.194
+  - ip: 172.31.8.68
     binance_symbols:
       - AAVEUSDT
       - 1000BONKUSDT
@@ -201,7 +201,7 @@ shards:
         - OP-USDT
         - ARB-USDT
 
-  - ip: 172.31.15.240
+  - ip: 172.31.0.231
     binance_symbols:
       - INJUSDT
       - FARTCOINUSDT
