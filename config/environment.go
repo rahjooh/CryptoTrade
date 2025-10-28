@@ -12,12 +12,22 @@ const (
 	environmentStaging     = "staging"
 )
 
+var environmentAliases = map[string]string{
+	"prod":        environmentProduction,
+	"producation": environmentProduction,
+	"stag":        environmentStaging,
+	"stagging":    environmentStaging,
+}
+
 // getAppEnvironment reads the application environment from APP_ENV and
 // defaults to development when no value is provided.
 func getAppEnvironment() string {
 	env := strings.ToLower(strings.TrimSpace(os.Getenv(appEnvVar)))
 	if env == "" {
 		return environmentDevelopment
+	}
+	if canonical, ok := environmentAliases[env]; ok {
+		return canonical
 	}
 	return env
 }
