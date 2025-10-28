@@ -214,12 +214,12 @@ jobs:
             cd "$APP_DIR"
 
             # Hard stop & prune Docker state
-            docker compose down --rmi all --volumes || true
+            docker compose -f infra/docker/docker-compose.yml down --rmi all --volumes || true
             docker system prune -af --volumes || true
             docker network prune -f || true
 
             # Fresh start
-            docker compose up -d --build
+            docker compose -f infra/docker/docker-compose.yml up -d --build
             echo "✅ Deploy complete"
 
       - name: Delete binary artifact (post-deploy cleanup)
