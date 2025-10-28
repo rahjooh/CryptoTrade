@@ -1,9 +1,8 @@
 services:
   app:
     build:
-      context: .
-      dockerfile: ./Dockerfile
-    #image: mrhadipinova/cryptoflow:latest
+      context: ../..
+      dockerfile: ./infra/docker/Dockerfile
     container_name: cryptoflow
     restart: unless-stopped
     network_mode: host
@@ -13,5 +12,5 @@ services:
       - AWS_REGION
       - S3_BUCKET
       - LOG_LEVEL=${LOG_LEVEL:-warn}
-      - APP_ENV=${APP_ENV:-development}
+      - APP_ENV=${APP_ENV:-production}
     command: ["./cryptoflow"]

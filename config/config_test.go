@@ -195,6 +195,36 @@ func TestLoadConfig_UsesEnvironmentSpecificFile(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_EnvironmentAliases(t *testing.T) {
+	path := writeTempConfigWithName(t, "AliasApp")
+	original := configEnvPaths
+	configEnvPaths = map[string]string{
+		environmentProduction: path,
+	}
+	t.Cleanup(func() { configEnvPaths = original })
+
+	cases := []struct {
+		name string
+		env  string
+	}{
+		{name: "prod", env: "prod"},
+		{name: "producation", env: "producation"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(appEnvVar, tc.env)
+			cfg, err := LoadConfig(defaultConfigPath)
+			if err != nil {
+				t.Fatalf("LoadConfig failed: %v", err)
+			}
+			if cfg.Cryptoflow.Name != "AliasApp" {
+				t.Fatalf("expected alias %s to resolve production config", tc.env)
+			}
+		})
+	}
+}
+
 func TestLoadIPShards_UsesEnvironmentSpecificFile(t *testing.T) {
 	t.Setenv(appEnvVar, environmentStaging)
 	content := `shards:
@@ -226,5 +256,54 @@ func TestLoadIPShards_UsesEnvironmentSpecificFile(t *testing.T) {
 	}
 	if len(shards.Shards) != 1 || shards.Shards[0].IP != "2.2.2.2" {
 		t.Fatalf("expected staging shard configuration to be used")
+	}
+}
+
+func TestLoadIPShards_EnvironmentAliases(t *testing.T) {
+	content := `shards:
+- ip: "3.3.3.3"
+  binance_symbols: ["LTCUSDT"]
+  kucoin_symbols: ["LTCUSDTM"]
+  okx_symbols:
+    swap_orderbook_snapshot: ["LTC-USDT-SWAP"]
+    swap_orderbook_delta: ["LTC-USDT"]
+`
+	f, err := os.CreateTemp("", "shards-alias-*.yml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(f.Name()) })
+
+	original := ipShardsEnvPaths
+	ipShardsEnvPaths = map[string]string{
+		environmentStaging: f.Name(),
+	}
+	t.Cleanup(func() { ipShardsEnvPaths = original })
+
+	cases := []struct {
+		name string
+		env  string
+	}{
+		{name: "stag", env: "stag"},
+		{name: "stagging", env: "stagging"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(appEnvVar, tc.env)
+			shards, err := LoadIPShards(defaultIPShardsPath)
+			if err != nil {
+				t.Fatalf("LoadIPShards failed: %v", err)
+			}
+			if len(shards.Shards) != 1 || shards.Shards[0].IP != "3.3.3.3" {
+				t.Fatalf("expected alias %s to resolve staging shard configuration", tc.env)
+			}
+		})
 	}
 }
