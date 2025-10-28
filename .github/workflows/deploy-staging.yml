@@ -72,8 +72,18 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd "$APP_DIR"
+            cd "$APP_DIR/infra/docker"
             export APP_ENV=staging
-            docker compose -f infra/docker/docker-compose.yml down --remove-orphans || true
-            docker compose -f infra/docker/docker-compose.yml up -d --build
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_BIN="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE_BIN="docker-compose"
+            else
+              echo "Docker Compose is not installed on the target host." >&2
+              exit 1
+            fi
+            # shellcheck disable=SC2086
+            $COMPOSE_BIN down --remove-orphans || true
+            # shellcheck disable=SC2086
+            $COMPOSE_BIN up -d --build
 
