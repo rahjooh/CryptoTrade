@@ -1,0 +1,79 @@
+name: Deploy Production (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'deploy' to confirm the production release"
+        required: true
+        default: deploy
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy to production
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      APP_DIR: /home/${{ secrets.PROD_EC2_USER }}/cryptoflow
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        run: go build -o cryptoflow .
+
+      - name: Ensure remote workspace exists
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
+
+      - name: Upload application bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          source: ".,cryptoflow"
+          target: "$APP_DIR"
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_EC2_HOST }}
+          username: ${{ secrets.PROD_EC2_USER }}
+          key: ${{ secrets.PROD_EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "$APP_DIR"
+            export APP_ENV=production
+            docker compose -f infra/docker/docker-compose.yml down --remove-orphans || true
+            docker compose -f infra/docker/docker-compose.yml up -d --build
+
