@@ -1,0 +1,209 @@
+name: Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'deploy' to confirm the production release"
+        required: true
+        default: deploy
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-ssh:
+    name: Verify production SSH connectivity
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH access to production host
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST_PROD }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo "Production host reachable as $(whoami)"
+
+  test:
+    name: Run test suite
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    needs: test-ssh
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Execute tests
+        run: go test ./...
+
+  build:
+    name: Build application binary
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Prune stale binary artifacts (quota guard)
+        run: |
+          rm -f cryptoflow
+
+      - name: Build binary
+        run: go build -o cryptoflow .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-binary
+          path: cryptoflow
+
+      - name: Clean workspace & caches (post)
+        if: always()
+        run: |
+          go clean -cache -modcache
+          rm -f cryptoflow
+
+  build-and-deploy:
+    name: Build & Deploy to production
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      APP_DIR: /home/${{ secrets.EC2_USER }}/cryptoflow
+      DASHBOARD_NAME: Data
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binary
+        run: go build -o cryptoflow .
+
+      - name: Ensure remote workspace exists
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST_PROD }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
+
+      - name: Upload application bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST_PROD }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: ".,cryptoflow"
+          target: "$APP_DIR"
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST_PROD }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "$APP_DIR/infra/podman"
+            export APP_ENV=production
+            if ! command -v podman >/dev/null 2>&1; then
+              echo "Podman is not installed on the target host." >&2
+              exit 1
+            fi
+            compose_file="podman-compose.production.yml"
+            if podman compose version >/dev/null 2>&1; then
+              podman compose -f "$compose_file" down --remove-orphans || true
+              podman compose -f "$compose_file" up -d --build
+            elif command -v podman-compose >/dev/null 2>&1; then
+              podman-compose -f "$compose_file" down --remove-orphans || true
+              podman-compose -f "$compose_file" up -d --build
+            else
+              echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
+              exit 1
+            fi
+
+      - name: Delete binary artifact (post-deploy cleanup)
+        if: always()
+        run: |
+          rm -f cryptoflow
+          rm -rf artifacts
+
+      # --- Optional CloudWatch dashboard refresh (commit with [CWdash]) ---
+      - name: Configure AWS creds
+        if: contains(github.event.head_commit.message, '[CWdash]')
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Resolve collector InstanceId
+        if: contains(github.event.head_commit.message, '[CWdash]')
+        id: ec2
+        run: |
+          IID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=Collector Test 2" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" --output text)
+          if [ -z "$IID" ]; then echo "No running collector instance found"; exit 1; fi
+          echo "instance_id=$IID" >> "$GITHUB_OUTPUT"
+
+      - name: Inject InstanceId into dashboard JSON
+        if: contains(github.event.head_commit.message, '[CWdash]')
+        run: |
+          cp internal/metrics/CWdash.json /tmp/dashboard.json
+          sed -i "s|<collector-instance-id>|${{ steps.ec2.outputs.instance_id }}|g" /tmp/dashboard.json
+
+      - name: Put dashboard
+        if: contains(github.event.head_commit.message, '[CWdash]')
+        run: |
+          aws cloudwatch put-dashboard \
+            --dashboard-name "$DASHBOARD_NAME" \
+            --dashboard-body file:///tmp/dashboard.json
+
+      - name: Validate dashboard
+        if: contains(github.event.head_commit.message, '[CWdash]')
+        run: |
+          aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
+            --query 'DashboardValidationMessages' --output table
