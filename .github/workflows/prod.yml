@@ -170,6 +170,21 @@ jobs:
               exit 1
             fi
 
+      - name: Verify Podman container health
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST_PROD }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            container_name="cryptoflow"
+            if ! podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | grep -Fx "$container_name"; then
+              echo "Expected Podman container '$container_name' to be running, but it was not." >&2
+              podman ps -a || true
+              exit 1
+            fi
+
       - name: Delete binary artifact (post-deploy cleanup)
         if: always()
         run: |
