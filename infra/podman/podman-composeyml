@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: ../..
-      dockerfile: ./infra/docker/Dockerfile
+      dockerfile: ./infra/podman/Containerfile
     container_name: cryptoflow
     restart: unless-stopped
     network_mode: host
