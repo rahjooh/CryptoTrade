@@ -132,7 +132,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: ".,cryptoflow"
-          target: "$APP_DIR"
+          target: "${{ env.APP_DIR }}"
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3
