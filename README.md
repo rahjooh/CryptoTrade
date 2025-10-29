@@ -69,7 +69,7 @@ All runtime options live in `config/config.yml`.  Key sections:
   `snapshot_flush_interval` and `delta_flush_interval`.
 - `logging`: level, format and output destination.
 
-Sensitive S3 credentials are not stored in YAML.  Provide them through an `.env` file or the environment:
+Sensitive S3 credentials are not stored in YAML.  Provide them through your runtime environment (for example by exporting shell variables locally or injecting secrets in CI/CD):
 
 ```
 AWS_ACCESS_KEY_ID=...
