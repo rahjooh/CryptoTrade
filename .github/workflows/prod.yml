@@ -158,7 +158,7 @@ jobs:
               echo "Podman is not installed on the target host." >&2
               exit 1
             fi
-            compose_file="podman-compose.production.yml"
+            compose_file="podman-compose.yml"
             if podman compose version >/dev/null 2>&1; then
               podman compose -f "$compose_file" down --remove-orphans || true
               podman compose -f "$compose_file" up -d --build
