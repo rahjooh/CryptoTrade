@@ -12,5 +12,5 @@ services:
       - AWS_REGION
       - S3_BUCKET
       - LOG_LEVEL=${LOG_LEVEL:-warn}
-      - APP_ENV=${APP_ENV:-production}
+#      - APP_ENV=${APP_ENV:-production}
     command: ["./cryptoflow"]
