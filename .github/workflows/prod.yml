@@ -145,6 +145,15 @@ jobs:
             set -euo pipefail
             cd "$APP_DIR/infra/podman"
             export APP_ENV=production
+            remote_user="$(id -un)"
+            remote_home="$(getent passwd "$remote_user" | cut -d: -f6 || true)"
+            if [ -z "$remote_home" ]; then
+              remote_home="/home/$remote_user"
+            fi
+            if [ "${HOME:-}" != "$remote_home" ]; then
+              export HOME="$remote_home"
+            fi
+            mkdir -p "$HOME/.local/share/containers/storage"
             if ! command -v podman >/dev/null 2>&1; then
               echo "Podman is not installed on the target host." >&2
               exit 1
