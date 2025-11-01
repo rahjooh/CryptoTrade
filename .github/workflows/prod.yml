@@ -99,6 +99,14 @@ jobs:
     env:
       APP_DIR: /home/${{ secrets.EC2_USER }}/cryptoflow
       DASHBOARD_NAME: Data
+
+      # Make secrets/vars available in the runner, then forward to SSH.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      # Prefer org/repo var; default applied on host when writing .env
+      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -123,6 +131,7 @@ jobs:
             set -euo pipefail
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
+            # Preserve .env at APP_DIR root and 'data' directory; clean the rest
             find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
 
       - name: Upload application bundle
@@ -140,35 +149,51 @@ jobs:
           host: ${{ secrets.EC2_HOST_PROD }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: APP_DIR
+          # Forward app dir and runtime secrets/vars to the host shell
+          envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
           script: |
             set -euo pipefail
             cd "$APP_DIR/infra/podman"
-            export APP_ENV=production
+
+            # Create a .env next to the compose file for Podman Compose
+            # Limit perms so it doesn't get world-readable.
+            install -m 600 /dev/null .env
+            {
+              printf 'AWS_ACCESS_KEY_ID=%s\n' "$AWS_ACCESS_KEY_ID"
+              printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$AWS_SECRET_ACCESS_KEY"
+              printf 'AWS_REGION=%s\n' "${AWS_REGION}"
+              printf 'S3_BUCKET=%s\n' "${S3_BUCKET}"
+              printf 'LOG_LEVEL=%s\n' "${LOG_LEVEL:-warn}"
+            } >> .env
+
+            # Ensure HOME and storage dirs are sane for rootless Podman
             remote_user="$(id -un)"
             remote_home="$(getent passwd "$remote_user" | cut -d: -f6 || true)"
-            if [ -z "$remote_home" ]; then
-              remote_home="/home/$remote_user"
-            fi
-            if [ "${HOME:-}" != "$remote_home" ]; then
-              export HOME="$remote_home"
-            fi
+            if [ -z "$remote_home" ]; then remote_home="/home/$remote_user"; fi
+            if [ "${HOME:-}" != "$remote_home" ]; then export HOME="$remote_home"; fi
             mkdir -p "$HOME/.local/share/containers/storage"
+
+            # Basic Podman availability check
             if ! command -v podman >/dev/null 2>&1; then
               echo "Podman is not installed on the target host." >&2
               exit 1
             fi
+
+            export APP_ENV=production
+
             compose_file="podman-compose.yml"
             compose_project="cryptoflow"
             declare -a compose_cmd=()
             if podman compose version >/dev/null 2>&1; then
-              compose_cmd=(podman compose -f "$compose_file" -p "$compose_project")
+              compose_cmd=(podman compose -f "$compose_file" -p "$compose_project" --env-file ./.env)
             elif command -v podman-compose >/dev/null 2>&1; then
-              compose_cmd=(podman-compose -f "$compose_file" -p "$compose_project")
+              compose_cmd=(podman-compose -f "$compose_file" -p "$compose_project" --env-file ./.env)
             else
               echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
               exit 1
             fi
+
+            # Recreate stack
             "${compose_cmd[@]}" down --remove-orphans || true
             "${compose_cmd[@]}" up -d --build
 
@@ -181,18 +206,16 @@ jobs:
           script: |
             set -euo pipefail
             container_name="cryptoflow"
-            remote_user="$(id -un)"
-            remote_home="$(getent passwd "$remote_user" | cut -d: -f6 || true)"
-            if [ -z "$remote_home" ]; then
-              remote_home="/home/$remote_user"
-            fi
-            if [ "${HOME:-}" != "$remote_home" ]; then
-              export HOME="$remote_home"
-            fi
             compose_file="podman-compose.yml"
             compose_project="cryptoflow"
             project_label="io.podman.compose.project=$compose_project"
             service_label="io.podman.compose.service=app"
+
+            remote_user="$(id -un)"
+            remote_home="$(getent passwd "$remote_user" | cut -d: -f6 || true)"
+            if [ -z "$remote_home" ]; then remote_home="/home/$remote_user"; fi
+            if [ "${HOME:-}" != "$remote_home" ]; then export HOME="$remote_home"; fi
+
             declare -a compose_cmd=()
             if podman compose version >/dev/null 2>&1; then
               compose_cmd=(podman compose -f "$compose_file" -p "$compose_project")
@@ -203,20 +226,40 @@ jobs:
               echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
               exit 1
             fi
+
+            # Prefer health=healthy when a healthcheck is configured; fall back to status=running
             deadline=$((SECONDS + 120))
             while [ "$SECONDS" -lt "$deadline" ]; do
-              running_container="$(podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | head -n1)"
-              if [ -z "$running_container" ]; then
-                running_container="$(podman ps --filter "label=$project_label" --filter "label=$service_label" --filter "status=running" --format '{{.Names}}' | head -n1)"
-              fi
-              if [ -n "$running_container" ]; then
-                echo "Podman container '$running_container' for service 'app' is running."
+              healthy_container="$(podman ps --filter "name=$container_name" --filter "health=healthy" --format '{{.Names}}' | head -n1 || true)"
+              running_container="$(podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | head -n1 || true)"
+
+              if [ -n "$healthy_container" ]; then
+                echo "Podman container '$healthy_container' is healthy."
                 exit 0
               fi
-              echo "Waiting for Podman container '$container_name' to become healthy..."
+              if [ -z "$healthy_container" ] && [ -n "$running_container" ]; then
+                # If no healthcheck exists, treat running as success
+                echo "Podman container '$running_container' is running (no healthy container found)."
+                exit 0
+              fi
+
+              # Try by labels (compose service name)
+              healthy_by_label="$(podman ps --filter "label=$project_label" --filter "label=$service_label" --filter "health=healthy" --format '{{.Names}}' | head -n1 || true)"
+              running_by_label="$(podman ps --filter "label=$project_label" --filter "label=$service_label" --filter "status=running" --format '{{.Names}}' | head -n1 || true)"
+              if [ -n "$healthy_by_label" ]; then
+                echo "Podman container '$healthy_by_label' for service 'app' is healthy."
+                exit 0
+              fi
+              if [ -z "$healthy_by_label" ] && [ -n "$running_by_label" ]; then
+                echo "Podman container '$running_by_label' for service 'app' is running."
+                exit 0
+              fi
+
+              echo "Waiting for Podman container '$container_name' to become ready..."
               sleep 5
             done
-            echo "Expected Podman container '$container_name' to be running, but it was not within the timeout." >&2
+
+            echo "Expected Podman container '$container_name' to be ready, but it was not within the timeout." >&2
             project_containers="$(podman ps -a --filter "label=$project_label" --format '{{.Names}}')"
             legacy_container_present=0
             if podman ps -a --filter "name=$container_name" --format '{{.Names}}' | grep -Fxq "$container_name"; then
