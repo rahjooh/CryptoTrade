@@ -159,16 +159,22 @@ jobs:
               exit 1
             fi
             compose_file="podman-compose.yml"
+            compose_project="cryptoflow"
+            declare -a compose_cmd=()
             if podman compose version >/dev/null 2>&1; then
-              podman compose -f "$compose_file" down --remove-orphans || true
-              podman compose -f "$compose_file" up -d --build
+              compose_cmd=(podman compose -f "$compose_file" -p "$compose_project")
+#              podman compose -f "$compose_file" down --remove-orphans || true
+#              podman compose -f "$compose_file" up -d --build
             elif command -v podman-compose >/dev/null 2>&1; then
-              podman-compose -f "$compose_file" down --remove-orphans || true
-              podman-compose -f "$compose_file" up -d --build
+              compose_cmd=(podman-compose -f "$compose_file" -p "$compose_project")
+#              podman-compose -f "$compose_file" down --remove-orphans || true
+#              podman-compose -f "$compose_file" up -d --build
             else
               echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
               exit 1
             fi
+            "${compose_cmd[@]}" down --remove-orphans || true
+            "${compose_cmd[@]}" up -d --build
 
       - name: Verify Podman container health
         uses: appleboy/ssh-action@v1.0.3
@@ -179,17 +185,70 @@ jobs:
           script: |
             set -euo pipefail
             container_name="cryptoflow"
+            remote_user="$(id -un)"
+            remote_home="$(getent passwd "$remote_user" | cut -d: -f6 || true)"
+            if [ -z "$remote_home" ]; then
+              remote_home="/home/$remote_user"
+            fi
+            if [ "${HOME:-}" != "$remote_home" ]; then
+              export HOME="$remote_home"
+            fi
+            compose_file="podman-compose.yml"
+            compose_project="cryptoflow"
+            project_label="io.podman.compose.project=$compose_project"
+            service_label="io.podman.compose.service=app"
+            declare -a compose_cmd=()
+            if podman compose version >/dev/null 2>&1; then
+              compose_cmd=(podman compose -f "$compose_file" -p "$compose_project")
+            elif command -v podman-compose >/dev/null 2>&1; then
+              compose_cmd=(podman-compose -f "$compose_file" -p "$compose_project")
+            fi
+            if [ ${#compose_cmd[@]} -eq 0 ]; then
+              echo "Neither 'podman compose' nor 'podman-compose' is available on the target host." >&2
+              exit 1
+            fi
             deadline=$((SECONDS + 120))
             while [ "$SECONDS" -lt "$deadline" ]; do
-            if podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | grep -Fxq "$container_name"; then
-            echo "Podman container '$container_name' is running."
-            exit 0
-            fi
-            echo "Waiting for Podman container '$container_name' to become healthy..."
-            sleep 5
+              running_container="$(podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | head -n1)"
+              if [ -z "$running_container" ]; then
+                running_container="$(podman ps --filter "label=$project_label" --filter "label=$service_label" --filter "status=running" --format '{{.Names}}' | head -n1)"
+              fi
+              if [ -n "$running_container" ]; then
+                echo "Podman container '$running_container' for service 'app' is running."
+                exit 0
+              fi
+              echo "Waiting for Podman container '$container_name' to become healthy..."
+              sleep 5
             done
             echo "Expected Podman container '$container_name' to be running, but it was not within the timeout." >&2
-            podman ps -a || true
+            project_containers="$(podman ps -a --filter "label=$project_label" --format '{{.Names}}')"
+            legacy_container_present=0
+            if podman ps -a --filter "name=$container_name" --format '{{.Names}}' | grep -Fxq "$container_name"; then
+              legacy_container_present=1
+            fi
+            if [ -n "$project_containers" ]; then
+              echo "Containers for compose project '$compose_project' exist but are not healthy; dumping status and logs..." >&2
+              podman ps -a --filter "label=$project_label" || true
+              printf '%s\n' "$project_containers" | while IFS= read -r name; do
+                [ -n "$name" ] || continue
+                echo "----- podman inspect $name -----" >&2
+                podman inspect "$name" || true
+                echo "----- podman logs $name -----" >&2
+                podman logs "$name" || true
+              done
+            elif [ "$legacy_container_present" -eq 1 ]; then
+              echo "Container '$container_name' exists but is not running; dumping status and logs..." >&2
+              podman ps -a --filter "name=$container_name" || true
+              podman inspect "$container_name" || true
+              podman logs "$container_name" || true
+            else
+              echo "No containers were found for compose project '$compose_project'. Listing all containers." >&2
+              podman ps -a || true
+            fi
+            echo "----- podman compose ps -----" >&2
+            "${compose_cmd[@]}" ps || true
+            echo "----- podman compose logs -----" >&2
+            "${compose_cmd[@]}" logs --no-color || true
             exit 1
 
       - name: Delete binary artifact (post-deploy cleanup)
