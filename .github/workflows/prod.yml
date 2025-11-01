@@ -203,8 +203,10 @@ jobs:
           host: ${{ secrets.EC2_HOST_PROD }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: APP_DIR
           script: |
             set -euo pipefail
+            cd "$APP_DIR/infra/podman"
             container_name="cryptoflow"
             compose_file="podman-compose.yml"
             compose_project="cryptoflow"
@@ -287,7 +289,7 @@ jobs:
             echo "----- podman compose ps -----" >&2
             "${compose_cmd[@]}" ps || true
             echo "----- podman compose logs -----" >&2
-            "${compose_cmd[@]}" logs --no-color || true
+            "${compose_cmd[@]}" logs || true
             exit 1
 
       - name: Delete binary artifact (post-deploy cleanup)
