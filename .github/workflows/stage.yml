@@ -168,6 +168,13 @@ jobs:
               echo "Docker Compose is not installed on the target host." >&2
               exit 1
             fi
+            # Use a stable project name for predictable resources
+            export COMPOSE_PROJECT_NAME=cryptoflow
+            # If a leftover container named 'cryptoflow' exists (outside this compose project), remove it to avoid name conflicts
+            if docker ps -a --format '{{.Names}}' | grep -Fxq cryptoflow; then
+              echo "Removing existing container 'cryptoflow' to avoid name conflict..."
+              docker rm -f cryptoflow || true
+            fi
             # shellcheck disable=SC2086
             $COMPOSE_BIN down --remove-orphans || true
             # shellcheck disable=SC2086
