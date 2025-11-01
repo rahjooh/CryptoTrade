@@ -7,6 +7,11 @@ on:
         description: "Type 'deploy' to confirm the production release"
         required: true
         default: deploy
+      refresh_dashboard:
+        description: "Also update CloudWatch dashboard"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-production
@@ -300,7 +305,7 @@ jobs:
 
       # --- Optional CloudWatch dashboard refresh (commit with [CWdash]) ---
       - name: Configure AWS creds
-        if: contains(github.event.head_commit.message, '[CWdash]')
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.refresh_dashboard == 'true')
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -308,7 +313,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Resolve prod/stage instances and host info
-        if: contains(github.event.head_commit.message, '[CWdash]')
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.refresh_dashboard == 'true')
         id: ec2
         env:
           PROD_INSTANCE_ID: ${{ vars.PROD_INSTANCE_ID }}
@@ -360,7 +365,7 @@ jobs:
           echo "stage_host=$STAGE_HOST_SHORT" >> "$GITHUB_OUTPUT"
 
       - name: Build dual-env dashboard body
-        if: contains(github.event.head_commit.message, '[CWdash]')
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.refresh_dashboard == 'true')
         run: |
           set -euo pipefail
           cp internal/metrics/CWdash.envs.json /tmp/dashboard.json
@@ -374,14 +379,14 @@ jobs:
             /tmp/dashboard.json
 
       - name: Put dashboard
-        if: contains(github.event.head_commit.message, '[CWdash]')
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.refresh_dashboard == 'true')
         run: |
           aws cloudwatch put-dashboard \
             --dashboard-name "$DASHBOARD_NAME" \
             --dashboard-body file:///tmp/dashboard.json
 
       - name: Validate dashboard
-        if: contains(github.event.head_commit.message, '[CWdash]')
+        if: (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.refresh_dashboard == 'true')
         run: |
           aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
             --query 'DashboardValidationMessages' --output table
