@@ -179,11 +179,18 @@ jobs:
           script: |
             set -euo pipefail
             container_name="cryptoflow"
-            if ! podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | grep -Fx "$container_name"; then
-              echo "Expected Podman container '$container_name' to be running, but it was not." >&2
-              podman ps -a || true
-              exit 1
+            deadline=$((SECONDS + 120))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+            if podman ps --filter "name=$container_name" --filter "status=running" --format '{{.Names}}' | grep -Fxq "$container_name"; then
+            echo "Podman container '$container_name' is running."
+            exit 0
             fi
+            echo "Waiting for Podman container '$container_name' to become healthy..."
+            sleep 5
+            done
+            echo "Expected Podman container '$container_name' to be running, but it was not within the timeout." >&2
+            podman ps -a || true
+            exit 1
 
       - name: Delete binary artifact (post-deploy cleanup)
         if: always()
