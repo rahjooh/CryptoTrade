@@ -37,6 +37,14 @@ jobs:
           printf '%s\n' "$ENV_SECRET" \
             | tr -d '\r' \
             | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d' >> "$GITHUB_ENV"
+
+          # Mask each value present in the ENV secret to avoid log leaks
+          printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d; s/^[^=]+=//' \
+            | while IFS= read -r __val; do
+                if [ -n "$__val" ]; then echo "::add-mask::$__val"; fi
+              done
           
           # 2) Defaults (safe with set -u)
           : "${EC2_USER_PROD:=}"
@@ -59,6 +67,9 @@ jobs:
               echo
               echo 'EOF'
             } >> "$GITHUB_ENV"
+            # Mask the base64 and each decoded line
+            echo "::add-mask::$key_b64"
+            printf '%s' "$key_b64" | base64 -d | sed 's/.*/::add-mask::&/'
           fi
 
       - name: Verify loaded env keys
@@ -80,6 +91,11 @@ jobs:
           host: ${{ env.EC2_HOST_PROD }}
           username: ${{ env.EC2_USER_PROD }}
           key: ${{ env.EC2_SSH_KEY_PROD }}
+          port: 22
+          timeout: 30s
+          command_timeout: 10m
+          proxy_port: 22
+          proxy_timeout: 30s
           script: |
             set -euo pipefail
             echo "Production host reachable as $(whoami)"
@@ -164,6 +180,13 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
+          # Mask each value present in the ENV secret to avoid log leaks
+          printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d; s/^[^=]+=//' \
+            | while IFS= read -r __val; do
+                if [ -n "$__val" ]; then echo "::add-mask::$__val"; fi
+              done
           if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER_PROD:-}" ]; then
             echo "APP_DIR=/home/${EC2_USER_PROD}/cryptoflow" >> "$GITHUB_ENV"
           fi
@@ -175,6 +198,9 @@ jobs:
         run: |
           set -euo pipefail
           printf 'EC2_SSH_KEY_PROD<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64_PROD" | base64 -d)" >> "$GITHUB_ENV"
+          # Mask the base64 and each decoded line
+          echo "::add-mask::${EC2_SSH_KEY_B64_PROD}"
+          printf '%s' "$EC2_SSH_KEY_B64_PROD" | base64 -d | sed 's/.*/::add-mask::&/'
       - name: Checkout repository
         uses: actions/checkout@v4
 
