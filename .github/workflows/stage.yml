@@ -21,12 +21,30 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     steps:
+      - name: Load ENV secret
+        env:
+          ENV_SECRET: ${{ secrets.ENV }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
+            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          fi
+          if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
+          if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+
+      - name: Decode SSH key from base64
+        if: env.EC2_SSH_KEY_B64 != ''
+        run: |
+          set -euo pipefail
+          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
+
       - name: Check SSH access to staging host
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ env.EC2_HOST_STAGE }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
             echo "Staging host reachable as $(whoami)"
@@ -97,14 +115,32 @@ jobs:
     environment:
       name: staging
     env:
-      APP_DIR: /home/${{ secrets.EC2_USER }}/cryptoflow
-      DASHBOARD_NAME: Data
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      S3_TABLE_ARN: ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      DASHBOARD_NAME: Data
     steps:
+      - name: Load ENV secret
+        env:
+          ENV_SECRET: ${{ secrets.ENV }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
+            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          fi
+          if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
+          if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+
+      - name: Decode SSH key from base64
+        if: env.EC2_SSH_KEY_B64 != ''
+        run: |
+          set -euo pipefail
+          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -120,9 +156,9 @@ jobs:
       - name: Ensure remote workspace exists
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ env.EC2_HOST_STAGE }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           envs: APP_DIR
           script: |
             set -euo pipefail
@@ -133,18 +169,18 @@ jobs:
       - name: Upload application bundle
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ env.EC2_HOST_STAGE }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           source: ".,cryptoflow"
           target: "${{ env.APP_DIR }}"
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          host: ${{ env.EC2_HOST_STAGE }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
           script: |
             set -euo pipefail
@@ -191,9 +227,9 @@ jobs:
         if: contains(github.event.head_commit.message, '[CWdash]')
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve collector InstanceId
         if: contains(github.event.head_commit.message, '[CWdash]')

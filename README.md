@@ -75,10 +75,54 @@ Sensitive S3 credentials are not stored in YAML.  Provide them through your runt
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=...
+#Provide the bucket name via the S3_BUCKET environment variable
 S3_BUCKET=...
 ```
 
 Copy `.env.example` to `.env` and populate with your values before running the application.
+
+### CI/CD: Single `ENV` GitHub Secret
+
+To simplify secrets management, the workflows support a single multi‑line repository secret named `ENV` that contains all parameters for both staging and production. Create `Settings → Secrets and variables → Actions → New repository secret` with name `ENV` and contents like:
+
+```
+# Required: AWS
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=ap-south-1
+S3_BUCKET=your-bucket
+
+# Optional: logging and dashboard
+LOG_LEVEL=INFO
+DASHBOARD_NAME=Data
+
+# SSH to hosts (staging and production)
+EC2_USER=ubuntu
+EC2_HOST_STAGE=ec2-1-2-3-4.compute.amazonaws.com
+EC2_HOST_PROD=ec2-5-6-7-8.compute.amazonaws.com
+
+# Base64 of the private key used for SSH (no line wraps)
+# macOS:    base64 -i id_rsa | tr -d '\n'
+# Linux:    base64 -w0 id_rsa
+EC2_SSH_KEY_B64=LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQo...
+
+# Optional overrides (workflows compute sane defaults)
+# APP_DIR=/home/${EC2_USER}/cryptoflow
+
+# For CloudWatch dashboard host widgets (either ID or Name per env)
+# Use IDs for fastest resolution, or Names if you prefer tagging
+PROD_INSTANCE_ID=i-0123456789abcdef0
+STAGE_INSTANCE_ID=i-0abcdef0123456789
+# PROD_INSTANCE_NAME=prod-collector
+# STAGE_INSTANCE_NAME=stage-collector
+```
+
+Notes:
+
+- The workflows load this secret at runtime and export variables to later steps. The `EC2_SSH_KEY_B64` value is decoded and passed to SSH actions; use unwrapped Base64 (no line breaks).
+- You can delete individual repository secrets and variables after you switch to `ENV`.
+- Production uses Podman Compose on the target host; staging uses Docker Compose.
+- When running the Prod workflow via the Actions UI, enable the `refresh_dashboard` input to also rebuild the CloudWatch dashboard (or include `[CWdash]` in a push commit message).
 
 ---
 
@@ -191,4 +235,3 @@ _“Built for speed, clarity, and observability.”_
 | XLMUSDT      | &#9989; | &#9989; | &#9989; | &#9989; |
 | XRPUSDC      | &#9989; | &#9989; | &#9989; | &#x274c; |
 | XRPUSDT      | &#9989; | &#9989; | &#9989; | &#9989; |
-
