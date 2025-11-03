@@ -50,9 +50,15 @@ jobs:
       - name: Verify loaded env keys
         shell: bash
         run: |
-          echo "Loaded keys:"
-          grep -E '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|S3_BUCKET)=' "$GITHUB_ENV" \
-            | sed 's/=.*$/=/'
+          set -Eeuo pipefail
+          echo "Loaded keys (showing only whether set):"
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION S3_BUCKET DASHBOARD_NAME LOG_LEVEL EC2_HOST_PROD; do
+          if [ "${!k-}" != "" ]; then
+           echo "  $k = (set)"
+          else
+           echo "  $k = (missing/empty)"
+          fi
+          done
 
       - name: Check SSH access to production host
         uses: appleboy/ssh-action@v1.0.3
