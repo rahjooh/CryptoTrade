@@ -26,23 +26,33 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     steps:
-      - name: Load ENV secret
+      - name: Load ENV secret into $GITHUB_ENV
+        shell: bash
         env:
-          ENV_SECRET: ${{ secrets.ENV }}
+          ENV_SECRET: ${{ secrets.ENV }}   # <-- your multiline secret content
         run: |
-          set -euo pipefail
-          printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
+          set -Eeuo pipefail
+          # normalize CRLF -> LF, drop comments, keep empty values like FOO=
+          printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -E '/^[[:space:]]*#/d' >> "$GITHUB_ENV"
+          
+          # sensible defaults (work even with `set -u`)
+          : "${EC2_USER:=}"
+          : "${DASHBOARD_NAME:=Data}"
+          : "${LOG_LEVEL:=warn}"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER}" ]; then
             echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
           fi
-          if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
-          if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+          echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
+          echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
 
-      - name: Decode SSH key from base64
-        if: env.EC2_SSH_KEY_B64 != ''
+      - name: Verify loaded env keys
+        shell: bash
         run: |
-          set -euo pipefail
-          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
+          echo "Loaded keys:"
+          grep -E '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|S3_BUCKET)=' "$GITHUB_ENV" \
+            | sed 's/=.*$/=/'
 
       - name: Check SSH access to production host
         uses: appleboy/ssh-action@v1.0.3
