@@ -29,14 +29,16 @@ jobs:
       - name: Load ENV secret into $GITHUB_ENV
         shell: bash
         env:
-          ENV_SECRET: ${{ secrets.ENV }}   # <-- your multiline secret content
+          ENV_SECRET: ${{ secrets.ENV }}
         run: |
           set -Eeuo pipefail
+          
+          # 1) Write all plain KEY=VALUE lines (no comments) for next steps
           printf '%s\n' "$ENV_SECRET" \
             | tr -d '\r' \
-            | sed -E '/^[[:space:]]*#/d' >> "$GITHUB_ENV"
+            | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d' >> "$GITHUB_ENV"
           
-          # sensible defaults (work even with `set -u`)
+          # 2) Defaults (safe with set -u)
           : "${EC2_USER:=}"
           : "${DASHBOARD_NAME:=Data}"
           : "${LOG_LEVEL:=warn}"
@@ -46,15 +48,18 @@ jobs:
           echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
           echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
           
-          # Decode any *_B64 into a multiline env with heredoc syntax
-          # Example: EC2_SSH_KEY_B64 -> EC2_SSH_KEY
-          for var in $(compgen -v | grep -E '_B64$' || true); do
-          base="${var%_B64}"
-          echo "${base}<<EOF" >> "$GITHUB_ENV"
-          printf '%s' "${!var}" | base64 -d >> "$GITHUB_ENV"
-          echo >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
-          done      
+          # 3) Decode EC2_SSH_KEY_B64 from the secret into a multiline EC2_SSH_KEY
+          key_b64="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -n "$key_b64" ]; then
+            {
+              echo 'EC2_SSH_KEY<<EOF'
+              printf '%s' "$key_b64" | base64 -d
+              echo
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
+          fi
 
       - name: Verify loaded env keys
         shell: bash
