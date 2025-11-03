@@ -28,33 +28,15 @@ jobs:
     steps:
       - name: Load ENV secret into $GITHUB_ENV
         shell: bash
+        env:
+          ENV_SECRET: ${{ secrets.ENV }}   # <-- your multiline secret content
         run: |
           set -Eeuo pipefail
-      
-          # Process simple KEY=VALUE pairs, trimming spaces around KEY and '='.
-          # Skip comments and blank lines. Keep values as-is (allow empty).
-          while IFS= read -r raw; do
-            line=$(printf '%s' "$raw" | tr -d '\r')
-            [[ "$line" =~ ^[[:space:]]*# ]] && continue
-            [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-      
-            key=${line%%=*}
-            val=${line#*=}
-      
-            # trim spaces around key and value
-            key=${key#"${key%%[![:space:]]*}"}; key=${key%"${key##*[![:space:]]}"} 
-            val=${val#"${val%%[![:space:]]*}"}; val=${val%"${val##*[![:space:]]}"}
-      
-            # Defer *_B64 (don’t append yet)
-            if [[ "$key" == *_B64 ]]; then
-              printf -v "$key" '%s' "$val"
-              continue
-            fi
-      
-            printf '%s=%s\n' "$key" "$val" >> "$GITHUB_ENV"
-          done < <(printf '%s\n' "$ENV_SECRET")
-      
-          # Defaults that won’t break with set -u
+          printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -E '/^[[:space:]]*#/d' >> "$GITHUB_ENV"
+          
+          # sensible defaults (work even with `set -u`)
           : "${EC2_USER:=}"
           : "${DASHBOARD_NAME:=Data}"
           : "${LOG_LEVEL:=warn}"
@@ -63,16 +45,16 @@ jobs:
           fi
           echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
           echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
-      
+          
           # Decode any *_B64 into a multiline env with heredoc syntax
           # Example: EC2_SSH_KEY_B64 -> EC2_SSH_KEY
           for var in $(compgen -v | grep -E '_B64$' || true); do
-            base="${var%_B64}"
-            echo "${base}<<EOF" >> "$GITHUB_ENV"
-            printf '%s' "${!var}" | base64 -d >> "$GITHUB_ENV"
-            echo >> "$GITHUB_ENV"
-            echo "EOF" >> "$GITHUB_ENV"
-          done
+          base="${var%_B64}"
+          echo "${base}<<EOF" >> "$GITHUB_ENV"
+          printf '%s' "${!var}" | base64 -d >> "$GITHUB_ENV"
+          echo >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+          done      
 
       - name: Verify loaded env keys
         shell: bash
