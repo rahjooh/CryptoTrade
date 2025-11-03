@@ -17,29 +17,59 @@ permissions:
 
 jobs:
   test-ssh:
-    name: Verify staging SSH connectivity
+    name: Verify production SSH connectivity
     if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     steps:
-      - name: Load ENV secret
+      - name: Load ENV secret into $GITHUB_ENV
+        shell: bash
         env:
           ENV_SECRET: ${{ secrets.ENV }}
         run: |
-          set -euo pipefail
-          printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
+          set -Eeuo pipefail
+          
+          # 1) Write all plain KEY=VALUE lines (no comments) for next steps
+          printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d' >> "$GITHUB_ENV"
+          
+          # 2) Defaults (safe with set -u)
+          : "${EC2_USER:=}"
+          : "${DASHBOARD_NAME:=Data}"
+          : "${LOG_LEVEL:=warn}"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER}" ]; then
             echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
           fi
-          if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
-          if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+          echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
+          echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
+          
+          # 3) Decode EC2_SSH_KEY_B64 from the secret into a multiline EC2_SSH_KEY
+          key_b64="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -n "$key_b64" ]; then
+            {
+              echo 'EC2_SSH_KEY<<EOF'
+              printf '%s' "$key_b64" | base64 -d
+              echo
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
+          fi
 
-      - name: Decode SSH key from base64
-        if: env.EC2_SSH_KEY_B64 != ''
+      - name: Verify loaded env keys
+        shell: bash
         run: |
-          set -euo pipefail
-          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
+          set -Eeuo pipefail
+          echo "Loaded keys (showing only whether set):"
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION S3_BUCKET DASHBOARD_NAME LOG_LEVEL EC2_HOST_PROD; do
+          if [ "${!k-}" != "" ]; then
+           echo "  $k = (set)"
+          else
+           echo "  $k = (missing/empty)"
+          fi
+          done
 
-      - name: Check SSH access to staging host
+      - name: Check SSH access to production host
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
@@ -47,8 +77,7 @@ jobs:
           key: ${{ env.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            echo "Staging host reachable as $(whoami)"
-
+            echo "Production host reachable as $(whoami)"
   test:
     name: Run test suite
     if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'deploy'

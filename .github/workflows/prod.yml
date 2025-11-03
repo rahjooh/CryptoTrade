@@ -39,22 +39,22 @@ jobs:
             | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d' >> "$GITHUB_ENV"
           
           # 2) Defaults (safe with set -u)
-          : "${EC2_USER:=}"
+          : "${EC2_USER_PROD:=}"
           : "${DASHBOARD_NAME:=Data}"
           : "${LOG_LEVEL:=warn}"
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER}" ]; then
-            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER_PROD}" ]; then
+            echo "APP_DIR=/home/${EC2_USER_PROD}/cryptoflow" >> "$GITHUB_ENV"
           fi
           echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
           echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
           
-          # 3) Decode EC2_SSH_KEY_B64 from the secret into a multiline EC2_SSH_KEY
+          # 3) Decode EC2_SSH_KEY_B64_PROD from the secret into a multiline EC2_SSH_KEY_PROD
           key_b64="$(printf '%s\n' "$ENV_SECRET" \
             | tr -d '\r' \
-            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64_PROD[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
           if [ -n "$key_b64" ]; then
             {
-              echo 'EC2_SSH_KEY<<EOF'
+              echo 'EC2_SSH_KEY_PROD<<EOF'
               printf '%s' "$key_b64" | base64 -d
               echo
               echo 'EOF'
@@ -78,8 +78,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_PROD }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ env.EC2_USER_PROD }}
+          key: ${{ env.EC2_SSH_KEY_PROD }}
           script: |
             set -euo pipefail
             echo "Production host reachable as $(whoami)"
@@ -164,17 +164,17 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "${ENV_SECRET}" | sed -e '/^\s*#/d' -e '/^\s*$/d' >> "$GITHUB_ENV"
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
-            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER_PROD:-}" ]; then
+            echo "APP_DIR=/home/${EC2_USER_PROD}/cryptoflow" >> "$GITHUB_ENV"
           fi
           if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
           if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
 
       - name: Decode SSH key from base64
-        if: env.EC2_SSH_KEY_B64 != ''
+        if: env.EC2_SSH_KEY_B64_PROD != ''
         run: |
           set -euo pipefail
-          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
+          printf 'EC2_SSH_KEY_PROD<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64_PROD" | base64 -d)" >> "$GITHUB_ENV"
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -191,8 +191,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_PROD }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ env.EC2_USER_PROD }}
+          key: ${{ env.EC2_SSH_KEY_PROD }}
           envs: APP_DIR
           script: |
             set -euo pipefail
@@ -205,17 +205,17 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ env.EC2_HOST_PROD }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ env.EC2_USER_PROD }}
+          key: ${{ env.EC2_SSH_KEY_PROD }}
           source: ".,cryptoflow"
           target: "${{ env.APP_DIR }}"
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ env.EC2_HOST_PROD }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          host: ${{ env.EC2_HOST_PROD_PROD }}
+          username: ${{ env.EC2_USER_PROD }}
+          key: ${{ env.EC2_SSH_KEY_PROD }}
           # Forward app dir and runtime secrets/vars to the host shell
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
           script: |
@@ -268,8 +268,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_PROD }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ env.EC2_USER_PROD }}
+          key: ${{ env.EC2_SSH_KEY_PROD }}
           envs: APP_DIR
           script: |
             set -euo pipefail
