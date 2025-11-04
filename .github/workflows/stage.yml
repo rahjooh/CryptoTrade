@@ -42,30 +42,66 @@ jobs:
               done
           
           # 2) Defaults (safe with set -u)
-          : "${EC2_USER:=}"
+          : "${EC2_USER_STAGE:=}"
+          : "${EC2_SSH_KEY_B64_STAGE:=}"
           : "${DASHBOARD_NAME:=Data}"
           : "${LOG_LEVEL:=warn}"
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER}" ]; then
-            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER_STAGE:-}" ]; then
+            echo "APP_DIR=/home/${EC2_USER_STAGE}/cryptoflow" >> "$GITHUB_ENV"
           fi
           echo "DASHBOARD_NAME=$DASHBOARD_NAME" >> "$GITHUB_ENV"
           echo "LOG_LEVEL=$LOG_LEVEL" >> "$GITHUB_ENV"
           
-          # 3) Decode EC2_SSH_KEY_B64 from the secret into a multiline EC2_SSH_KEY
+          # 3) Mask EC2_SSH_KEY_B64_STAGE parts to avoid leaks
           key_b64="$(printf '%s\n' "$ENV_SECRET" \
             | tr -d '\r' \
-            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64_STAGE[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
           if [ -n "$key_b64" ]; then
-            {
-              echo 'EC2_SSH_KEY<<EOF'
-              printf '%s' "$key_b64" | base64 -d
-              echo
-              echo 'EOF'
-            } >> "$GITHUB_ENV"
-            # Mask the base64 and each decoded line
             echo "::add-mask::$key_b64"
             printf '%s' "$key_b64" | base64 -d | sed 's/.*/::add-mask::&/'
           fi
+
+          bucket="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*S3_BUCKET_STAGE[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -z "$bucket" ]; then
+            bucket="$(printf '%s\n' "$ENV_SECRET" \
+              | tr -d '\r' \
+              | sed -n -E 's/^[[:space:]]*S3_BUCKET[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          fi
+          if [ -n "$bucket" ]; then
+            echo "S3_BUCKET=$bucket" >> "$GITHUB_ENV"
+            echo "::add-mask::$bucket"
+          fi
+
+      - name: Prepare staging SSH material
+        id: stage_ssh_test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [ -z "${EC2_USER_STAGE:-}" ]; then
+            echo "EC2_USER_STAGE is required for staging SSH access" >&2
+            exit 1
+          fi
+          if [ -z "${EC2_SSH_KEY_B64_STAGE:-}" ]; then
+            echo "EC2_SSH_KEY_B64_STAGE is required for staging SSH access" >&2
+            exit 1
+          fi
+          echo "::add-mask::${EC2_SSH_KEY_B64_STAGE}"
+          {
+            echo 'EC2_SSH_KEY_STAGE<<EOF'
+            printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+          printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d | sed 's/.*/::add-mask::&/'
+          echo "ssh_user=$EC2_USER_STAGE" >> "$GITHUB_OUTPUT"
+          {
+            echo 'ssh_key<<EOF'
+            printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Verify loaded env keys
         shell: bash
@@ -84,8 +120,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ steps.stage_ssh_test.outputs.ssh_user }}
+          key: ${{ steps.stage_ssh_test.outputs.ssh_key }}
           port: 22
           timeout: 30s
           command_timeout: 10m
@@ -163,7 +199,6 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ vars.AWS_REGION }}
-      S3_BUCKET: ${{ vars.S3_BUCKET }}
       S3_TABLE_ARN: ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
       DASHBOARD_NAME: Data
@@ -181,20 +216,64 @@ jobs:
             | while IFS= read -r __val; do
                 if [ -n "$__val" ]; then echo "::add-mask::$__val"; fi
               done
-          if [ -z "${APP_DIR:-}" ] && [ -n "${EC2_USER:-}" ]; then
-            echo "APP_DIR=/home/${EC2_USER}/cryptoflow" >> "$GITHUB_ENV"
+          : "${EC2_USER_STAGE:=}"
+          : "${EC2_SSH_KEY_B64_STAGE:=}"
+          if [ -z "${APP_DIR:-}" ]; then
+            if [ -n "${EC2_USER_STAGE:-}" ]; then
+              echo "APP_DIR=/home/${EC2_USER_STAGE}/cryptoflow" >> "$GITHUB_ENV"
+            fi
           fi
           if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
           if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+          key_b64="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*EC2_SSH_KEY_B64_STAGE[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -n "$key_b64" ]; then
+            echo "::add-mask::$key_b64"
+            printf '%s' "$key_b64" | base64 -d | sed 's/.*/::add-mask::&/'
+          fi
 
-      - name: Decode SSH key from base64
-        if: env.EC2_SSH_KEY_B64 != ''
+          bucket="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*S3_BUCKET_STAGE[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -z "$bucket" ]; then
+            bucket="$(printf '%s\n' "$ENV_SECRET" \
+              | tr -d '\r' \
+              | sed -n -E 's/^[[:space:]]*S3_BUCKET[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          fi
+          if [ -n "$bucket" ]; then
+            echo "S3_BUCKET=$bucket" >> "$GITHUB_ENV"
+            echo "::add-mask::$bucket"
+          fi
+
+      - name: Prepare staging SSH material
+        id: stage_ssh_deploy
+        shell: bash
         run: |
-          set -euo pipefail
-          printf 'EC2_SSH_KEY<<EOF\n%s\nEOF\n' "$(printf '%s' "$EC2_SSH_KEY_B64" | base64 -d)" >> "$GITHUB_ENV"
-          # Mask the base64 and each decoded line
-          echo "::add-mask::${EC2_SSH_KEY_B64}"
-          printf '%s' "$EC2_SSH_KEY_B64" | base64 -d | sed 's/.*/::add-mask::&/'
+          set -Eeuo pipefail
+          if [ -z "${EC2_USER_STAGE:-}" ]; then
+            echo "EC2_USER_STAGE is required for staging SSH access" >&2
+            exit 1
+          fi
+          if [ -z "${EC2_SSH_KEY_B64_STAGE:-}" ]; then
+            echo "EC2_SSH_KEY_B64_STAGE is required for staging SSH access" >&2
+            exit 1
+          fi
+          echo "::add-mask::${EC2_SSH_KEY_B64_STAGE}"
+          {
+            echo 'EC2_SSH_KEY_STAGE<<EOF'
+            printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+          printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d | sed 's/.*/::add-mask::&/'
+          echo "ssh_user=$EC2_USER_STAGE" >> "$GITHUB_OUTPUT"
+          {
+            echo 'ssh_key<<EOF'
+            printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -212,8 +291,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
+          key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           envs: APP_DIR
           script: |
             set -euo pipefail
@@ -225,17 +304,17 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
+          key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           source: ".,cryptoflow"
-          target: "${{ env.APP_DIR }}"
+          target: ${{ env.APP_DIR && env.APP_DIR || format('/home/{0}/cryptoflow', steps.stage_ssh_deploy.outputs.ssh_user) }}
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
+          key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
           script: |
             set -euo pipefail

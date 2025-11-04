@@ -196,7 +196,6 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ vars.AWS_REGION }}
-      S3_BUCKET: ${{ vars.S3_BUCKET }}
       S3_TABLE_ARN: ${{ secrets.S3_TABLE_ARN }}
       LOG_LEVEL: ${{ vars.LOG_LEVEL }}
       DASHBOARD_NAME: Data
@@ -219,6 +218,18 @@ jobs:
           fi
           if [ -z "${DASHBOARD_NAME:-}" ]; then echo "DASHBOARD_NAME=Data" >> "$GITHUB_ENV"; fi
           if [ -z "${LOG_LEVEL:-}" ]; then echo "LOG_LEVEL=warn" >> "$GITHUB_ENV"; fi
+          bucket="$(printf '%s\n' "$ENV_SECRET" \
+            | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*S3_BUCKET_PROD[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          if [ -z "$bucket" ]; then
+            bucket="$(printf '%s\n' "$ENV_SECRET" \
+              | tr -d '\r' \
+              | sed -n -E 's/^[[:space:]]*S3_BUCKET[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1/p')"
+          fi
+          if [ -n "$bucket" ]; then
+            echo "S3_BUCKET=$bucket" >> "$GITHUB_ENV"
+            echo "::add-mask::$bucket"
+          fi
 
       - name: Decode SSH key from base64
         if: env.EC2_SSH_KEY_B64_PROD != ''
