@@ -264,6 +264,9 @@ jobs:
             printf 'SSH_KEY<<EOF\n%s\nEOF\n' "$EC2_SSH_KEY" >> "$GITHUB_ENV"
             printf '%s\n' "$EC2_SSH_KEY" | sed 's/.*/::add-mask::&/'
           fi
+          if [ -z "${APP_DIR:-}" ] && [ -n "${SSH_USER:-}" ]; then
+            echo "APP_DIR=/home/${SSH_USER}/cryptoflow" >> "$GITHUB_ENV"
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -298,7 +301,7 @@ jobs:
           username: ${{ env.SSH_USER }}
           key: ${{ env.SSH_KEY }}
           source: ".,cryptoflow"
-          target: "${{ env.APP_DIR }}"
+          target: ${{ env.APP_DIR && env.APP_DIR || format('/home/{0}/cryptoflow', env.SSH_USER) }}
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3

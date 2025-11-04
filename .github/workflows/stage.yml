@@ -95,6 +95,8 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_ENV"
           printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d | sed 's/.*/::add-mask::&/'
+          app_dir="/home/${EC2_USER_STAGE}/cryptoflow"
+          echo "APP_DIR=$app_dir" >> "$GITHUB_ENV"
           echo "ssh_user=$EC2_USER_STAGE" >> "$GITHUB_OUTPUT"
           {
             echo 'ssh_key<<EOF'
@@ -102,6 +104,7 @@ jobs:
             echo
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
+          echo "app_dir=$app_dir" >> "$GITHUB_OUTPUT"
 
       - name: Verify loaded env keys
         shell: bash
@@ -267,6 +270,8 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_ENV"
           printf '%s' "$EC2_SSH_KEY_B64_STAGE" | base64 -d | sed 's/.*/::add-mask::&/'
+          app_dir="/home/${EC2_USER_STAGE}/cryptoflow"
+          echo "APP_DIR=$app_dir" >> "$GITHUB_ENV"
           echo "ssh_user=$EC2_USER_STAGE" >> "$GITHUB_OUTPUT"
           {
             echo 'ssh_key<<EOF'
@@ -274,6 +279,7 @@ jobs:
             echo
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
+          echo "app_dir=$app_dir" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -294,11 +300,14 @@ jobs:
           username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
           key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           envs: APP_DIR
-          script: |
-            set -euo pipefail
-            mkdir -p "$APP_DIR"
-            cd "$APP_DIR"
-            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
+        env:
+          APP_DIR: ${{ steps.stage_ssh_deploy.outputs.app_dir }}
+        script: |
+          set -euo pipefail
+          : "${APP_DIR:="/home/$(whoami)/cryptoflow"}"
+          mkdir -p "$APP_DIR"
+          cd "$APP_DIR"
+          find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
 
       - name: Upload application bundle
         uses: appleboy/scp-action@v0.1.7
@@ -307,7 +316,7 @@ jobs:
           username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
           key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           source: ".,cryptoflow"
-          target: ${{ env.APP_DIR && env.APP_DIR || format('/home/{0}/cryptoflow', steps.stage_ssh_deploy.outputs.ssh_user) }}
+          target: ${{ steps.stage_ssh_deploy.outputs.app_dir }}
 
       - name: Restart services
         uses: appleboy/ssh-action@v1.0.3
@@ -316,9 +325,12 @@ jobs:
           username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
           key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
-          script: |
-            set -euo pipefail
-            cd "$APP_DIR/infra/docker"
+        env:
+          APP_DIR: ${{ steps.stage_ssh_deploy.outputs.app_dir }}
+        script: |
+          set -euo pipefail
+          : "${APP_DIR:="/home/$(whoami)/cryptoflow"}"
+          cd "$APP_DIR/infra/docker"
             # Create an env file and export for docker compose
             install -m 600 /dev/null .env
             {
