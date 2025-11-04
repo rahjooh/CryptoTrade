@@ -300,14 +300,14 @@ jobs:
           username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
           key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
           envs: APP_DIR
+          script: |
+            set -euo pipefail
+            : "${APP_DIR:="/home/$(whoami)/cryptoflow"}"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
         env:
           APP_DIR: ${{ steps.stage_ssh_deploy.outputs.app_dir }}
-        script: |
-          set -euo pipefail
-          : "${APP_DIR:="/home/$(whoami)/cryptoflow"}"
-          mkdir -p "$APP_DIR"
-          cd "$APP_DIR"
-          find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
 
       - name: Upload application bundle
         uses: appleboy/scp-action@v0.1.7
@@ -322,15 +322,12 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ steps.stage_ssh_deploy.outputs.ssh_user }}
-          key: ${{ steps.stage_ssh_deploy.outputs.ssh_key }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
-        env:
-          APP_DIR: ${{ steps.stage_ssh_deploy.outputs.app_dir }}
-        script: |
-          set -euo pipefail
-          : "${APP_DIR:="/home/$(whoami)/cryptoflow"}"
-          cd "$APP_DIR/infra/docker"
+          script: |
+            set -euo pipefail
+            cd "$APP_DIR/infra/docker"
             # Create an env file and export for docker compose
             install -m 600 /dev/null .env
             {
