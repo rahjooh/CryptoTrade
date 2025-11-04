@@ -201,7 +201,7 @@ shards:
         - OP-USDT
         - ARB-USDT
 
-  - ip: 172.31.0.231
+  - ip: 172.31.0.211
     binance_symbols:
       - INJUSDT
       - FARTCOINUSDT

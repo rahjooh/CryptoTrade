@@ -350,8 +350,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.EC2_HOST_STAGE }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
+          username: ${{ env.EC2_USER_STAGE }}
+          key: ${{ env.EC2_SSH_KEY_STAGE }}
           envs: APP_DIR,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,LOG_LEVEL
           script: |
             set -euo pipefail
