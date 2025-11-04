@@ -16,9 +16,30 @@ permissions:
   contents: read
 
 jobs:
+  confirm-dispatch:
+    name: Validate staging dispatch phrase
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation phrase
+        env:
+          EXPECTED: ${{ secrets.STAGE_DISPATCH_PHRASE }}
+          PROVIDED: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::Secret STAGE_DISPATCH_PHRASE is not configured."
+            exit 1
+          fi
+          if [ "$PROVIDED" != "$EXPECTED" ]; then
+            echo "::error::Invalid confirmation phrase provided."
+            exit 1
+          fi
+
   test-ssh:
     name: Verify staging SSH connectivity
-    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == secrets.PHRASE
+    needs: confirm-dispatch
+    if: needs.confirm-dispatch.result == 'success'
     runs-on: ubuntu-latest
     env:
       APP_ENV: staging
@@ -137,7 +158,7 @@ jobs:
             echo "Staging host reachable as $(whoami)"
   test:
     name: Run test suite
-    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == secrets.PHRASE
+    if: needs.test-ssh.result == 'success'
     runs-on: ubuntu-latest
     needs: test-ssh
     env:
@@ -160,7 +181,7 @@ jobs:
 
   build:
     name: Build application binary
-    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == secrets.PHRASE
+    if: needs.test.result == 'success'
     runs-on: ubuntu-latest
     needs: test
     env:
@@ -199,7 +220,7 @@ jobs:
 
   deploy:
     name: Deploy to staging
-    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == secrets.PHRASE
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     needs: build
     environment:
