@@ -33,4 +33,4 @@ go.work.sum
 data/
 /infra/.terraform/
 /infra/.terraform.lock.hcl
-CryptoFlow
+CryptoFlowpath/to/file
