@@ -23,12 +23,12 @@ jobs:
     steps:
       - name: Check confirmation phrase
         env:
-          EXPECTED: ${{ secrets.STAGE_DISPATCH_PHRASE }}
+          EXPECTED: ${{ secrets.PHRASE }}
           PROVIDED: ${{ github.event.inputs.confirm }}
         run: |
           set -euo pipefail
           if [ -z "$EXPECTED" ]; then
-            echo "::error::Secret STAGE_DISPATCH_PHRASE is not configured."
+            echo "::error::Secret PHRASE is not configured."
             exit 1
           fi
           if [ "$PROVIDED" != "$EXPECTED" ]; then
