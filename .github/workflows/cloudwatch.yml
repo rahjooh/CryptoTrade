@@ -1,14 +1,11 @@
 name: CloudWatch Dashboard
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
-      dashboard_name:
-        description: "Override CloudWatch dashboard name (optional)"
-        required: false
+      confirm:
+        description: "Enter the production dispatch passphrase"
+        required: true
         default: ""
 
 concurrency:
@@ -45,9 +42,9 @@ jobs:
       - name: Resolve prod/stage instances and host info
         id: ec2
         env:
-          PROD_INSTANCE_ID: ${{ env.PROD_INSTANCE_ID }}
+          PROD_INSTANCE_ID: ${{ env.EC2_HOST_PROD }}
           PROD_INSTANCE_NAME: ${{ env.PROD_INSTANCE_NAME }}
-          STAGE_INSTANCE_ID: ${{ env.STAGE_INSTANCE_ID }}
+          STAGE_INSTANCE_ID: ${{ env.EC2_HOST_STAGE }}
           STAGE_INSTANCE_NAME: ${{ env.STAGE_INSTANCE_NAME }}
         run: |
           set -euo pipefail
