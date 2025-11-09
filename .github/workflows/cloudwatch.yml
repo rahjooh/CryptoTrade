@@ -1,0 +1,62 @@
+name: CloudWatch Dashboard
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      dashboard_name:
+        description: "Override CloudWatch dashboard name (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-cloudwatch-dashboard
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update-dashboard:
+    name: Update CloudWatch dashboard
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[CWdash]'))
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+    steps:
+      - name: Determine dashboard name
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_name="${{ vars.DASHBOARD_NAME != '' && vars.DASHBOARD_NAME || 'Data' }}"
+          name="$default_name"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            input_name="$(jq -r '.inputs.dashboard_name // ""' "$GITHUB_EVENT_PATH")"
+            if [ -n "$input_name" ]; then
+              name="$input_name"
+            fi
+          fi
+          echo "DASHBOARD_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish dashboard definition
+        run: |
+          aws cloudwatch put-dashboard \
+            --dashboard-name "$DASHBOARD_NAME" \
+            --dashboard-body file://internal/metrics/CWdash.json
+
+      - name: Validate dashboard
+        run: |
+          aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
+            --query 'DashboardValidationMessages' --output table
