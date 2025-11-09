@@ -55,3 +55,30 @@ func LoadIPShards(path string) (*IPShards, error) {
 	//}
 	return &cfg, nil
 }
+
+// FilterByIP returns only the shards that match one of the provided IPv4
+// addresses. The search is case sensitive because IP addresses are normalised
+// strings. The order of the returned shards matches the original configuration
+// to keep deterministic reader creation.
+func (s *IPShards) FilterByIP(ips []string) []IPShard {
+	if len(ips) == 0 {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(ips))
+	for _, ip := range ips {
+		if ip == "" {
+			continue
+		}
+		allowed[ip] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return nil
+	}
+	filtered := make([]IPShard, 0, len(s.Shards))
+	for _, shard := range s.Shards {
+		if _, ok := allowed[shard.IP]; ok {
+			filtered = append(filtered, shard)
+		}
+	}
+	return filtered
+}

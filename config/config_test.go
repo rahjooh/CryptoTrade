@@ -161,6 +161,39 @@ func TestLoadIPShards(t *testing.T) {
 	}
 }
 
+func TestIPShardsFilterByIP(t *testing.T) {
+	shards := &IPShards{Shards: []IPShard{
+		{IP: "1.1.1.1"},
+		{IP: "2.2.2.2"},
+	}}
+	filtered := shards.FilterByIP([]string{"2.2.2.2", "3.3.3.3"})
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 shard, got %d", len(filtered))
+	}
+	if filtered[0].IP != "2.2.2.2" {
+		t.Fatalf("unexpected shard returned: %s", filtered[0].IP)
+	}
+	if res := shards.FilterByIP(nil); res != nil {
+		t.Fatalf("expected nil when no IPs provided")
+	}
+}
+
+func TestAppEnvironmentAndProductionLike(t *testing.T) {
+	t.Setenv(appEnvVar, "prod")
+	if env := AppEnvironment(); env != EnvironmentProduction {
+		t.Fatalf("expected %q, got %q", EnvironmentProduction, env)
+	}
+	if !IsProductionLike(EnvironmentProduction) {
+		t.Fatalf("expected production to be production-like")
+	}
+	if !IsProductionLike(EnvironmentStaging) {
+		t.Fatalf("expected staging to be production-like")
+	}
+	if IsProductionLike(EnvironmentDevelopment) {
+		t.Fatalf("expected development to not be production-like")
+	}
+}
+
 func TestIsValidS3Bucket(t *testing.T) {
 	cases := []struct {
 		name  string
