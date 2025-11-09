@@ -53,6 +53,12 @@ func StartChannelSizeMetrics(ctx context.Context, channels *channel.Channels, in
 						"capacity": cap(channels.FOBD.Norm),
 					})
 				}
+				if channels.Liq != nil {
+					EmitMetric(log, component, "liq_raw_buffer_length", len(channels.Liq.Raw), "gauge", logger.Fields{
+						"buffer":   "liq_raw",
+						"capacity": cap(channels.Liq.Raw),
+					})
+				}
 			}
 		}
 	}()
