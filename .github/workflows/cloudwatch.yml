@@ -42,9 +42,12 @@ jobs:
       - name: Resolve prod/stage instances and host info
         id: ec2
         env:
+          # keep these if you sometimes pass instance IDs; otherwise they can be blank
           PROD_INSTANCE_ID: ${{ env.EC2_HOST_PROD }}
-          PROD_INSTANCE_NAME: Gollector_prod
           STAGE_INSTANCE_ID: ${{ env.EC2_HOST_STAGE }}
+
+          # hardcoded Name tag values
+          PROD_INSTANCE_NAME: Gollector_prod
           STAGE_INSTANCE_NAME: Gollector_stage
         run: |
           set -euo pipefail
@@ -63,10 +66,10 @@ jobs:
             fi
             echo ""; return 0
           }
-
+          
           PROD_IID=$(resolve_instance "${PROD_INSTANCE_ID:-}" "${PROD_INSTANCE_NAME:-}")
           STAGE_IID=$(resolve_instance "${STAGE_INSTANCE_ID:-}" "${STAGE_INSTANCE_NAME:-}")
-
+          
           if [ -z "$PROD_IID" ] || [ "$PROD_IID" = "None" ]; then
             echo "Failed to resolve PROD instance (set vars.PROD_INSTANCE_ID or vars.PROD_INSTANCE_NAME)" >&2
             exit 1
@@ -75,20 +78,20 @@ jobs:
             echo "Failed to resolve STAGE instance (set vars.STAGE_INSTANCE_ID or vars.STAGE_INSTANCE_NAME)" >&2
             exit 1
           fi
-
+          
           read -r PROD_PRIVATE_IP PROD_PRIVATE_DNS <<<"$(aws ec2 describe-instances --instance-ids "$PROD_IID" --query 'Reservations[0].Instances[0].[PrivateIpAddress,PrivateDnsName]' --output text)"
           read -r STAGE_PRIVATE_IP STAGE_PRIVATE_DNS <<<"$(aws ec2 describe-instances --instance-ids "$STAGE_IID" --query 'Reservations[0].Instances[0].[PrivateIpAddress,PrivateDnsName]' --output text)"
-
-          # Short hostnames typically look like ip-172-31-1-88
+          
           PROD_HOST_SHORT="${PROD_PRIVATE_DNS%%.*}"
           STAGE_HOST_SHORT="${STAGE_PRIVATE_DNS%%.*}"
-
+          
           echo "prod_instance_id=$PROD_IID" >> "$GITHUB_OUTPUT"
           echo "stage_instance_id=$STAGE_IID" >> "$GITHUB_OUTPUT"
           echo "prod_ip=$PROD_PRIVATE_IP" >> "$GITHUB_OUTPUT"
           echo "stage_ip=$STAGE_PRIVATE_IP" >> "$GITHUB_OUTPUT"
           echo "prod_host=$PROD_HOST_SHORT" >> "$GITHUB_OUTPUT"
           echo "stage_host=$STAGE_HOST_SHORT" >> "$GITHUB_OUTPUT"
+
 
       - name: Build dual-env dashboard body
         run: |
