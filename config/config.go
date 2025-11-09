@@ -22,6 +22,7 @@ var configEnvPaths = map[string]string{
 
 type Config struct {
 	Cryptoflow        CryptoflowConfig        `yaml:"cryptoflow"`
+	Dashboard         DashboardConfig         `yaml:"dashboard"`
 	Metrics           MetricsConfig           `yaml:"metrics"`
 	Channels          ChannelsConfig          `yaml:"channels"`
 	Reader            ReaderConfig            `yaml:"reader"`
@@ -41,6 +42,14 @@ type CryptoflowConfig struct {
 type MetricsConfig struct {
 	UsedWeight  bool `yaml:"used_weight"`
 	ChannelSize bool `yaml:"channel_size"`
+}
+
+type DashboardConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	Address         string        `yaml:"address"`
+	RefreshInterval time.Duration `yaml:"refresh_interval"`
+	MetricsHistory  int           `yaml:"metrics_history"`
+	LogHistory      int           `yaml:"log_history"`
 }
 
 type ChannelsConfig struct {

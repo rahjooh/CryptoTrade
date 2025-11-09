@@ -16,6 +16,7 @@ import (
 
 	"cryptoflow/config"
 	"cryptoflow/internal/channel"
+	"cryptoflow/internal/dashboard"
 	"cryptoflow/internal/metrics"
 	"cryptoflow/internal/processor"
 	"cryptoflow/internal/reader/binance"
@@ -60,6 +61,21 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	dashboardServer, err := dashboard.NewServer(cfg.Dashboard, log)
+	if err != nil {
+		log.WithError(err).Error("failed to initialise dashboard server")
+		os.Exit(1)
+	}
+
+	if dashboardServer != nil {
+		go func() {
+			if err := dashboardServer.Run(ctx, cfg.Cryptoflow.Name); err != nil {
+				log.WithError(err).Error("dashboard server exited")
+			}
+		}()
+		log.WithComponent("dashboard").WithFields(logger.Fields{"address": dashboardServer.Address()}).Info("dashboard available")
+	}
 
 	channels := channel.NewChannels(
 		cfg.Channels.RawBuffer,
