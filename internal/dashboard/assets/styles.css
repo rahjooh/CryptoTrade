@@ -1,0 +1,51 @@
+body {
+    background: #0d1117;
+    color: #f0f6fc;
+    min-height: 100vh;
+}
+
+.card {
+    background-color: rgba(22, 27, 34, 0.95);
+    border: 1px solid rgba(48, 54, 61, 0.7);
+}
+
+.table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.level-info {
+    background: #0dcaf0;
+    color: #0d1117;
+}
+
+.level-warning {
+    background: #ffc107;
+    color: #0d1117;
+}
+
+.level-error, .level-fatal, .level-panic {
+    background: #dc3545;
+}
+
+.level-debug {
+    background: #6c757d;
+}
+
+.level-trace {
+    background: #6610f2;
+}
+
+code {
+    color: #8ab4f8;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(56, 139, 253, 0.1);
+}
+
+.badge {
+    font-size: 0.75rem;
+}
+
