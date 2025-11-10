@@ -168,7 +168,7 @@ jobs:
       - name: Build dual-env dashboard body
         run: |
           set -euo pipefail
-          cp internal/metrics/CWdash.envs.json /tmp/dashboard.json
+          cp internal/metrics/CWdash.json /tmp/dashboard.json
           sed -i \
             -e "s|<prod-instance-id>|${{ steps.ec2.outputs.prod_instance_id }}|g" \
             -e "s|<stage-instance-id>|${{ steps.ec2.outputs.stage_instance_id }}|g" \
