@@ -18,6 +18,7 @@ permissions:
 jobs:
   update-dashboard:
     name: Update CloudWatch dashboard
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'ap-south-1' }}
