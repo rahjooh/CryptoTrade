@@ -1,8 +1,8 @@
-#name: cryptoflow CI/CD
-#
-#on:
-#  workflow_dispatch:
-#
+name: cryptoflow CI/CD
+
+on:
+  workflow_dispatch:
+
 ## Cancel older runs for the same branch/workflow
 #concurrency:
 #  group: ${{ github.workflow }}-${{ github.ref_name }}
