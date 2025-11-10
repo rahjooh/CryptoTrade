@@ -300,34 +300,38 @@ type OkxDeltaConfig struct {
 }
 
 type BinanceLiquidationConfig struct {
-	Enabled    bool     `yaml:"enabled"`
-	Connection string   `yaml:"connection"`
-	URL        string   `yaml:"url"`
-	Symbols    []string `yaml:"symbols"`
+	Enabled       bool          `yaml:"enabled"`
+	Connection    string        `yaml:"connection"`
+	URL           string        `yaml:"url"`
+	Symbols       []string      `yaml:"symbols"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
 }
 
 type BybitLiquidationConfig struct {
-	Enabled    bool     `yaml:"enabled"`
-	Connection string   `yaml:"connection"`
-	URL        string   `yaml:"url"`
-	Symbols    []string `yaml:"symbols"`
+	Enabled       bool          `yaml:"enabled"`
+	Connection    string        `yaml:"connection"`
+	URL           string        `yaml:"url"`
+	Symbols       []string      `yaml:"symbols"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
 }
 
 type KucoinLiquidationConfig struct {
-	Enabled            bool     `yaml:"enabled"`
-	Connection         string   `yaml:"connection"`
-	URL                string   `yaml:"url"`
-	Symbols            []string `yaml:"symbols"`
-	ReadBufferBytes    int      `yaml:"read_buffer_bytes"`
-	ReadMessageBuffer  int      `yaml:"read_message_buffer"`
-	WriteMessageBuffer int      `yaml:"write_message_buffer"`
+	Enabled            bool          `yaml:"enabled"`
+	Connection         string        `yaml:"connection"`
+	URL                string        `yaml:"url"`
+	Symbols            []string      `yaml:"symbols"`
+	ReadBufferBytes    int           `yaml:"read_buffer_bytes"`
+	ReadMessageBuffer  int           `yaml:"read_message_buffer"`
+	WriteMessageBuffer int           `yaml:"write_message_buffer"`
+	FlushInterval      time.Duration `yaml:"flush_interval"`
 }
 
 type OkxLiquidationConfig struct {
-	Enabled    bool     `yaml:"enabled"`
-	Connection string   `yaml:"connection"`
-	URL        string   `yaml:"url"`
-	Symbols    []string `yaml:"symbols"`
+	Enabled       bool          `yaml:"enabled"`
+	Connection    string        `yaml:"connection"`
+	URL           string        `yaml:"url"`
+	Symbols       []string      `yaml:"symbols"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
 }
 
 type StorageConfig struct {
