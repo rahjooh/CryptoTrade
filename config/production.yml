@@ -4,6 +4,14 @@ app:
   version: "1.0.1"
   environment: "production"
 
+# Dashboard configuration
+dashboard:
+  enabled: true
+  address: "0.0.0.0:8080"
+  refresh_interval: 5s
+  metrics_history: 200
+  log_history: 200
+
 # Metrics configuration
 metrics:
   used_weight: true
