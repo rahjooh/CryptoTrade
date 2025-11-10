@@ -46,15 +46,45 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Load instance resolution hints
+        env:
+          ENV_SECRET: ${{ secrets.ENV }}
+          VAR_PROD_INSTANCE_ID: ${{ vars.PROD_INSTANCE_ID }}
+          VAR_PROD_INSTANCE_NAME: ${{ vars.PROD_INSTANCE_NAME }}
+          VAR_STAGE_INSTANCE_ID: ${{ vars.STAGE_INSTANCE_ID }}
+          VAR_STAGE_INSTANCE_NAME: ${{ vars.STAGE_INSTANCE_NAME }}
+        run: |
+          set -Eeuo pipefail
+          
+          write_hint() {
+            local key="$1" value="$2"
+            if [ -n "$value" ] && [ "$value" != "null" ]; then
+              printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+              printf '::add-mask::%s\n' "$value"
+            fi
+          }
+          
+          write_hint PROD_INSTANCE_ID "${VAR_PROD_INSTANCE_ID:-}"
+          write_hint PROD_INSTANCE_NAME "${VAR_PROD_INSTANCE_NAME:-}"
+          write_hint STAGE_INSTANCE_ID "${VAR_STAGE_INSTANCE_ID:-}"
+          write_hint STAGE_INSTANCE_NAME "${VAR_STAGE_INSTANCE_NAME:-}"
+          
+          if [ -n "${ENV_SECRET:-}" ]; then
+            printf '%s\n' "$ENV_SECRET" \
+              | tr -d '\r' \
+              | sed -E '/^[[:space:]]*#/d; /^[[:space:]]*$/d' \
+              | sed -n -E 's/^[[:space:]]*(PROD_INSTANCE_ID|STAGE_INSTANCE_ID|PROD_INSTANCE_NAME|STAGE_INSTANCE_NAME)[[:space:]]*=[[:space:]]*(.*)[[:space:]]*$/\1=\2/p' \
+              | while IFS='=' read -r key value; do
+                  write_hint "$key" "$value"
+                done
+          fi
+
       - name: Resolve prod/stage instances and host info
         id: ec2
-        env:
-          PROD_INSTANCE_ID: ${{ env.EC2_HOST_PROD }}
-          PROD_INSTANCE_NAME: Gollector_prod
-          STAGE_INSTANCE_ID: ${{ env.EC2_HOST_STAGE }}
-          STAGE_INSTANCE_NAME: Gollector_stage
         run: |
           set -euo pipefail
+          : "${PROD_INSTANCE_NAME:=Gollector_prod}"
+          : "${STAGE_INSTANCE_NAME:=Gollector_stage}"
           # Helper to resolve an instance ID by ID or Name tag
           resolve_instance() {
             local id="$1" name="$2"
@@ -64,7 +94,7 @@ jobs:
             fi
             if [ -n "$name" ] && [ "$name" != "null" ]; then
               aws ec2 describe-instances \
-                --filters "Name=tag:Name,Values=$name" "Name=instance-state-name,Values=running" \
+                --filters "Name=tag:Name,Values=$name" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
                 --query "Reservations[].Instances[].InstanceId" --output text
               return 0
             fi
