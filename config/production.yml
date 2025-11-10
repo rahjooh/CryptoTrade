@@ -14,7 +14,7 @@ dashboard:
 
 # Metrics configuration
 metrics:
-  used_weight: true
+  used_weight: false
   channel_size: true
 
 # Source Configuration
@@ -60,7 +60,7 @@ source:
         url: https://fapi.binance.com/fapi/v1/exchangeInfo
         interval_minutes: 10
       liquidation:
-        enabled: false
+        enabled: true
         connection: websocket
         url: wss://fstream.binance.com/ws
         symbols: [ BTCUSDT, ETHUSDT ]
@@ -109,7 +109,7 @@ source:
         url: https://api.bybit.com/v5/market/instruments-info
         interval_minutes: 10
       liquidation:
-        enabled: false
+        enabled: true
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
         symbols: [ BTCUSDT, ETHUSDT ]
@@ -158,7 +158,7 @@ source:
         url: https://www.okx.com/api/v5/public/instruments
         interval_minutes: 10
       liquidation:
-        enabled: false
+        enabled: true
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
         symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
@@ -209,7 +209,7 @@ source:
           read_message_buffer: 4096
 
       liquidation:
-        enabled: false
+        enabled: true
         connection: websocket
         url: wss://api-futures.kucoin.com/endpoint
         symbols: [ XBTUSDTM, ETHUSDTM ]

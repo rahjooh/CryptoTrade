@@ -18,6 +18,7 @@ permissions:
 jobs:
   update-dashboard:
     name: Update CloudWatch dashboard
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'ap-south-1' }}
@@ -85,52 +86,89 @@ jobs:
           set -euo pipefail
           : "${PROD_INSTANCE_NAME:=Gollector_prod}"
           : "${STAGE_INSTANCE_NAME:=Gollector_stage}"
-          # Helper to resolve an instance ID by ID or Name tag
-          resolve_instance() {
-            local id="$1" name="$2"
-            if [ -n "$id" ] && [ "$id" != "null" ]; then
-              echo "$id"
-              return 0
-            fi
-            if [ -n "$name" ] && [ "$name" != "null" ]; then
-              aws ec2 describe-instances \
-                --filters "Name=tag:Name,Values=$name" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
-                --query "Reservations[].Instances[].InstanceId" --output text
-              return 0
-            fi
-            echo ""; return 0
+          
+          diag_list() {
+            echo "::group::EC2 instance diagnostic ($AWS_REGION)"
+            aws ec2 describe-instances \
+              --filters "Name=instance-state-name,Values=running,stopped,pending,stopping" \
+              --query 'Reservations[].Instances[].{Id:InstanceId,State:State.Name,Name:Tags[?Key==`Name`]|[0].Value,AZ:Placement.AvailabilityZone}' \
+              --output table || true
+            echo "::endgroup::"
           }
-
-          PROD_IID=$(resolve_instance "${PROD_INSTANCE_ID:-}" "${PROD_INSTANCE_NAME:-}")
-          STAGE_IID=$(resolve_instance "${STAGE_INSTANCE_ID:-}" "${STAGE_INSTANCE_NAME:-}")
-
+          
+          # Use first match helper
+          first_or_empty() {
+            awk 'NF{print $1; exit}'
+          }
+          
+          resolve_by_name_exact() {
+            local name="$1"
+            aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=${name}" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
+              --query "Reservations[].Instances[].InstanceId" --output text | first_or_empty
+          }
+          
+          resolve_by_name_wild() {
+            local name="$1"
+            # allow minor mismatches like trailing spaces or different case: try wildcard
+            aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=*${name}*" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
+              --query "Reservations[].Instances[].InstanceId" --output text | first_or_empty
+          }
+          
+          resolve_instance() {
+            local id="${1:-}" name="${2:-}"
+            if [ -n "${id:-}" ] && [ "${id:-}" != "null" ]; then
+              echo "$id"; return 0
+            fi
+            local iid
+            iid="$(resolve_by_name_exact "$name")"
+            if [ -z "$iid" ] || [ "$iid" = "None" ]; then
+              iid="$(resolve_by_name_wild "$name")"
+            fi
+            echo "${iid:-}"
+          }
+          
+          # show what's in the region to make debugging easy
+          diag_list
+          
+          PROD_IID="$(resolve_instance "${PROD_INSTANCE_ID:-}" "${PROD_INSTANCE_NAME:-}")"
+          STAGE_IID="$(resolve_instance "${STAGE_INSTANCE_ID:-}" "${STAGE_INSTANCE_NAME:-}")"
+          
           if [ -z "$PROD_IID" ] || [ "$PROD_IID" = "None" ]; then
-            echo "Failed to resolve PROD instance (set vars.PROD_INSTANCE_ID or PROD_INSTANCE_NAME)" >&2
+            echo "ERROR: Could not find PROD. Checked:"
+            echo " - Region: $AWS_REGION"
+            echo " - PROD_INSTANCE_ID: ${PROD_INSTANCE_ID:-<unset>}"
+            echo " - PROD_INSTANCE_NAME: ${PROD_INSTANCE_NAME:-<unset>} (exact + wildcard)"
             exit 1
           fi
           if [ -z "$STAGE_IID" ] || [ "$STAGE_IID" = "None" ]; then
-            echo "Failed to resolve STAGE instance (set vars.STAGE_INSTANCE_ID or STAGE_INSTANCE_NAME)" >&2
+            echo "ERROR: Could not find STAGE. Checked:"
+            echo " - Region: $AWS_REGION"
+            echo " - STAGE_INSTANCE_ID: ${STAGE_INSTANCE_ID:-<unset>}"
+            echo " - STAGE_INSTANCE_NAME: ${STAGE_INSTANCE_NAME:-<unset>} (exact + wildcard)"
             exit 1
           fi
-
+          
           read -r PROD_PRIVATE_IP PROD_PRIVATE_DNS <<<"$(aws ec2 describe-instances --instance-ids "$PROD_IID" --query 'Reservations[0].Instances[0].[PrivateIpAddress,PrivateDnsName]' --output text)"
           read -r STAGE_PRIVATE_IP STAGE_PRIVATE_DNS <<<"$(aws ec2 describe-instances --instance-ids "$STAGE_IID" --query 'Reservations[0].Instances[0].[PrivateIpAddress,PrivateDnsName]' --output text)"
-
-          # Short hostnames typically look like ip-172-31-1-88
+          
           PROD_HOST_SHORT="${PROD_PRIVATE_DNS%%.*}"
           STAGE_HOST_SHORT="${STAGE_PRIVATE_DNS%%.*}"
-
-          echo "prod_instance_id=$PROD_IID" >> "$GITHUB_OUTPUT"
-          echo "stage_instance_id=$STAGE_IID" >> "$GITHUB_OUTPUT"
-          echo "prod_ip=$PROD_PRIVATE_IP" >> "$GITHUB_OUTPUT"
-          echo "stage_ip=$STAGE_PRIVATE_IP" >> "$GITHUB_OUTPUT"
-          echo "prod_host=$PROD_HOST_SHORT" >> "$GITHUB_OUTPUT"
-          echo "stage_host=$STAGE_HOST_SHORT" >> "$GITHUB_OUTPUT"
+          
+          {
+            echo "prod_instance_id=$PROD_IID"
+            echo "stage_instance_id=$STAGE_IID"
+            echo "prod_ip=$PROD_PRIVATE_IP"
+            echo "stage_ip=$STAGE_PRIVATE_IP"
+            echo "prod_host=$PROD_HOST_SHORT"
+            echo "stage_host=$STAGE_HOST_SHORT"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build dual-env dashboard body
         run: |
           set -euo pipefail
-          cp internal/metrics/CWdash.envs.json /tmp/dashboard.json
+          cp internal/metrics/CWdash.json /tmp/dashboard.json
           sed -i \
             -e "s|<prod-instance-id>|${{ steps.ec2.outputs.prod_instance_id }}|g" \
             -e "s|<stage-instance-id>|${{ steps.ec2.outputs.stage_instance_id }}|g" \
