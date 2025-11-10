@@ -64,6 +64,7 @@ source:
         connection: websocket
         url: wss://fstream.binance.com/ws
         symbols: [ BTCUSDT, ETHUSDT ]
+        flush_interval: "1m"
       open_interest:
         enabled: false
         connection: rest
@@ -112,6 +113,7 @@ source:
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
         symbols: [ BTCUSDT, ETHUSDT ]
+        flush_interval: "1m"
       open_interest:
         enabled: false
         connection: rest
@@ -160,6 +162,7 @@ source:
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
         symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
+        flush_interval: "1m"
       open_interest:
         enabled: false
         connection: rest
@@ -213,6 +216,7 @@ source:
         read_buffer_bytes: 4194304
         read_message_buffer: 4096
         write_message_buffer: 1024
+        flush_interval: "1m"
 
 
   coinbase:

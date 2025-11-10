@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,28 +14,75 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/google/uuid"
+	"github.com/xitongsys/parquet-go/parquet"
+	"github.com/xitongsys/parquet-go/source"
+	"github.com/xitongsys/parquet-go/writer"
 
 	appconfig "cryptoflow/config"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 )
 
-// LiquidationWriter persists raw liquidation messages to S3 using a worker pool.
-type LiquidationWriter struct {
-	cfg        *appconfig.Config
-	rawChan    <-chan models.RawLiquidationMessage
-	s3Client   *s3.Client
-	log        *logger.Log
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         *sync.WaitGroup
-	running    bool
-	mu         sync.Mutex
-	workerPool chan struct{}
+const (
+	liquidationKeySeparator = "|"
+	defaultLiquidationFlush = time.Minute
+)
+
+type liquidationMemFile struct {
+	buffer *bytes.Buffer
 }
 
-// NewLiquidationWriter initializes the writer using S3 credentials from config.
+func newLiquidationMemFile() *liquidationMemFile {
+	return &liquidationMemFile{buffer: &bytes.Buffer{}}
+}
+
+func (m *liquidationMemFile) Create(string) (source.ParquetFile, error) { return m, nil }
+func (m *liquidationMemFile) Open(string) (source.ParquetFile, error)   { return m, nil }
+func (m *liquidationMemFile) Seek(int64, int) (int64, error)            { return int64(m.buffer.Len()), nil }
+func (m *liquidationMemFile) Read([]byte) (int, error)                  { return 0, io.EOF }
+func (m *liquidationMemFile) Write(b []byte) (int, error)               { return m.buffer.Write(b) }
+func (m *liquidationMemFile) Close() error                              { return nil }
+func (m *liquidationMemFile) Bytes() []byte                             { return m.buffer.Bytes() }
+
+// liquidationRecord defines the schema for liquidation payloads stored in parquet.
+type liquidationRecord struct {
+	Exchange  string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Market    string `parquet:"name=market, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol    string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Timestamp int64  `parquet:"name=timestamp, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Payload   string `parquet:"name=payload, type=BYTE_ARRAY, convertedtype=UTF8"`
+}
+
+type liquidationBatch struct {
+	Exchange    string
+	Market      string
+	Symbol      string
+	Entries     []models.RawLiquidationMessage
+	Timestamp   time.Time
+	RecordCount int
+}
+
+// LiquidationWriter buffers liquidation payloads and periodically writes them to S3
+// using snappy-compressed parquet files.
+type LiquidationWriter struct {
+	cfg            *appconfig.Config
+	rawChan        <-chan models.RawLiquidationMessage
+	s3Client       *s3.Client
+	log            *logger.Log
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             *sync.WaitGroup
+	running        bool
+	mu             sync.Mutex
+	buffer         map[string][]models.RawLiquidationMessage
+	lastFlush      map[string]time.Time
+	flushIntervals map[string]time.Duration
+	flushTicker    *time.Ticker
+	maxBufferSize  int
+}
+
+// NewLiquidationWriter initializes the writer using S3 credentials from config and
+// prepares buffering structures.
 func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquidationMessage) (*LiquidationWriter, error) {
 	log := logger.GetLogger()
 	if !cfg.Storage.S3.Enabled {
@@ -66,22 +113,27 @@ func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquid
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 
-	concurrency := cfg.Storage.S3.UploadConcurrency
-	if concurrency <= 0 {
-		concurrency = runtime.NumCPU()
+	writer := &LiquidationWriter{
+		cfg:            cfg,
+		rawChan:        rawChan,
+		s3Client:       s3Client,
+		log:            log,
+		wg:             &sync.WaitGroup{},
+		buffer:         make(map[string][]models.RawLiquidationMessage),
+		lastFlush:      make(map[string]time.Time),
+		flushIntervals: buildLiquidationIntervals(cfg),
 	}
 
-	return &LiquidationWriter{
-		cfg:        cfg,
-		rawChan:    rawChan,
-		s3Client:   s3Client,
-		log:        log,
-		wg:         &sync.WaitGroup{},
-		workerPool: make(chan struct{}, concurrency),
-	}, nil
+	if cfg.Writer.Buffer.MaxSize > 0 {
+		writer.maxBufferSize = cfg.Writer.Buffer.MaxSize
+	} else {
+		writer.maxBufferSize = 100
+	}
+
+	return writer, nil
 }
 
-// Start launches the dispatcher and worker routines.
+// Start launches the ingestion and flush workers.
 func (w *LiquidationWriter) Start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
@@ -90,16 +142,27 @@ func (w *LiquidationWriter) Start(ctx context.Context) error {
 	}
 	w.running = true
 	w.ctx, w.cancel = context.WithCancel(ctx)
+	w.buffer = make(map[string][]models.RawLiquidationMessage)
+	w.lastFlush = make(map[string]time.Time)
+	tickerInterval := w.determineTickerInterval()
+	w.flushTicker = time.NewTicker(tickerInterval)
 	w.mu.Unlock()
 
-	w.log.WithComponent("liq_writer").WithFields(logger.Fields{"workers": cap(w.workerPool)}).Info("starting liquidation writer")
+	w.log.WithComponent("liq_writer").WithFields(logger.Fields{
+		"ticker_interval": tickerInterval.String(),
+		"max_buffer":      w.maxBufferSize,
+	}).Info("starting liquidation writer")
 
 	w.wg.Add(1)
-	go w.dispatch()
+	go w.worker()
+
+	w.wg.Add(1)
+	go w.flushWorker()
+
 	return nil
 }
 
-// Stop waits for workers and flushes pending uploads.
+// Stop signals the workers to terminate and flushes remaining data.
 func (w *LiquidationWriter) Stop() {
 	w.mu.Lock()
 	if !w.running {
@@ -108,16 +171,24 @@ func (w *LiquidationWriter) Stop() {
 	}
 	w.running = false
 	cancel := w.cancel
+	ticker := w.flushTicker
+	w.cancel = nil
+	w.flushTicker = nil
 	w.mu.Unlock()
 
+	if ticker != nil {
+		ticker.Stop()
+	}
 	if cancel != nil {
 		cancel()
 	}
+
 	w.wg.Wait()
+	w.flushAll("stop")
 	w.log.WithComponent("liq_writer").Info("liquidation writer stopped")
 }
 
-func (w *LiquidationWriter) dispatch() {
+func (w *LiquidationWriter) worker() {
 	defer w.wg.Done()
 	for {
 		select {
@@ -127,74 +198,301 @@ func (w *LiquidationWriter) dispatch() {
 			if !ok {
 				return
 			}
-			w.enqueue(msg)
+			w.addMessage(msg)
 		}
 	}
 }
 
-func (w *LiquidationWriter) enqueue(msg models.RawLiquidationMessage) {
-	select {
-	case w.workerPool <- struct{}{}:
-	case <-w.ctx.Done():
+func (w *LiquidationWriter) flushWorker() {
+	defer w.wg.Done()
+	for {
+		select {
+		case <-w.ctx.Done():
+			w.flushAll("context_cancelled")
+			return
+		case <-w.flushTicker.C:
+			w.flushTimedOut()
+		}
+	}
+}
+
+func (w *LiquidationWriter) addMessage(msg models.RawLiquidationMessage) {
+	if msg.Exchange == "" || msg.Symbol == "" {
 		return
 	}
 
-	w.wg.Add(1)
-	go func(m models.RawLiquidationMessage) {
-		defer w.wg.Done()
-		defer func() { <-w.workerPool }()
-		if err := w.upload(m); err != nil {
-			w.log.WithComponent("liq_writer").WithError(err).WithFields(logger.Fields{
-				"exchange": m.Exchange,
-				"symbol":   m.Symbol,
-			}).Warn("failed to upload liquidation message")
-		}
-	}(msg)
+	key := w.bufferKey(msg.Exchange, msg.Market, msg.Symbol)
+
+	w.mu.Lock()
+	w.buffer[key] = append(w.buffer[key], msg)
+	if _, ok := w.lastFlush[key]; !ok {
+		w.lastFlush[key] = time.Now()
+	}
+	shouldFlush := w.maxBufferSize > 0 && len(w.buffer[key]) >= w.maxBufferSize
+	w.mu.Unlock()
+
+	if shouldFlush {
+		w.flushKey(key)
+	}
 }
 
-func (w *LiquidationWriter) upload(msg models.RawLiquidationMessage) error {
-	if msg.Exchange == "" || msg.Symbol == "" {
-		return fmt.Errorf("invalid liquidation message metadata")
+func (w *LiquidationWriter) flushTimedOut() {
+	now := time.Now()
+	w.mu.Lock()
+	keys := make([]string, 0, len(w.buffer))
+	for key := range w.buffer {
+		last := w.lastFlush[key]
+		interval := w.intervalForKey(key)
+		if len(w.buffer[key]) == 0 {
+			continue
+		}
+		if now.Sub(last) >= interval {
+			keys = append(keys, key)
+		}
+	}
+	w.mu.Unlock()
+
+	for _, key := range keys {
+		w.flushKey(key)
+	}
+}
+
+func (w *LiquidationWriter) flushAll(reason string) {
+	w.mu.Lock()
+	keys := make([]string, 0, len(w.buffer))
+	for key := range w.buffer {
+		if len(w.buffer[key]) > 0 {
+			keys = append(keys, key)
+		}
+	}
+	w.mu.Unlock()
+
+	if len(keys) == 0 {
+		return
 	}
 
+	w.log.WithComponent("liq_writer").WithFields(logger.Fields{
+		"flushed_buffers": len(keys),
+		"reason":          reason,
+	}).Info("flushing liquidation buffers")
+
+	for _, key := range keys {
+		w.flushKey(key)
+	}
+}
+
+func (w *LiquidationWriter) flushKey(key string) {
+	w.mu.Lock()
+	entries := w.buffer[key]
+	if len(entries) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	delete(w.buffer, key)
+	delete(w.lastFlush, key)
+	w.mu.Unlock()
+
+	parts := strings.SplitN(key, liquidationKeySeparator, 3)
+	exchange := parts[0]
+	market := "liquidation"
+	symbol := ""
+	if len(parts) > 1 && parts[1] != "" {
+		market = parts[1]
+	}
+	if len(parts) > 2 {
+		symbol = parts[2]
+	}
+
+	var batchTimestamp time.Time
+	for _, entry := range entries {
+		if entry.Timestamp.IsZero() {
+			continue
+		}
+		if entry.Timestamp.After(batchTimestamp) {
+			batchTimestamp = entry.Timestamp
+		}
+	}
+	if batchTimestamp.IsZero() {
+		batchTimestamp = time.Now().UTC()
+	}
+
+	batch := liquidationBatch{
+		Exchange:    exchange,
+		Market:      market,
+		Symbol:      symbol,
+		Entries:     entries,
+		Timestamp:   batchTimestamp,
+		RecordCount: len(entries),
+	}
+
+	w.writeBatch(batch)
+}
+
+func (w *LiquidationWriter) writeBatch(batch liquidationBatch) {
+	data, size, err := w.createParquet(batch)
+	if err != nil {
+		w.log.WithComponent("liq_writer").WithError(err).Error("failed to create parquet for liquidation batch")
+		return
+	}
+
+	key := w.generateS3Key(batch)
+	if err := w.upload(key, data); err != nil {
+		w.log.WithComponent("liq_writer").WithError(err).WithFields(logger.Fields{
+			"s3_key": key,
+		}).Error("failed to upload liquidation batch")
+		return
+	}
+
+	w.log.WithComponent("liq_writer").WithFields(logger.Fields{
+		"s3_key":  key,
+		"records": batch.RecordCount,
+		"bytes":   size,
+	}).Info("liquidation batch uploaded")
+}
+
+func (w *LiquidationWriter) createParquet(batch liquidationBatch) ([]byte, int64, error) {
+	mf := newLiquidationMemFile()
+	pw, err := writer.NewParquetWriter(mf, new(liquidationRecord), 1)
+	if err != nil {
+		return nil, 0, err
+	}
+	pw.CompressionType = parquet.CompressionCodec_SNAPPY
+
+	for _, entry := range batch.Entries {
+		ts := entry.Timestamp
+		if ts.IsZero() {
+			ts = batch.Timestamp
+		}
+		rec := liquidationRecord{
+			Exchange:  strings.ToLower(batch.Exchange),
+			Market:    batch.Market,
+			Symbol:    strings.ToUpper(batch.Symbol),
+			Timestamp: ts.UTC().UnixMilli(),
+			Payload:   string(entry.Data),
+		}
+		if err := pw.Write(rec); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	if err := pw.WriteStop(); err != nil {
+		return nil, 0, err
+	}
+
+	data := mf.Bytes()
+	return data, int64(len(data)), nil
+}
+
+func (w *LiquidationWriter) upload(key string, data []byte) error {
 	bucket := w.cfg.Storage.S3.Bucket
 	if bucket == "" {
 		return fmt.Errorf("s3 bucket not configured")
 	}
 
-	ts := msg.Timestamp
-	if ts.IsZero() {
-		ts = time.Now().UTC()
-	}
-	date := ts.UTC().Format("2006-01-02")
-	symbol := strings.ToUpper(msg.Symbol)
-	exchange := strings.ToLower(msg.Exchange)
-
-	key := filepath.Join(
-		fmt.Sprintf("exchange=%s", exchange),
-		"market=liquidation",
-		fmt.Sprintf("symbol=%s", symbol),
-		fmt.Sprintf("date=%s", date),
-		fmt.Sprintf("%s.json", uuid.NewString()),
-	)
-
-	payload := bytes.NewReader(msg.Data)
 	input := &s3.PutObjectInput{
-		Bucket:      aws.String(bucket),
-		Key:         aws.String(key),
-		Body:        payload,
-		ContentType: aws.String("application/json"),
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(data),
 	}
 
-	_, err := w.s3Client.PutObject(w.ctx, input)
-	if err != nil {
-		return fmt.Errorf("put object: %w", err)
+	ctx := context.WithoutCancel(w.ctx)
+	_, err := w.s3Client.PutObject(ctx, input)
+	return err
+}
+
+func (w *LiquidationWriter) bufferKey(exchange, market, symbol string) string {
+	exch := strings.ToLower(strings.TrimSpace(exchange))
+	if exch == "" {
+		exch = "unknown"
+	}
+	mkt := strings.ToLower(strings.TrimSpace(market))
+	if mkt == "" {
+		mkt = "liquidation"
+	}
+	sym := strings.ToUpper(strings.TrimSpace(symbol))
+	return strings.Join([]string{exch, mkt, sym}, liquidationKeySeparator)
+}
+
+func (w *LiquidationWriter) intervalForKey(key string) time.Duration {
+	parts := strings.SplitN(key, liquidationKeySeparator, 2)
+	if len(parts) == 0 {
+		return defaultLiquidationFlush
+	}
+	if interval, ok := w.flushIntervals[parts[0]]; ok && interval > 0 {
+		return interval
+	}
+	return defaultLiquidationFlush
+}
+
+func (w *LiquidationWriter) determineTickerInterval() time.Duration {
+	min := time.Duration(0)
+	for _, interval := range w.flushIntervals {
+		if interval <= 0 {
+			continue
+		}
+		if min == 0 || interval < min {
+			min = interval
+		}
+	}
+	if min == 0 {
+		return time.Second
+	}
+	if min < time.Second {
+		return min
+	}
+	return time.Second
+}
+
+func (w *LiquidationWriter) generateS3Key(batch liquidationBatch) string {
+	timestamp := batch.Timestamp.UTC()
+
+	var parts []string
+	for _, key := range w.cfg.Writer.Partitioning.AdditionalKeys {
+		switch key {
+		case "exchange":
+			parts = append(parts, fmt.Sprintf("exchange=%s", strings.ToLower(batch.Exchange)))
+		case "market":
+			if batch.Market != "" {
+				parts = append(parts, fmt.Sprintf("market=%s", batch.Market))
+			}
+		case "symbol":
+			if batch.Symbol != "" {
+				parts = append(parts, fmt.Sprintf("symbol=%s", strings.ToUpper(batch.Symbol)))
+			}
+		}
 	}
 
-	w.log.WithComponent("liq_writer").WithFields(logger.Fields{
-		"key":      key,
-		"exchange": exchange,
-		"symbol":   symbol,
-	}).Debug("uploaded liquidation payload")
-	return nil
+	timeFormat := w.cfg.Writer.Partitioning.TimeFormat
+	if timeFormat == "" {
+		timeFormat = "date={year}-{month}-{day}"
+	}
+	timePath := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
+	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
+
+	parts = append(parts, timePath)
+
+	ts := timestamp.Format("20060102150405")
+	filename := fmt.Sprintf("%s_liq_%s_%s.parquet", strings.ToLower(batch.Exchange), strings.ToUpper(batch.Symbol), ts)
+	return filepath.ToSlash(filepath.Join(append(parts, filename)...))
+}
+
+func buildLiquidationIntervals(cfg *appconfig.Config) map[string]time.Duration {
+	intervals := map[string]time.Duration{}
+
+	if d := cfg.Source.Binance.Future.Liquidation.FlushInterval; d > 0 {
+		intervals["binance"] = d
+	}
+	if d := cfg.Source.Bybit.Future.Liquidation.FlushInterval; d > 0 {
+		intervals["bybit"] = d
+	}
+	if d := cfg.Source.Kucoin.Future.Liquidation.FlushInterval; d > 0 {
+		intervals["kucoin"] = d
+	}
+	if d := cfg.Source.Okx.Future.Liquidation.FlushInterval; d > 0 {
+		intervals["okx"] = d
+	}
+
+	return intervals
 }
