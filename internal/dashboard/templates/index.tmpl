@@ -58,6 +58,7 @@
                     </div>
                     <div class="card-body">
                         <canvas id="channelSizeChart" height="260"></canvas>
+                        <div id="channelChartFallback" class="chart-fallback text-muted small d-none">Chart renderer unavailable. Metrics will continue updating below.</div>
                         <div class="text-muted small mt-3" id="channel-capacities">Buffer capacities —</div>
                     </div>
                 </div>
@@ -86,6 +87,7 @@
                             </div>
                         </div>
                         <canvas id="resourceChart" height="220"></canvas>
+                        <div id="resourceChartFallback" class="chart-fallback text-muted small d-none">Chart renderer unavailable. Resource utilisation will continue updating above.</div>
                     </div>
                 </div>
             </div>
@@ -172,6 +174,7 @@
 
         let channelChart;
         let resourceChart;
+        const chartAvailable = typeof window.Chart !== 'undefined';
 
         function formatFields(fields) {
             if (!fields || Object.keys(fields).length === 0) {
@@ -242,7 +245,24 @@
             document.getElementById('summary-logs').textContent = logs.length;
         }
 
+        function showChartFallback(canvasId, fallbackId) {
+            const canvas = document.getElementById(canvasId);
+            const fallback = document.getElementById(fallbackId);
+            if (canvas) {
+                canvas.classList.add('d-none');
+            }
+            if (fallback) {
+                fallback.classList.remove('d-none');
+            }
+        }
+
         function initialiseCharts() {
+            if (!chartAvailable) {
+                console.warn('Chart.js not detected; skipping chart initialisation.');
+                showChartFallback('channelSizeChart', 'channelChartFallback');
+                showChartFallback('resourceChart', 'resourceChartFallback');
+                return;
+            }
             const channelCtx = document.getElementById('channelSizeChart');
             channelChart = new Chart(channelCtx, {
                 type: 'line',

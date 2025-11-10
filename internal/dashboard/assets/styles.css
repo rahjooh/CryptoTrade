@@ -291,6 +291,14 @@ code {
     max-width: 220px;
 }
 
+.chart-fallback {
+    border: 1px dashed rgba(94, 125, 179, 0.35);
+    border-radius: 0.75rem;
+    padding: 0.85rem;
+    margin-top: 0.75rem;
+    text-align: center;
+}
+
 canvas {
     width: 100% !important;
 }
