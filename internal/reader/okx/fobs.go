@@ -218,6 +218,7 @@ func (r *Okx_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.OkxSn
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
+		metrics.EmitDropMetric(r.log, metrics.DropMetricSnapshotRaw, "okx", "swap-orderbook-snapshot", symbol, "raw")
 		log.Warn("raw snapshot channel full, dropping data")
 	}
 }

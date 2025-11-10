@@ -195,6 +195,7 @@ func (r *Bybit_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg appconfig.
 	} else if err := r.ctx.Err(); err != nil {
 		log.WithError(err).Warn("failed to send orderbook to raw channel")
 	} else {
+		metrics.EmitDropMetric(r.log, metrics.DropMetricSnapshotRaw, "bybit", raw.Market, symbol, "raw")
 		log.Warn("raw channel is full, dropping data")
 	}
 }

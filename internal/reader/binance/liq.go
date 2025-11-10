@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	liq "cryptoflow/internal/channel/liq"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -130,6 +131,7 @@ func (r *Binance_LIQ_Reader) streamSymbol(symbol string) {
 		} else if r.ctx.Err() != nil {
 			return
 		} else {
+			metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "binance", "liquidation", msg.Symbol, "raw")
 			log.Warn("liquidation raw channel full, dropping message")
 		}
 	}

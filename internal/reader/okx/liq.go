@@ -12,6 +12,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	liq "cryptoflow/internal/channel/liq"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -247,6 +248,7 @@ func (r *Okx_LIQ_Reader) processMessage(raw []byte) bool {
 			if r.ctx.Err() != nil {
 				return false
 			}
+			metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "okx", "liquidation", symbol, "raw")
 			r.log.WithComponent("okx_liq_reader").WithFields(logger.Fields{"symbol": symbol}).Warn("liquidation raw channel full, dropping message")
 		}
 	}

@@ -9,24 +9,110 @@
     <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+    <nav class="navbar navbar-expand-lg navbar-dark py-3">
         <div class="container-fluid">
-            <span class="navbar-brand fw-bold">{{.AppName}} Monitoring</span>
-            <span class="text-secondary small">Real-time metrics &amp; logs</span>
+            <div>
+                <span class="navbar-brand">{{.AppName}} Monitoring</span>
+                <span class="badge ms-2">Realtime</span>
+            </div>
+            <div class="text-secondary small">
+                Last refresh <span id="last-refresh">—</span>
+            </div>
         </div>
     </nav>
 
     <main class="container-fluid py-4">
-        <div class="row g-4">
+        <section class="dashboard-header">
+            <div>
+                <h1 class="mb-1">Operations Overview</h1>
+                <p>CloudWatch-inspired control plane for CryptoFlow collectors.</p>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <span class="summary-label">Active Metrics</span>
+                    <span class="summary-value" id="summary-metrics">0</span>
+                    <span class="summary-subtext">within current window</span>
+                </div>
+                <div class="summary-card">
+                    <span class="summary-label">Drop Events</span>
+                    <span class="summary-value" id="drop-count">0</span>
+                    <span class="summary-subtext">snapshot · delta · liquidation</span>
+                </div>
+                <div class="summary-card">
+                    <span class="summary-label">Log Entries</span>
+                    <span class="summary-value" id="summary-logs">0</span>
+                    <span class="summary-subtext">retained in memory</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="row g-4 align-items-stretch">
+            <div class="col-12 col-xxl-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="h5 mb-1">Channel Buffer Occupancy</h2>
+                            <p class="mb-0">Live size of Go channels driving the ingestion pipeline.</p>
+                        </div>
+                        <span class="badge bg-primary">Live</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="channelSizeChart" height="260"></canvas>
+                        <div id="channelChartFallback" class="chart-fallback text-muted small d-none">Chart renderer unavailable. Metrics will continue updating below.</div>
+                        <div class="text-muted small mt-3" id="channel-capacities">Buffer capacities —</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xxl-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <h2 class="h5 mb-1">EC2 Resource Utilization</h2>
+                        <p class="mb-0">Host CPU, memory and disk usage sampled locally.</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="resource-summary mb-3">
+                            <div>
+                                <span class="resource-label">CPU</span>
+                                <span class="resource-value" id="cpu-stat">--%</span>
+                            </div>
+                            <div>
+                                <span class="resource-label">Memory</span>
+                                <span class="resource-value" id="memory-stat">--%</span>
+                                <span class="resource-footnote" id="memory-detail">—</span>
+                            </div>
+                            <div>
+                                <span class="resource-label">Disk</span>
+                                <span class="resource-value" id="disk-stat">--%</span>
+                                <span class="resource-footnote" id="disk-detail">—</span>
+                            </div>
+                        </div>
+                        <canvas id="resourceChart" height="220"></canvas>
+                        <div id="resourceChartFallback" class="chart-fallback text-muted small d-none">Chart renderer unavailable. Resource utilisation will continue updating above.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h2 class="h5 mb-1">Channel Drop Monitor</h2>
+                <p class="mb-0">Dropped snapshot, delta and liquidation messages per exchange.</p>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="drop-grid"></div>
+            </div>
+        </div>
+
+        <div class="row g-4 mt-1">
             <div class="col-12 col-xl-6">
                 <div class="card shadow-sm h-100">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h2 class="h5 mb-0">Metrics</h2>
                         <span class="badge bg-primary" id="metrics-count">0</span>
                     </div>
-                    <div class="card-body table-responsive p-0">
-                        <table class="table table-dark table-hover mb-0 align-middle" id="metrics-table">
-                            <thead class="table-secondary text-dark">
+                    <div class="card-body table-wrapper">
+                        <table class="table table-dark table-hover align-middle" id="metrics-table">
+                            <thead>
                                 <tr>
                                     <th scope="col">Timestamp</th>
                                     <th scope="col">Component</th>
@@ -47,9 +133,9 @@
                         <h2 class="h5 mb-0">Logs</h2>
                         <span class="badge bg-info" id="logs-count">0</span>
                     </div>
-                    <div class="card-body table-responsive p-0">
-                        <table class="table table-dark table-striped table-hover mb-0 align-middle" id="logs-table">
-                            <thead class="table-secondary text-dark">
+                    <div class="card-body table-wrapper">
+                        <table class="table table-dark table-striped table-hover align-middle logs-table" id="logs-table">
+                            <thead>
                                 <tr>
                                     <th scope="col">Timestamp</th>
                                     <th scope="col">Level</th>
@@ -66,8 +152,29 @@
         </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" integrity="sha384-McpAkMSS6Z7dHLF0sWvZOtJLm51DkJKJbZUJ+EGiUZTZ20ins2v72Dg2IYjeo6V5" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
     <script>
         const refreshInterval = {{.RefreshIntervalMs}};
+
+        const channelSeriesConfig = {
+            fobs_raw_buffer_length: { label: 'Snapshots Raw', color: '#40c4ff' },
+            fobs_norm_buffer_length: { label: 'Snapshots Normalised', color: '#f39c12' },
+            fobd_raw_buffer_length: { label: 'Deltas Raw', color: '#e85d75' },
+            fobd_norm_buffer_length: { label: 'Deltas Normalised', color: '#9b59b6' },
+            liq_raw_buffer_length: { label: 'Liquidations Raw', color: '#4dd2a5' },
+        };
+
+        const dropMetricMap = {
+            snapshot_messages_dropped: 'snapshot',
+            delta_messages_dropped: 'delta',
+            delta_norm_messages_dropped: 'delta_norm',
+            liquidation_messages_dropped: 'liquidation',
+        };
+
+        let channelChart;
+        let resourceChart;
+        const chartAvailable = typeof window.Chart !== 'undefined';
 
         function formatFields(fields) {
             if (!fields || Object.keys(fields).length === 0) {
@@ -80,22 +187,27 @@
             }
         }
 
-        async function fetchMetrics() {
-            const response = await fetch('/api/metrics');
+        async function fetchJSON(url) {
+            const response = await fetch(url);
             if (!response.ok) {
-                throw new Error('Failed to load metrics');
+                throw new Error(`Failed to fetch ${url}`);
             }
-            const data = await response.json();
+            return response.json();
+        }
+
+        async function fetchMetrics() {
+            const data = await fetchJSON('/api/metrics');
             return data.metrics || [];
         }
 
         async function fetchLogs() {
-            const response = await fetch('/api/logs');
-            if (!response.ok) {
-                throw new Error('Failed to load logs');
-            }
-            const data = await response.json();
+            const data = await fetchJSON('/api/logs');
             return data.logs || [];
+        }
+
+        async function fetchResources() {
+            const data = await fetchJSON('/api/resources');
+            return data.resources || [];
         }
 
         function updateTable(tableBody, rows, columns) {
@@ -116,6 +228,7 @@
             }));
             updateTable(body, rows, ['timestamp', 'component', 'name', 'value', 'type', 'fields']);
             document.getElementById('metrics-count').textContent = metrics.length;
+            document.getElementById('summary-metrics').textContent = metrics.length;
         }
 
         function updateLogsTable(logs) {
@@ -129,19 +242,300 @@
             }));
             updateTable(body, rows, ['timestamp', 'level', 'component', 'message', 'fields']);
             document.getElementById('logs-count').textContent = logs.length;
+            document.getElementById('summary-logs').textContent = logs.length;
+        }
+
+        function showChartFallback(canvasId, fallbackId) {
+            const canvas = document.getElementById(canvasId);
+            const fallback = document.getElementById(fallbackId);
+            if (canvas) {
+                canvas.classList.add('d-none');
+            }
+            if (fallback) {
+                fallback.classList.remove('d-none');
+            }
+        }
+
+        function initialiseCharts() {
+            if (!chartAvailable) {
+                console.warn('Chart.js not detected; skipping chart initialisation.');
+                showChartFallback('channelSizeChart', 'channelChartFallback');
+                showChartFallback('resourceChart', 'resourceChartFallback');
+                return;
+            }
+            const channelCtx = document.getElementById('channelSizeChart');
+            channelChart = new Chart(channelCtx, {
+                type: 'line',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { tooltipFormat: 'PPpp' },
+                            ticks: { color: 'rgba(245,247,255,0.7)' },
+                            grid: { color: 'rgba(94,125,179,0.15)' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: 'rgba(245,247,255,0.7)' },
+                            grid: { color: 'rgba(94,125,179,0.2)' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: 'rgba(245,247,255,0.85)' }
+                        }
+                    }
+                }
+            });
+
+            const resourceCtx = document.getElementById('resourceChart');
+            resourceChart = new Chart(resourceCtx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: 'CPU %', borderColor: '#40c4ff', backgroundColor: '#40c4ff', tension: 0.3, data: [], pointRadius: 0 },
+                        { label: 'Memory %', borderColor: '#f39c12', backgroundColor: '#f39c12', tension: 0.3, data: [], pointRadius: 0 },
+                        { label: 'Disk %', borderColor: '#4dd2a5', backgroundColor: '#4dd2a5', tension: 0.3, data: [], pointRadius: 0 },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { tooltipFormat: 'PPpp' },
+                            ticks: { color: 'rgba(245,247,255,0.7)' },
+                            grid: { color: 'rgba(94,125,179,0.15)' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: 'rgba(245,247,255,0.7)', callback: value => `${value}%` },
+                            grid: { color: 'rgba(94,125,179,0.2)' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: 'rgba(245,247,255,0.85)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChannelChart(metrics) {
+            if (!channelChart) {
+                return;
+            }
+            const dataBySeries = {};
+            const capacities = {};
+            Object.keys(channelSeriesConfig).forEach(key => { dataBySeries[key] = []; });
+
+            for (const metric of metrics) {
+                const series = channelSeriesConfig[metric.name];
+                if (!series) {
+                    continue;
+                }
+                const value = Number(metric.value);
+                if (!Number.isFinite(value)) {
+                    continue;
+                }
+                const timestamp = new Date(metric.timestamp);
+                if (Number.isNaN(timestamp.getTime())) {
+                    continue;
+                }
+                dataBySeries[metric.name].push({ x: timestamp, y: value });
+                if (metric.fields && metric.fields.capacity !== undefined) {
+                    capacities[metric.name] = metric.fields.capacity;
+                }
+            }
+
+            channelChart.data.datasets = Object.entries(channelSeriesConfig).map(([name, config]) => ({
+                label: config.label,
+                data: dataBySeries[name].sort((a, b) => a.x - b.x).slice(-150),
+                borderColor: config.color,
+                backgroundColor: config.color,
+                borderWidth: 2,
+                tension: 0.25,
+                fill: false,
+                pointRadius: 0,
+            }));
+
+            channelChart.update('none');
+            updateChannelCapacities(capacities);
+        }
+
+        function updateChannelCapacities(capacities) {
+            const container = document.getElementById('channel-capacities');
+            const parts = [];
+            Object.entries(channelSeriesConfig).forEach(([name, cfg]) => {
+                if (capacities[name] !== undefined) {
+                    parts.push(`<span class="me-3">${cfg.label}: <code>${capacities[name]}</code></span>`);
+                }
+            });
+            container.innerHTML = parts.length ? `Buffer capacities — ${parts.join('')}` : 'Buffer capacities — <span class="text-muted">awaiting samples</span>';
+        }
+
+        function updateResourceChart(resources) {
+            if (!resourceChart) {
+                return;
+            }
+            const cpuData = [];
+            const memoryData = [];
+            const diskData = [];
+            for (const sample of resources) {
+                const ts = new Date(sample.timestamp);
+                if (Number.isNaN(ts.getTime())) {
+                    continue;
+                }
+                cpuData.push({ x: ts, y: Number(sample.cpu_percent) || 0 });
+                memoryData.push({ x: ts, y: Number(sample.memory_percent) || 0 });
+                diskData.push({ x: ts, y: Number(sample.disk_percent) || 0 });
+            }
+            resourceChart.data.datasets[0].data = cpuData.slice(-180);
+            resourceChart.data.datasets[1].data = memoryData.slice(-180);
+            resourceChart.data.datasets[2].data = diskData.slice(-180);
+            resourceChart.update('none');
+        }
+
+        function formatBytes(bytes) {
+            const value = Number(bytes);
+            if (!Number.isFinite(value) || value <= 0) {
+                return '—';
+            }
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let unit = 0;
+            let scaled = value;
+            while (scaled >= 1024 && unit < units.length - 1) {
+                scaled /= 1024;
+                unit++;
+            }
+            const precision = unit >= 2 ? 1 : 0;
+            return `${scaled.toFixed(precision)} ${units[unit]}`;
+        }
+
+        function updateResourceSummary(resources) {
+            const cpuEl = document.getElementById('cpu-stat');
+            const memEl = document.getElementById('memory-stat');
+            const memDetail = document.getElementById('memory-detail');
+            const diskEl = document.getElementById('disk-stat');
+            const diskDetail = document.getElementById('disk-detail');
+
+            if (!resources || resources.length === 0) {
+                cpuEl.textContent = memEl.textContent = diskEl.textContent = '--%';
+                memDetail.textContent = diskDetail.textContent = '—';
+                return;
+            }
+
+            const latest = resources[resources.length - 1];
+            cpuEl.textContent = Number.isFinite(Number(latest.cpu_percent)) ? `${Number(latest.cpu_percent).toFixed(1)}%` : '--%';
+            memEl.textContent = Number.isFinite(Number(latest.memory_percent)) ? `${Number(latest.memory_percent).toFixed(1)}%` : '--%';
+            diskEl.textContent = Number.isFinite(Number(latest.disk_percent)) ? `${Number(latest.disk_percent).toFixed(1)}%` : '--%';
+            memDetail.textContent = `${formatBytes(latest.memory_used)} / ${formatBytes(latest.memory_total)}`;
+            diskDetail.textContent = `${formatBytes(latest.disk_used)} / ${formatBytes(latest.disk_total)}`;
+        }
+
+        function aggregateDropMetrics(metrics) {
+            const aggregates = { snapshot: {}, delta: {}, delta_norm: {}, liquidation: {} };
+            for (const metric of metrics) {
+                const category = dropMetricMap[metric.name];
+                if (!category) {
+                    continue;
+                }
+                const value = Number(metric.value) || 0;
+                const fields = metric.fields || {};
+                const exchange = fields.exchange || 'unknown';
+                aggregates[category][exchange] = (aggregates[category][exchange] || 0) + value;
+            }
+            return aggregates;
+        }
+
+        function renderDropCards(aggregates) {
+            const container = document.getElementById('drop-grid');
+            const exchanges = new Set([
+                ...Object.keys(aggregates.snapshot),
+                ...Object.keys(aggregates.delta),
+                ...Object.keys(aggregates.delta_norm),
+                ...Object.keys(aggregates.liquidation),
+            ]);
+
+            if (exchanges.size === 0) {
+                container.innerHTML = '<div class="col-12"><p class="text-muted text-center mb-0">No dropped messages observed in the current retention window.</p></div>';
+                document.getElementById('drop-count').textContent = '0';
+                return;
+            }
+
+            let total = 0;
+            const cards = Array.from(exchanges).sort().map(exchange => {
+                const snapshot = aggregates.snapshot[exchange] || 0;
+                const deltaRaw = aggregates.delta[exchange] || 0;
+                const deltaNorm = aggregates.delta_norm[exchange] || 0;
+                const liquidation = aggregates.liquidation[exchange] || 0;
+                total += snapshot + deltaRaw + deltaNorm + liquidation;
+
+                const deltaBlock = deltaNorm
+                    ? `<span class="mini-value">${deltaRaw + deltaNorm}</span><span class="mini-footnote">${deltaRaw} raw / ${deltaNorm} norm</span>`
+                    : `<span class="mini-value">${deltaRaw}</span>`;
+
+                return `
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <div class="mini-card">
+                            <div class="mini-card-title text-uppercase">${exchange}</div>
+                            <div class="mini-stats">
+                                <div>
+                                    <span class="mini-label">Snapshot</span>
+                                    <span class="mini-value">${snapshot}</span>
+                                </div>
+                                <div>
+                                    <span class="mini-label">Delta</span>
+                                    ${deltaBlock}
+                                </div>
+                                <div>
+                                    <span class="mini-label">Liquidation</span>
+                                    <span class="mini-value">${liquidation}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            container.innerHTML = cards;
+            document.getElementById('drop-count').textContent = total;
+        }
+
+        function updateLastRefresh() {
+            document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
         }
 
         async function refresh() {
             try {
-                const [metrics, logs] = await Promise.all([fetchMetrics(), fetchLogs()]);
+                const [metrics, logs, resources] = await Promise.all([
+                    fetchMetrics(),
+                    fetchLogs(),
+                    fetchResources(),
+                ]);
+
                 updateMetricsTable(metrics);
                 updateLogsTable(logs);
+                updateChannelChart(metrics);
+                const aggregates = aggregateDropMetrics(metrics);
+                renderDropCards(aggregates);
+                updateResourceChart(resources);
+                updateResourceSummary(resources);
+                updateLastRefresh();
             } catch (error) {
                 console.error('Dashboard refresh failed', error);
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            initialiseCharts();
             refresh();
             setInterval(refresh, Math.max(refreshInterval, 1000));
         });
