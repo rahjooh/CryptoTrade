@@ -6,7 +6,9 @@ import (
 	"errors"
 	"html/template"
 	"io/fs"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -37,9 +39,7 @@ func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
 		return nil, nil
 	}
 
-	if cfg.Address == "" {
-		cfg.Address = ":8080"
-	}
+	cfg.Address = normalizeAddress(cfg.Address)
 
 	if cfg.RefreshInterval <= 0 {
 		cfg.RefreshInterval = 5 * time.Second
@@ -138,6 +138,13 @@ func (s *Server) buildRouter(appName string) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// Allow running behind load balancers and accessing the dashboard from
+	// public networks by trusting all proxies by default. Users can
+	// override Gin's trusted proxy list via the GIN_TRUSTED_PROXIES
+	// environment variable if needed.
+	if err := router.SetTrustedProxies(nil); err != nil {
+		return nil, err
+	}
 
 	tmpl := template.Must(template.New("dashboard").ParseFS(embeddedFS, "templates/index.tmpl"))
 	router.SetHTMLTemplate(tmpl)
@@ -193,4 +200,37 @@ func fsSub(path string) (fs.FS, error) {
 		return nil, err
 	}
 	return sub, nil
+}
+
+func normalizeAddress(addr string) string {
+	if addr == "" {
+		return "0.0.0.0:8080"
+	}
+
+	if strings.HasPrefix(addr, ":") {
+		if len(addr) > 1 && addr[1] >= '0' && addr[1] <= '9' {
+			return "0.0.0.0" + addr
+		}
+	}
+
+	host, port, err := net.SplitHostPort(addr)
+	if err == nil {
+		if host == "" {
+			host = "0.0.0.0"
+		}
+		if port == "" {
+			port = "8080"
+		}
+		return net.JoinHostPort(host, port)
+	}
+
+	if ip := net.ParseIP(addr); ip != nil {
+		return net.JoinHostPort(addr, "8080")
+	}
+
+	if !strings.Contains(addr, ":") {
+		return net.JoinHostPort(addr, "8080")
+	}
+
+	return addr
 }
