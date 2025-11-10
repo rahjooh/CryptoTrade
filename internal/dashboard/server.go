@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -203,8 +204,20 @@ func fsSub(path string) (fs.FS, error) {
 }
 
 func normalizeAddress(addr string) string {
+	addr = strings.TrimSpace(addr)
+
 	if addr == "" {
 		return "0.0.0.0:8080"
+	}
+
+	if strings.Contains(addr, "://") {
+		if parsed, err := url.Parse(addr); err == nil {
+			if host := parsed.Host; host != "" {
+				addr = host
+			} else if parsed.Opaque != "" {
+				addr = parsed.Opaque
+			}
+		}
 	}
 
 	if strings.HasPrefix(addr, ":") {
@@ -215,7 +228,7 @@ func normalizeAddress(addr string) string {
 
 	host, port, err := net.SplitHostPort(addr)
 	if err == nil {
-		if host == "" {
+		if host == "" || host == "*" {
 			host = "0.0.0.0"
 		}
 		if port == "" {
