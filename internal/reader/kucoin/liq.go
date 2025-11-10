@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	liq "cryptoflow/internal/channel/liq"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -212,6 +213,7 @@ func (r *Kucoin_LIQ_Reader) handleExecution(topic, subject string, data *futures
 		if r.ctx.Err() != nil {
 			return nil
 		}
+		metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "kucoin", "liquidation", symbol, "raw")
 		r.log.WithComponent("kucoin_liq_reader").WithFields(logger.Fields{"symbol": symbol}).Warn("liquidation raw channel full, dropping message")
 	}
 	return nil

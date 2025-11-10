@@ -246,6 +246,7 @@ func (br *Binance_FOBS_Reader) fetchOrderbook(symbol string, snapshotCfg config.
 	} else if br.ctx.Err() != nil {
 		return
 	} else {
+		metrics.EmitDropMetric(br.log, metrics.DropMetricSnapshotRaw, "binance", market, symbol, "raw")
 		log.Warn("raw channel is full, dropping data")
 	}
 }

@@ -31,6 +31,7 @@ type Server struct {
 	metricHandler     metrics.MetricHandlerID
 	httpServer        *http.Server
 	refreshIntervalMs int
+	resourceSampler   *resourceSampler
 }
 
 // NewServer constructs a dashboard server when the dashboard feature is enabled.
@@ -60,6 +61,8 @@ func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
 	logStore := newLogStore(cfg.LogHistory)
 	log.AddHook(logStore)
 
+	sampler := newResourceSampler(cfg.MetricsHistory, cfg.RefreshInterval, "/", log)
+
 	server := &Server{
 		cfg:               cfg,
 		log:               log,
@@ -67,6 +70,7 @@ func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
 		logStore:          logStore,
 		metricHandler:     handlerID,
 		refreshIntervalMs: int(cfg.RefreshInterval / time.Millisecond),
+		resourceSampler:   sampler,
 	}
 
 	if server.refreshIntervalMs <= 0 {
@@ -88,6 +92,10 @@ func (s *Server) Run(ctx context.Context, appName string) error {
 	router, err := s.buildRouter(appName)
 	if err != nil {
 		return err
+	}
+
+	if s.resourceSampler != nil {
+		s.resourceSampler.start(ctx)
 	}
 
 	s.httpServer = &http.Server{
@@ -124,6 +132,9 @@ func (s *Server) cleanup() {
 	metrics.UnregisterMetricHandler(s.metricHandler)
 	if s.logStore != nil {
 		s.logStore.close()
+	}
+	if s.resourceSampler != nil {
+		s.resourceSampler.stop()
 	}
 }
 
@@ -190,6 +201,24 @@ func (s *Server) buildRouter(appName string) (*gin.Engine, error) {
 			})
 		}
 		c.JSON(http.StatusOK, gin.H{"logs": payload})
+	})
+
+	router.GET("/api/resources", func(c *gin.Context) {
+		snapshots := s.resourceSampler.snapshot()
+		payload := make([]gin.H, 0, len(snapshots))
+		for _, snap := range snapshots {
+			payload = append(payload, gin.H{
+				"timestamp":      snap.Timestamp.Format(time.RFC3339Nano),
+				"cpu_percent":    snap.CPUPercent,
+				"memory_used":    snap.MemoryUsed,
+				"memory_total":   snap.MemoryTotal,
+				"memory_percent": snap.MemoryPct,
+				"disk_used":      snap.DiskUsed,
+				"disk_total":     snap.DiskTotal,
+				"disk_percent":   snap.DiskPct,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"resources": payload})
 	})
 
 	return router, nil
