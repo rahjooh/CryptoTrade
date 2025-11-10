@@ -188,19 +188,23 @@ type OkxSourceConfig struct {
 }
 
 type BinanceFutureConfig struct {
-	Orderbook BinanceFutureOrderbookConfig `yaml:"orderbook"`
+	Orderbook   BinanceFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation BinanceLiquidationConfig     `yaml:"liquidation"`
 }
 
 type BybitFutureConfig struct {
-	Orderbook BybitFutureOrderbookConfig `yaml:"orderbook"`
+	Orderbook   BybitFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation BybitLiquidationConfig     `yaml:"liquidation"`
 }
 
 type KucoinFutureConfig struct {
-	Orderbook KucoinFutureOrderbookConfig `yaml:"orderbook"`
+	Orderbook   KucoinFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation KucoinLiquidationConfig     `yaml:"liquidation"`
 }
 
 type OkxFutureConfig struct {
-	Orderbook OkxFutureOrderbookConfig `yaml:"orderbook"`
+	Orderbook   OkxFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation OkxLiquidationConfig     `yaml:"liquidation"`
 }
 
 type BinanceFutureOrderbookConfig struct {
@@ -292,6 +296,37 @@ type OkxDeltaConfig struct {
 	Connection string   `yaml:"connection"`
 	URL        string   `yaml:"url"`
 	IntervalMs int      `yaml:"interval_ms"`
+	Symbols    []string `yaml:"symbols"`
+}
+
+type BinanceLiquidationConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	Symbols    []string `yaml:"symbols"`
+}
+
+type BybitLiquidationConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
+	Symbols    []string `yaml:"symbols"`
+}
+
+type KucoinLiquidationConfig struct {
+	Enabled            bool     `yaml:"enabled"`
+	Connection         string   `yaml:"connection"`
+	URL                string   `yaml:"url"`
+	Symbols            []string `yaml:"symbols"`
+	ReadBufferBytes    int      `yaml:"read_buffer_bytes"`
+	ReadMessageBuffer  int      `yaml:"read_message_buffer"`
+	WriteMessageBuffer int      `yaml:"write_message_buffer"`
+}
+
+type OkxLiquidationConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`
+	URL        string   `yaml:"url"`
 	Symbols    []string `yaml:"symbols"`
 }
 
