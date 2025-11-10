@@ -1,294 +1,294 @@
-name: cryptoflow CI/CD
-
-on:
-  workflow_dispatch:
-
-# Cancel older runs for the same branch/workflow
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
-# Least-privilege defaults; jobs can widen if needed
-permissions:
-  contents: read
-
-jobs:
-  build-test:
-    name: Test & Build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-      # Required for artifact cleanup below (upload/download alone do not need it)
-    env:
-      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
-      # Use the toolchain specified by your repo (recommended). If you want to force 1.22, switch to go-version + GOTOOLCHAIN=local.
-      # GOTOOLCHAIN: local
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Show ref info
-        run: |
-          echo "ref=${{ github.ref }}"
-          echo "ref_name=${{ github.ref_name }}"
-          echo "event=${{ github.event_name }}"
-
-      # Align with `toolchain goX.Y` in go.mod. Disable caching for hermetic builds.
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      # Keep Go caches inside the workspace so a single rm -rf is enough
-      - name: Isolate Go caches in workspace
-        run: |
-          echo "GOMODCACHE=$PWD/.gomodcache" >> "$GITHUB_ENV"
-          echo "GOCACHE=$PWD/.gobuildcache" >> "$GITHUB_ENV"
-
-      - name: Clean workspace & caches (pre)
-        run: |
-          rm -rf ./.gomodcache ./.gobuildcache ./cryptoflow || true
-
-      # Access private Go modules via PAT
-      - name: Configure Git PAT for private modules
-        run: git config --global url.https://${{ secrets.GO_PAT }}@github.com.insteadOf https://github.com
-
-      - name: Download deps
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Build binary
-        run: go build -o cryptoflow .
-
-      - name: Prune stale binary artifacts (quota guard)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ARTIFACT_NAME: cryptoflow-binary
-        run: |
-          set -euo pipefail
-          if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "GITHUB_TOKEN missing; skipping cleanup"
-            exit 0
-          fi
-
-          api="https://api.github.com"
-          deleted=0
-          page=1
-
-          while true; do
-            response=$(curl -sS \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "$api/repos/$REPO/actions/artifacts?per_page=100&page=$page")
-
-            count=$(echo "$response" | jq '.artifacts | length')
-            if [ "$count" -eq 0 ]; then
-              break
-            fi
-
-            ids=$(echo "$response" | jq -r --arg NAME "$ARTIFACT_NAME" \
-              '.artifacts[] | select(.expired == false and .name == $NAME) | .id')
-
-            if [ -n "$ids" ]; then
-              while IFS= read -r id; do
-                [ -z "$id" ] && continue
-                echo "Deleting artifact id=$id"
-                curl -sS -X DELETE \
-                  -H "Authorization: Bearer $GITHUB_TOKEN" \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "$api/repos/$REPO/actions/artifacts/$id" >/dev/null
-                deleted=$((deleted+1))
-              done <<< "$ids"
-            fi
-
-            if [ "$count" -lt 100 ]; then
-              break
-            fi
-
-            page=$((page + 1))
-          done
-
-          echo "Deleted $deleted stale artifact(s)"
-
-      # Upload only the built artifact (keep retention short)
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cryptoflow-binary
-          path: cryptoflow
-          retention-days: 1
-
-      # Belt & suspenders: nuke caches generated during this job
-      - name: Clean workspace & caches (post)
-        if: always()
-        run: |
-          go clean -modcache -cache -testcache -fuzzcache || true
-          rm -rf ./.gomodcache ./.gobuildcache || true
-
-  test-ssh:
-    name: Test SSH
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH reachability check
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
-            whoami
-            hostname
-            echo "ok: ssh works"
-
-  deploy-main:
-    name: Deploy (main)
-    runs-on: ubuntu-latest
-    needs: [build-test, test-ssh]
-    if: ${{ github.ref_name == 'main' }}
-    permissions:
-      contents: read
-      actions: write
-    env:
-      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION:            ${{ vars.AWS_REGION }}
-      S3_BUCKET:             ${{ vars.S3_BUCKET }}
-      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
-      LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
-      DASHBOARD_NAME:        Data
-    steps:
-      # Pull the exact binary that passed tests
-      - name: Download binary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: cryptoflow-binary
-
-      # Get docker-compose and any other needed files
-      - name: Checkout repo (for compose/configs)
-        uses: actions/checkout@v4
-
-      - name: Prepare remote workspace (clean except .env/data)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
-            mkdir -p "$APP_DIR"
-            cd "$APP_DIR"
-            # Remove everything except .env and data (if present)
-            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
-
-      # Ship only what you need: repo files + the built binary
-      - name: Transfer files to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: ".,cryptoflow"
-          target: "/home/${{ secrets.EC2_USER }}/cryptoflow"
-
-      - name: Deploy on EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
-          script: |
-            set -euo pipefail
-            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
-            cd "$APP_DIR"
-
-            # Hard stop & prune Docker state
-            docker compose -f infra/docker/docker-compose.yml down --rmi all --volumes || true
-            docker system prune -af --volumes || true
-            docker network prune -f || true
-
-            # Fresh start
-            docker compose -f infra/docker/docker-compose.yml up -d --build
-            echo "✅ Deploy complete"
-
-      - name: Delete binary artifact (post-deploy cleanup)
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          ARTIFACT_NAME: cryptoflow-binary
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "GITHUB_TOKEN missing; skipping cleanup"
-            exit 0
-          fi
-          
-          api="https://api.github.com"
-          response=$(curl -sS \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$api/repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100")
-          
-          id=$(echo "$response" | jq -r --arg NAME "$ARTIFACT_NAME" \
-            '.artifacts[] | select(.name == $NAME) | .id' | head -n 1)
-          
-          if [ -n "$id" ] && [ "$id" != "null" ]; then
-            echo "Deleting artifact id=$id for current run"
-            curl -sS -X DELETE \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "$api/repos/$REPO/actions/artifacts/$id" >/dev/null
-          else
-            echo "No artifact found for current run"
-          fi
-
-      # --- Optional CloudWatch dashboard refresh (commit with [CWdash]) ---
-      - name: Configure AWS creds
-        if: contains(github.event.head_commit.message, '[CWdash]')
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Resolve collector InstanceId
-        if: contains(github.event.head_commit.message, '[CWdash]')
-        id: ec2
-        run: |
-          IID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=Collector Test 2" "Name=instance-state-name,Values=running" \
-            --query "Reservations[].Instances[].InstanceId" --output text)
-          if [ -z "$IID" ]; then echo "No running collector instance found"; exit 1; fi
-          echo "instance_id=$IID" >> "$GITHUB_OUTPUT"
-
-      - name: Inject InstanceId into dashboard JSON
-        if: contains(github.event.head_commit.message, '[CWdash]')
-        run: |
-          cp internal/metrics/CWdash.json /tmp/dashboard.json
-          sed -i "s|<collector-instance-id>|${{ steps.ec2.outputs.instance_id }}|g" /tmp/dashboard.json
-
-      - name: Put dashboard
-        if: contains(github.event.head_commit.message, '[CWdash]')
-        run: |
-          aws cloudwatch put-dashboard \
-            --dashboard-name "$DASHBOARD_NAME" \
-            --dashboard-body file:///tmp/dashboard.json
-
-      - name: Validate dashboard
-        if: contains(github.event.head_commit.message, '[CWdash]')
-        run: |
-          aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
-            --query 'DashboardValidationMessages' --output table
+#name: cryptoflow CI/CD
+#
+#on:
+#  workflow_dispatch:
+#
+## Cancel older runs for the same branch/workflow
+#concurrency:
+#  group: ${{ github.workflow }}-${{ github.ref_name }}
+#  cancel-in-progress: true
+#
+## Least-privilege defaults; jobs can widen if needed
+#permissions:
+#  contents: read
+#
+#jobs:
+#  build-test:
+#    name: Test & Build
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: read
+#      actions: write
+#      # Required for artifact cleanup below (upload/download alone do not need it)
+#    env:
+#      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+#      # Use the toolchain specified by your repo (recommended). If you want to force 1.22, switch to go-version + GOTOOLCHAIN=local.
+#      # GOTOOLCHAIN: local
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Show ref info
+#        run: |
+#          echo "ref=${{ github.ref }}"
+#          echo "ref_name=${{ github.ref_name }}"
+#          echo "event=${{ github.event_name }}"
+#
+#      # Align with `toolchain goX.Y` in go.mod. Disable caching for hermetic builds.
+#      - name: Set up Go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version-file: go.mod
+#          cache: false
+#
+#      # Keep Go caches inside the workspace so a single rm -rf is enough
+#      - name: Isolate Go caches in workspace
+#        run: |
+#          echo "GOMODCACHE=$PWD/.gomodcache" >> "$GITHUB_ENV"
+#          echo "GOCACHE=$PWD/.gobuildcache" >> "$GITHUB_ENV"
+#
+#      - name: Clean workspace & caches (pre)
+#        run: |
+#          rm -rf ./.gomodcache ./.gobuildcache ./cryptoflow || true
+#
+#      # Access private Go modules via PAT
+#      - name: Configure Git PAT for private modules
+#        run: git config --global url.https://${{ secrets.GO_PAT }}@github.com.insteadOf https://github.com
+#
+#      - name: Download deps
+#        run: go mod download
+#
+#      - name: Run tests
+#        run: go test -v ./...
+#
+#      - name: Build binary
+#        run: go build -o cryptoflow .
+#
+#      - name: Prune stale binary artifacts (quota guard)
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#          REPO: ${{ github.repository }}
+#          ARTIFACT_NAME: cryptoflow-binary
+#        run: |
+#          set -euo pipefail
+#          if [ -z "${GITHUB_TOKEN:-}" ]; then
+#            echo "GITHUB_TOKEN missing; skipping cleanup"
+#            exit 0
+#          fi
+#
+#          api="https://api.github.com"
+#          deleted=0
+#          page=1
+#
+#          while true; do
+#            response=$(curl -sS \
+#              -H "Authorization: Bearer $GITHUB_TOKEN" \
+#              -H "Accept: application/vnd.github+json" \
+#              -H "X-GitHub-Api-Version: 2022-11-28" \
+#              "$api/repos/$REPO/actions/artifacts?per_page=100&page=$page")
+#
+#            count=$(echo "$response" | jq '.artifacts | length')
+#            if [ "$count" -eq 0 ]; then
+#              break
+#            fi
+#
+#            ids=$(echo "$response" | jq -r --arg NAME "$ARTIFACT_NAME" \
+#              '.artifacts[] | select(.expired == false and .name == $NAME) | .id')
+#
+#            if [ -n "$ids" ]; then
+#              while IFS= read -r id; do
+#                [ -z "$id" ] && continue
+#                echo "Deleting artifact id=$id"
+#                curl -sS -X DELETE \
+#                  -H "Authorization: Bearer $GITHUB_TOKEN" \
+#                  -H "Accept: application/vnd.github+json" \
+#                  -H "X-GitHub-Api-Version: 2022-11-28" \
+#                  "$api/repos/$REPO/actions/artifacts/$id" >/dev/null
+#                deleted=$((deleted+1))
+#              done <<< "$ids"
+#            fi
+#
+#            if [ "$count" -lt 100 ]; then
+#              break
+#            fi
+#
+#            page=$((page + 1))
+#          done
+#
+#          echo "Deleted $deleted stale artifact(s)"
+#
+#      # Upload only the built artifact (keep retention short)
+#      - name: Upload binary artifact
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: cryptoflow-binary
+#          path: cryptoflow
+#          retention-days: 1
+#
+#      # Belt & suspenders: nuke caches generated during this job
+#      - name: Clean workspace & caches (post)
+#        if: always()
+#        run: |
+#          go clean -modcache -cache -testcache -fuzzcache || true
+#          rm -rf ./.gomodcache ./.gobuildcache || true
+#
+#  test-ssh:
+#    name: Test SSH
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: SSH reachability check
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#          host: ${{ secrets.EC2_HOST }}
+#          username: ${{ secrets.EC2_USER }}
+#          key: ${{ secrets.EC2_SSH_KEY }}
+#          script: |
+#            set -e
+#            whoami
+#            hostname
+#            echo "ok: ssh works"
+#
+#  deploy-main:
+#    name: Deploy (main)
+#    runs-on: ubuntu-latest
+#    needs: [build-test, test-ssh]
+#    if: ${{ github.ref_name == 'main' }}
+#    permissions:
+#      contents: read
+#      actions: write
+#    env:
+#      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+#      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#      AWS_REGION:            ${{ vars.AWS_REGION }}
+#      S3_BUCKET:             ${{ vars.S3_BUCKET }}
+#      S3_TABLE_ARN:          ${{ secrets.S3_TABLE_ARN }}
+#      LOG_LEVEL:             ${{ vars.LOG_LEVEL }}
+#      DASHBOARD_NAME:        Data
+#    steps:
+#      # Pull the exact binary that passed tests
+#      - name: Download binary artifact
+#        uses: actions/download-artifact@v4
+#        with:
+#          name: cryptoflow-binary
+#
+#      # Get docker-compose and any other needed files
+#      - name: Checkout repo (for compose/configs)
+#        uses: actions/checkout@v4
+#
+#      - name: Prepare remote workspace (clean except .env/data)
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#          host: ${{ secrets.EC2_HOST }}
+#          username: ${{ secrets.EC2_USER }}
+#          key: ${{ secrets.EC2_SSH_KEY }}
+#          script: |
+#            set -euo pipefail
+#            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+#            mkdir -p "$APP_DIR"
+#            cd "$APP_DIR"
+#            # Remove everything except .env and data (if present)
+#            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'data' -exec rm -rf {} +
+#
+#      # Ship only what you need: repo files + the built binary
+#      - name: Transfer files to EC2
+#        uses: appleboy/scp-action@v0.1.7
+#        with:
+#          host: ${{ secrets.EC2_HOST }}
+#          username: ${{ secrets.EC2_USER }}
+#          key: ${{ secrets.EC2_SSH_KEY }}
+#          source: ".,cryptoflow"
+#          target: "/home/${{ secrets.EC2_USER }}/cryptoflow"
+#
+#      - name: Deploy on EC2
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#          host: ${{ secrets.EC2_HOST }}
+#          username: ${{ secrets.EC2_USER }}
+#          key: ${{ secrets.EC2_SSH_KEY }}
+#          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION,S3_BUCKET,S3_TABLE_ARN,LOG_LEVEL
+#          script: |
+#            set -euo pipefail
+#            APP_DIR="/home/${{ secrets.EC2_USER }}/cryptoflow"
+#            cd "$APP_DIR"
+#
+#            # Hard stop & prune Docker state
+#            docker compose -f infra/docker/docker-compose.yml down --rmi all --volumes || true
+#            docker system prune -af --volumes || true
+#            docker network prune -f || true
+#
+#            # Fresh start
+#            docker compose -f infra/docker/docker-compose.yml up -d --build
+#            echo "✅ Deploy complete"
+#
+#      - name: Delete binary artifact (post-deploy cleanup)
+#        if: always()
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#          REPO: ${{ github.repository }}
+#          ARTIFACT_NAME: cryptoflow-binary
+#          RUN_ID: ${{ github.run_id }}
+#        run: |
+#          set -euo pipefail
+#          if [ -z "${GITHUB_TOKEN:-}" ]; then
+#            echo "GITHUB_TOKEN missing; skipping cleanup"
+#            exit 0
+#          fi
+#
+#          api="https://api.github.com"
+#          response=$(curl -sS \
+#            -H "Authorization: Bearer $GITHUB_TOKEN" \
+#            -H "Accept: application/vnd.github+json" \
+#            -H "X-GitHub-Api-Version: 2022-11-28" \
+#            "$api/repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100")
+#
+#          id=$(echo "$response" | jq -r --arg NAME "$ARTIFACT_NAME" \
+#            '.artifacts[] | select(.name == $NAME) | .id' | head -n 1)
+#
+#          if [ -n "$id" ] && [ "$id" != "null" ]; then
+#            echo "Deleting artifact id=$id for current run"
+#            curl -sS -X DELETE \
+#              -H "Authorization: Bearer $GITHUB_TOKEN" \
+#              -H "Accept: application/vnd.github+json" \
+#              -H "X-GitHub-Api-Version: 2022-11-28" \
+#              "$api/repos/$REPO/actions/artifacts/$id" >/dev/null
+#          else
+#            echo "No artifact found for current run"
+#          fi
+#
+#      # --- Optional CloudWatch dashboard refresh (commit with [CWdash]) ---
+#      - name: Configure AWS creds
+#        if: contains(github.event.head_commit.message, '[CWdash]')
+#        uses: aws-actions/configure-aws-credentials@v4
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: ${{ vars.AWS_REGION }}
+#
+#      - name: Resolve collector InstanceId
+#        if: contains(github.event.head_commit.message, '[CWdash]')
+#        id: ec2
+#        run: |
+#          IID=$(aws ec2 describe-instances \
+#            --filters "Name=tag:Name,Values=Collector Test 2" "Name=instance-state-name,Values=running" \
+#            --query "Reservations[].Instances[].InstanceId" --output text)
+#          if [ -z "$IID" ]; then echo "No running collector instance found"; exit 1; fi
+#          echo "instance_id=$IID" >> "$GITHUB_OUTPUT"
+#
+#      - name: Inject InstanceId into dashboard JSON
+#        if: contains(github.event.head_commit.message, '[CWdash]')
+#        run: |
+#          cp internal/metrics/CWdash.json /tmp/dashboard.json
+#          sed -i "s|<collector-instance-id>|${{ steps.ec2.outputs.instance_id }}|g" /tmp/dashboard.json
+#
+#      - name: Put dashboard
+#        if: contains(github.event.head_commit.message, '[CWdash]')
+#        run: |
+#          aws cloudwatch put-dashboard \
+#            --dashboard-name "$DASHBOARD_NAME" \
+#            --dashboard-body file:///tmp/dashboard.json
+#
+#      - name: Validate dashboard
+#        if: contains(github.event.head_commit.message, '[CWdash]')
+#        run: |
+#          aws cloudwatch get-dashboard --dashboard-name "$DASHBOARD_NAME" \
+#            --query 'DashboardValidationMessages' --output table
