@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -278,6 +279,7 @@ func (r *Okx_FOBD_Reader) handleEvent(evt *orderBookEvent) {
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
+		metrics.EmitDropMetric(r.log, metrics.DropMetricDeltaRaw, "okx", "swap-orderbook-delta", evt.Arg.InstID, "raw")
 		r.log.WithComponent("okx_delta_reader").Warn("raw delta channel full, dropping message")
 	}
 }

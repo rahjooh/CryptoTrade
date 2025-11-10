@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
@@ -200,6 +201,7 @@ func (r *Kucoin_FOBD_Reader) Kucoin_FOBD_stream(symbolList []string, wsURL strin
 			} else if r.ctx.Err() != nil {
 				return fmt.Errorf("context cancelled")
 			} else {
+				metrics.EmitDropMetric(r.log, metrics.DropMetricDeltaRaw, "kucoin", "future-orderbook-delta", msgOut.Symbol, "raw")
 				log.Warn("raw delta channel full, dropping message")
 			}
 			return nil

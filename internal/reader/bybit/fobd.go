@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -130,6 +131,7 @@ func (r *Bybit_FOBD_Reader) stream(symbols []string, wsURL string) {
 		} else if r.ctx.Err() != nil {
 			return r.ctx.Err()
 		} else {
+			metrics.EmitDropMetric(r.log, metrics.DropMetricDeltaRaw, "bybit", "future-orderbook-delta", sym, "raw")
 			log.Warn("raw delta channel full, dropping message")
 		}
 		return nil

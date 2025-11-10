@@ -10,6 +10,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -120,6 +121,7 @@ func (r *Binance_FOBD_Reader) Binance_FOBD_stream(symbols []string) {
 		} else if r.ctx.Err() != nil {
 			return
 		} else {
+			metrics.EmitDropMetric(r.log, metrics.DropMetricDeltaRaw, "binance", "future-orderbook-delta", event.Symbol, "raw")
 			log.Warn("raw delta channel full, dropping message")
 		}
 	}

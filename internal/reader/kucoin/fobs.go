@@ -350,6 +350,7 @@ func (r *Kucoin_FOBS_Reader) Kucoin_FOBS_Fetcher(symbol string) {
 	} else if r.ctx.Err() != nil {
 		return
 	} else {
+		metrics.EmitDropMetric(r.log, metrics.DropMetricSnapshotRaw, "kucoin", "future-orderbook-snapshot", rawData.Symbol, "raw")
 		log.Warn("raw channel is full, dropping data")
 	}
 }

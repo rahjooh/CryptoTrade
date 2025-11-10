@@ -11,6 +11,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	liq "cryptoflow/internal/channel/liq"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
@@ -218,6 +219,7 @@ func (r *Bybit_LIQ_Reader) handleMessage(msg string) error {
 			if r.ctx.Err() != nil {
 				return nil
 			}
+			metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "bybit", "liquidation", symbol, "raw")
 			r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{"symbol": symbol}).Warn("liquidation raw channel full, dropping message")
 		}
 	}

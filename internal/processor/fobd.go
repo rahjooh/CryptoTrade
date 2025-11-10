@@ -12,6 +12,7 @@ import (
 
 	appconfig "cryptoflow/config"
 	fobd "cryptoflow/internal/channel/fobd"
+	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
@@ -363,6 +364,7 @@ func (p *DeltaProcessor) flush(key string) {
 		state.mu.Unlock()
 		return
 	} else {
+		metrics.EmitDropMetric(p.log, metrics.DropMetricDeltaNorm, batch.Exchange, batch.Market, batch.Symbol, "norm")
 		p.log.WithComponent("delta_processor").WithFields(logger.Fields{"batch_key": key}).Warn("normfobd channel full, dropping batch")
 		state.batch = &models.BatchFOBDMessage{
 			BatchID:     uuid.New().String(),
