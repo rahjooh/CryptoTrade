@@ -9,13 +9,13 @@
       "properties": {
         "view": "timeSeries",
         "region": "ap-south-1",
-        "title": "CPU / Memory / Disk %",
+        "title": "Prod Resouce %",
         "period": 60,
         "stat": "Maximum",
         "metrics": [
-          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
-          ["Custom/EC2", "mem_used_percent", "host", "ip-172-31-1-88", { "label": "Mem" }],
-          ["Custom/EC2", "disk_used_percent", "path", "/", "host", "ip-172-31-1-88", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-058109b683598d78c", { "label": "CPU" }],
+          ["Custom/EC2", "mem_used_percent", "InstanceId", "i-058109b683598d78c", { "label": "Mem" }],
+          ["Custom/EC2", "disk_used_percent", "path", "/", "InstanceId", "i-058109b683598d78c", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
         ],
         "yAxis": { "left": { "label": "%", "min": 0, "max": 100 } }
       }
@@ -24,6 +24,26 @@
       "type": "metric",
       "x": 12,
       "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "title": "Stage Resouce %",
+        "period": 60,
+        "stat": "Maximum",
+        "metrics": [
+          ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0b9c363acf72f7621", { "label": "CPU" }],
+          ["Custom/EC2", "mem_used_percent", "InstanceId", "i-0b9c363acf72f7621", { "label": "Mem" }],
+          ["Custom/EC2", "disk_used_percent", "path", "/", "InstanceId", "i-0b9c363acf72f7621", "device", "nvme0n1p1", "fstype", "ext4", { "label": "Disk" }]
+        ],
+        "yAxis": { "left": { "label": "%", "min": 0, "max": 100 } }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
       "width": 12,
       "height": 6,
       "properties": {
@@ -43,6 +63,25 @@
       "type": "metric",
       "x": 0,
       "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "view": "timeSeries",
+        "region": "ap-south-1",
+        "metrics": [
+          ["CryptoFlow", "fobs_raw_buffer_length", "component", "channel_buffers", "buffer", "fobs_raw", {"label": "FOBS.raw","stat": "Average"}],
+          [".", "fobs_norm_buffer_length", ".", ".", "buffer", "fobs_norm", {"label": "FOBS.norm","stat": "Average"}],
+          ["CryptoFlow", "fobd_raw_buffer_length", "component", "channel_buffers", "buffer", "fobd_raw", {"label": "FOBD.raw","stat": "Average"}],
+          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}]
+        ],
+        "period": 60,
+        "title": "Channel Size"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
       "width": 24,
       "height": 6,
       "properties": {
@@ -67,7 +106,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 12,
+      "y": 18,
       "width": 24,
       "height": 6,
       "properties": {
@@ -92,7 +131,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 18,
+      "y": 24,
       "width": 24,
       "height": 6,
       "properties": {
@@ -117,7 +156,7 @@
     {
       "type": "metric",
       "x": 0,
-      "y": 24,
+      "y": 30,
       "width": 24,
       "height": 6,
       "properties": {

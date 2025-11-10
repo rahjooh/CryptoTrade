@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"flag"
+	"net"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -87,21 +90,72 @@ func main() {
 		os.Exit(1)
 	}
 
-	binanceFOBSReaders := make([]*binance.Binance_FOBS_Reader, 0, len(shardCfg.Shards))
-	bybitFOBSReaders := make([]*bybitreader.Bybit_FOBS_Reader, 0, len(shardCfg.Shards))
-	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(shardCfg.Shards))
-	okxFOBSReaders := make([]*okxreader.Okx_FOBS_Reader, 0, len(shardCfg.Shards))
-	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(shardCfg.Shards))
-	bybitFOBDReaders := make([]*bybitreader.Bybit_FOBD_Reader, 0, len(shardCfg.Shards))
-	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(shardCfg.Shards))
-	okxFOBDReaders := make([]*okxreader.Okx_FOBD_Reader, 0, len(shardCfg.Shards))
+	env := config.AppEnvironment()
+	detectedIPs, err := localIPv4Addresses()
+	if err != nil {
+		log.WithError(err).Warn("failed to enumerate local IP addresses")
+	}
+
+	ipSet := make([]string, 0, len(detectedIPs)+1)
+	seenIPs := make(map[string]struct{}, len(detectedIPs)+1)
+	for _, ip := range detectedIPs {
+		if ip == "" {
+			continue
+		}
+		if _, exists := seenIPs[ip]; exists {
+			continue
+		}
+		seenIPs[ip] = struct{}{}
+		ipSet = append(ipSet, ip)
+	}
+	if override := strings.TrimSpace(os.Getenv("SHARD_IP")); override != "" {
+		if _, exists := seenIPs[override]; !exists {
+			seenIPs[override] = struct{}{}
+			ipSet = append(ipSet, override)
+		}
+	}
+	sort.Strings(ipSet)
+
+	activeShards := shardCfg.Shards
+	if filtered := shardCfg.FilterByIP(ipSet); len(filtered) > 0 {
+		activeShards = filtered
+		log.WithFields(logger.Fields{
+			"ips":            strings.Join(ipSet, ","),
+			"matched_shards": len(activeShards),
+		}).Info("using IP shard configuration for local host")
+	} else if config.IsProductionLike(env) {
+		log.WithFields(logger.Fields{
+			"ips":         strings.Join(ipSet, ","),
+			"environment": env,
+		}).Error("no shard configuration matched local IPs")
+		os.Exit(1)
+	} else {
+		log.WithFields(logger.Fields{
+			"ips":         strings.Join(ipSet, ","),
+			"environment": env,
+		}).Warn("no shard configuration matched local IPs; defaulting to all shards")
+	}
+
+	binanceFOBSReaders := make([]*binance.Binance_FOBS_Reader, 0, len(activeShards))
+	bybitFOBSReaders := make([]*bybitreader.Bybit_FOBS_Reader, 0, len(activeShards))
+	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(activeShards))
+	okxFOBSReaders := make([]*okxreader.Okx_FOBS_Reader, 0, len(activeShards))
+	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(activeShards))
+	bybitFOBDReaders := make([]*bybitreader.Bybit_FOBD_Reader, 0, len(activeShards))
+	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(activeShards))
+	okxFOBDReaders := make([]*okxreader.Okx_FOBD_Reader, 0, len(activeShards))
+	binanceLiqReaders := make([]*binance.Binance_LIQ_Reader, 0, len(activeShards))
+	bybitLiqReaders := make([]*bybitreader.Bybit_LIQ_Reader, 0, len(activeShards))
+	kucoinLiqReaders := make([]*kucoin.Kucoin_LIQ_Reader, 0, len(activeShards))
+	okxLiqReaders := make([]*okxreader.Okx_LIQ_Reader, 0, len(activeShards))
 
 	binanceSymbolSet := make(map[string]struct{})
 	bybitSymbolSet := make(map[string]struct{})
 	kucoinSymbolSet := make(map[string]struct{})
 	okxSymbolSet := make(map[string]struct{})
+	okxLiquidationSet := make(map[string]struct{})
 
-	for _, shard := range shardCfg.Shards {
+	for _, shard := range activeShards {
 		sc := *cfg
 		sc.Source.Binance.Future.Orderbook.Snapshots.Symbols = shard.BinanceSymbols
 		sc.Source.Binance.Future.Orderbook.Delta.Symbols = shard.BinanceSymbols
@@ -111,6 +165,10 @@ func main() {
 		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
 		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
 		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols.SwapOrderbookDelta
+		sc.Source.Binance.Future.Liquidation.Symbols = shard.BinanceSymbols
+		sc.Source.Bybit.Future.Liquidation.Symbols = shard.BybitSymbols
+		sc.Source.Kucoin.Future.Liquidation.Symbols = shard.KucoinSymbols
+		sc.Source.Okx.Future.Liquidation.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
 
 		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS, shard.BinanceSymbols, shard.IP))
 		bybitFOBSReaders = append(bybitFOBSReaders, bybitreader.Bybit_FOBS_NewReader(&sc, channels.FOBS, shard.BybitSymbols, shard.IP))
@@ -120,6 +178,10 @@ func main() {
 		bybitFOBDReaders = append(bybitFOBDReaders, bybitreader.Bybit_FOBD_NewReader(&sc, channels.FOBD, shard.BybitSymbols, shard.IP))
 		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
 		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols.SwapOrderbookDelta, shard.IP))
+		binanceLiqReaders = append(binanceLiqReaders, binance.Binance_LIQ_NewReader(&sc, channels.Liq, shard.BinanceSymbols))
+		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols))
+		kucoinLiqReaders = append(kucoinLiqReaders, kucoin.Kucoin_LIQ_NewReader(&sc, channels.Liq, shard.KucoinSymbols))
+		okxLiqReaders = append(okxLiqReaders, okxreader.Okx_LIQ_NewReader(&sc, channels.Liq, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 
 		for _, s := range shard.BinanceSymbols {
 			binanceSymbolSet[s] = struct{}{}
@@ -132,6 +194,7 @@ func main() {
 		}
 		for _, s := range shard.OkxSymbols.SwapOrderbookSnapshot {
 			okxSymbolSet[s] = struct{}{}
+			okxLiquidationSet[s] = struct{}{}
 		}
 		for _, s := range shard.OkxSymbols.SwapOrderbookDelta {
 			okxSymbolSet[s] = struct{}{}
@@ -155,24 +218,33 @@ func main() {
 	for s := range okxSymbolSet {
 		okxAll = append(okxAll, s)
 	}
+	okxLiqAll := make([]string, 0, len(okxLiquidationSet))
+	for s := range okxLiquidationSet {
+		okxLiqAll = append(okxLiqAll, s)
+	}
 
 	cfg.Source.Binance.Future.Orderbook.Snapshots.Symbols = binanceAll
 	cfg.Source.Binance.Future.Orderbook.Delta.Symbols = binanceAll
+	cfg.Source.Binance.Future.Liquidation.Symbols = binanceAll
 
 	cfg.Source.Bybit.Future.Orderbook.Snapshots.Symbols = bybitAll
 	cfg.Source.Bybit.Future.Orderbook.Delta.Symbols = bybitAll
+	cfg.Source.Bybit.Future.Liquidation.Symbols = bybitAll
 
 	cfg.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = kucoinAll
 	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
+	cfg.Source.Kucoin.Future.Liquidation.Symbols = kucoinAll
 
 	cfg.Source.Okx.Future.Orderbook.Snapshots.Symbols = okxAll
 	cfg.Source.Okx.Future.Orderbook.Delta.Symbols = okxAll
+	cfg.Source.Okx.Future.Liquidation.Symbols = okxLiqAll
 
 	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS)
 	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD)
 
 	var snapshotWriter *writer.SnapshotWriter
 	var deltaWriter *writer.DeltaWriter
+	var liqWriter *writer.LiquidationWriter
 
 	if cfg.Storage.S3.Enabled {
 		var err error
@@ -184,6 +256,15 @@ func main() {
 		deltaWriter, err = writer.NewDeltaWriter(cfg, channels.FOBD.Norm)
 		if err != nil {
 			log.WithError(err).Error("failed to create delta writer")
+			os.Exit(1)
+		}
+		liqWriter, err = writer.NewLiquidationWriter(cfg, channels.Liq.Raw)
+		if err != nil {
+			log.WithError(err).Error("failed to create liquidation writer")
+			os.Exit(1)
+		}
+		if err := liqWriter.Start(ctx); err != nil {
+			log.WithError(err).Error("failed to start liquidation writer")
 			os.Exit(1)
 		}
 	} else {
@@ -228,6 +309,46 @@ func main() {
 			defer wg.Done()
 			if err := reader.Okx_FOBS_Start(ctx); err != nil {
 				log.WithError(err).Warn("okx reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range binanceLiqReaders {
+		wg.Add(1)
+		go func(reader *binance.Binance_LIQ_Reader) {
+			defer wg.Done()
+			if err := reader.Binance_LIQ_Start(ctx); err != nil {
+				log.WithError(err).Warn("binance liquidation reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range bybitLiqReaders {
+		wg.Add(1)
+		go func(reader *bybitreader.Bybit_LIQ_Reader) {
+			defer wg.Done()
+			if err := reader.Bybit_LIQ_Start(ctx); err != nil {
+				log.WithError(err).Warn("bybit liquidation reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range kucoinLiqReaders {
+		wg.Add(1)
+		go func(reader *kucoin.Kucoin_LIQ_Reader) {
+			defer wg.Done()
+			if err := reader.Kucoin_LIQ_Start(ctx); err != nil {
+				log.WithError(err).Warn("kucoin liquidation reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range okxLiqReaders {
+		wg.Add(1)
+		go func(reader *okxreader.Okx_LIQ_Reader) {
+			defer wg.Done()
+			if err := reader.Okx_LIQ_Start(ctx); err != nil {
+				log.WithError(err).Warn("okx liquidation reader failed to start")
 			}
 		}(r)
 	}
@@ -327,6 +448,10 @@ func main() {
 		log.Info("stopping delta writer")
 		deltaWriter.Stop()
 	}
+	if liqWriter != nil {
+		log.Info("stopping liquidation writer")
+		liqWriter.Stop()
+	}
 
 	log.Info("stopping norm_FOBD_reader")
 	norm_FOBD_reader.Stop()
@@ -374,6 +499,26 @@ func main() {
 		r.Okx_FOBS_Stop()
 	}
 
+	log.Info("stopping binance liquidation readers")
+	for _, r := range binanceLiqReaders {
+		r.Binance_LIQ_Stop()
+	}
+
+	log.Info("stopping bybit liquidation readers")
+	for _, r := range bybitLiqReaders {
+		r.Bybit_LIQ_Stop()
+	}
+
+	log.Info("stopping kucoin liquidation readers")
+	for _, r := range kucoinLiqReaders {
+		r.Kucoin_LIQ_Stop()
+	}
+
+	log.Info("stopping okx liquidation readers")
+	for _, r := range okxLiqReaders {
+		r.Okx_LIQ_Stop()
+	}
+
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -388,4 +533,38 @@ func main() {
 	}
 
 	log.Info("cryptoflow stopped")
+}
+
+func localIPv4Addresses() ([]string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	ips := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if (iface.Flags & net.FlagUp) == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ipv4 := ip.To4(); ipv4 != nil {
+				ips = append(ips, ipv4.String())
+			}
+		}
+	}
+	return ips, nil
 }

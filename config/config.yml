@@ -63,6 +63,7 @@ source:
         enabled: false
         connection: websocket
         url: wss://fstream.binance.com/ws
+        symbols: [ BTCUSDT, ETHUSDT ]
       open_interest:
         enabled: false
         connection: rest
@@ -110,6 +111,7 @@ source:
         enabled: false
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
+        symbols: [ BTCUSDT, ETHUSDT ]
       open_interest:
         enabled: false
         connection: rest
@@ -157,6 +159,7 @@ source:
         enabled: false
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
+        symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
       open_interest:
         enabled: false
         connection: rest
@@ -201,6 +204,15 @@ source:
           interval_ms: 100
           read_buffer_bytes: 4194304
           read_message_buffer: 4096
+
+      liquidation:
+        enabled: false
+        connection: websocket
+        url: wss://api-futures.kucoin.com/endpoint
+        symbols: [ XBTUSDTM, ETHUSDTM ]
+        read_buffer_bytes: 4194304
+        read_message_buffer: 4096
+        write_message_buffer: 1024
 
 
   coinbase:
