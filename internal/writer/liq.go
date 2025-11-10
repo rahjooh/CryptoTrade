@@ -69,6 +69,7 @@ type LiquidationWriter struct {
 	rawChan        <-chan models.RawLiquidationMessage
 	s3Client       *s3.Client
 	log            *logger.Log
+	bucket         string
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             *sync.WaitGroup
@@ -87,6 +88,11 @@ func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquid
 	log := logger.GetLogger()
 	if !cfg.Storage.S3.Enabled {
 		return nil, fmt.Errorf("s3 storage is disabled")
+	}
+
+	bucket, err := normalizeBucketName(cfg.Storage.S3.Bucket)
+	if err != nil {
+		return nil, err
 	}
 
 	ctx := context.Background()
@@ -118,6 +124,7 @@ func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquid
 		rawChan:        rawChan,
 		s3Client:       s3Client,
 		log:            log,
+		bucket:         bucket,
 		wg:             &sync.WaitGroup{},
 		buffer:         make(map[string][]models.RawLiquidationMessage),
 		lastFlush:      make(map[string]time.Time),
@@ -130,7 +137,22 @@ func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquid
 		writer.maxBufferSize = 100
 	}
 
+	log.WithComponent("liq_writer").WithFields(logger.Fields{
+		"bucket":     bucket,
+		"region":     cfg.Storage.S3.Region,
+		"endpoint":   cfg.Storage.S3.Endpoint,
+		"path_style": cfg.Storage.S3.PathStyle,
+	}).Info("liquidation writer initialized")
+
 	return writer, nil
+}
+
+func normalizeBucketName(raw string) (string, error) {
+	bucket := strings.TrimSpace(raw)
+	if bucket == "" {
+		return "", fmt.Errorf("s3 bucket not configured")
+	}
+	return bucket, nil
 }
 
 // Start launches the ingestion and flush workers.
@@ -384,13 +406,12 @@ func (w *LiquidationWriter) createParquet(batch liquidationBatch) ([]byte, int64
 }
 
 func (w *LiquidationWriter) upload(key string, data []byte) error {
-	bucket := w.cfg.Storage.S3.Bucket
-	if bucket == "" {
+	if w.bucket == "" {
 		return fmt.Errorf("s3 bucket not configured")
 	}
 
 	input := &s3.PutObjectInput{
-		Bucket: aws.String(bucket),
+		Bucket: aws.String(w.bucket),
 		Key:    aws.String(key),
 		Body:   bytes.NewReader(data),
 	}
