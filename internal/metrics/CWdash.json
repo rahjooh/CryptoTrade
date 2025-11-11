@@ -53,7 +53,8 @@
           ["CryptoFlow", "fobs_raw_buffer_length", "component", "channel_buffers", "buffer", "fobs_raw", {"label": "FOBS.raw","stat": "Average"}],
           [".", "fobs_norm_buffer_length", ".", ".", "buffer", "fobs_norm", {"label": "FOBS.norm","stat": "Average"}],
           ["CryptoFlow", "fobd_raw_buffer_length", "component", "channel_buffers", "buffer", "fobd_raw", {"label": "FOBD.raw","stat": "Average"}],
-          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}]
+          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}],
+          ["CryptoFlow", "liq_raw_buffer_length", "component", "channel_buffers", "buffer", "liq_raw", {"label": "Liq.raw","stat": "Average"}]
         ],
         "period": 60,
         "title": "Channel Size"
@@ -72,7 +73,8 @@
           ["CryptoFlow", "fobs_raw_buffer_length", "component", "channel_buffers", "buffer", "fobs_raw", {"label": "FOBS.raw","stat": "Average"}],
           [".", "fobs_norm_buffer_length", ".", ".", "buffer", "fobs_norm", {"label": "FOBS.norm","stat": "Average"}],
           ["CryptoFlow", "fobd_raw_buffer_length", "component", "channel_buffers", "buffer", "fobd_raw", {"label": "FOBD.raw","stat": "Average"}],
-          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}]
+          [".", "fobd_norm_buffer_length", ".", ".", "buffer", "fobd_norm", {"label": "FOBD.norm","stat": "Average"}],
+          ["CryptoFlow", "liq_raw_buffer_length", "component", "channel_buffers", "buffer", "liq_raw", {"label": "Liq.raw","stat": "Average"}]
         ],
         "period": 60,
         "title": "Channel Size"

@@ -188,23 +188,27 @@ type OkxSourceConfig struct {
 }
 
 type BinanceFutureConfig struct {
-	Orderbook   BinanceFutureOrderbookConfig `yaml:"orderbook"`
-	Liquidation BinanceLiquidationConfig     `yaml:"liquidation"`
+	Orderbook    BinanceFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation  BinanceLiquidationConfig     `yaml:"liquidation"`
+	OpenInterest OpenInterestConfig           `yaml:"open_interest"`
 }
 
 type BybitFutureConfig struct {
-	Orderbook   BybitFutureOrderbookConfig `yaml:"orderbook"`
-	Liquidation BybitLiquidationConfig     `yaml:"liquidation"`
+	Orderbook    BybitFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation  BybitLiquidationConfig     `yaml:"liquidation"`
+	OpenInterest OpenInterestConfig         `yaml:"open_interest"`
 }
 
 type KucoinFutureConfig struct {
-	Orderbook   KucoinFutureOrderbookConfig `yaml:"orderbook"`
-	Liquidation KucoinLiquidationConfig     `yaml:"liquidation"`
+	Orderbook    KucoinFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation  KucoinLiquidationConfig     `yaml:"liquidation"`
+	OpenInterest OpenInterestConfig          `yaml:"open_interest"`
 }
 
 type OkxFutureConfig struct {
-	Orderbook   OkxFutureOrderbookConfig `yaml:"orderbook"`
-	Liquidation OkxLiquidationConfig     `yaml:"liquidation"`
+	Orderbook    OkxFutureOrderbookConfig `yaml:"orderbook"`
+	Liquidation  OkxLiquidationConfig     `yaml:"liquidation"`
+	OpenInterest OpenInterestConfig       `yaml:"open_interest"`
 }
 
 type BinanceFutureOrderbookConfig struct {
@@ -332,6 +336,19 @@ type OkxLiquidationConfig struct {
 	URL           string        `yaml:"url"`
 	Symbols       []string      `yaml:"symbols"`
 	FlushInterval time.Duration `yaml:"flush_interval"`
+}
+
+type OpenInterestConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	Connection      string        `yaml:"connection"`
+	URL             string        `yaml:"url"`
+	Symbols         []string      `yaml:"symbols"`
+	IntervalMs      int           `yaml:"interval_ms"`
+	IntervalMinutes int           `yaml:"interval_minutes"`
+	StreamInterval  time.Duration `yaml:"stream_interval"`
+	ReconnectDelay  time.Duration `yaml:"reconnect_delay"`
+	Category        string        `yaml:"category"`
+	InstType        string        `yaml:"inst_type"`
 }
 
 type StorageConfig struct {

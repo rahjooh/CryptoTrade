@@ -67,9 +67,11 @@ source:
         flush_interval: "1m"
       open_interest:
         enabled: false
-        connection: rest
-        url: https://fapi.binance.com/fapi/v1/openInterest
-        interval_minutes: 5
+        connection: websocket
+        url: wss://fstream.binance.com/ws
+        symbols: [ BTCUSDT, ETHUSDT ]
+        stream_interval: 1s
+        reconnect_delay: 5s
       funding_rate:
         enabled: false
         connection: rest
@@ -116,9 +118,11 @@ source:
         flush_interval: "1m"
       open_interest:
         enabled: false
-        connection: rest
-        url: https://api.bybit.com/v5/market/open-interest
-        interval_minutes: 5
+        connection: websocket
+        url: wss://stream.bybit.com/v5/public/linear
+        symbols: [ BTCUSDT, ETHUSDT ]
+        category: linear
+        reconnect_delay: 5s
       funding_rate:
         enabled: false
         connection: rest
@@ -165,9 +169,11 @@ source:
         flush_interval: "1m"
       open_interest:
         enabled: false
-        connection: rest
-        url: https://www.okx.com/api/v5/public/open-interest
-        interval_minutes: 5
+        connection: websocket
+        url: wss://ws.okx.com:8443/ws/v5/public
+        symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
+        inst_type: SWAP
+        reconnect_delay: 5s
       funding_rate:
         enabled: false
         connection: rest
@@ -217,6 +223,12 @@ source:
         read_message_buffer: 4096
         write_message_buffer: 1024
         flush_interval: "1m"
+      open_interest:
+        enabled: false
+        connection: websocket
+        url: wss://api-futures.kucoin.com/endpoint
+        symbols: [ XBTUSDTM, ETHUSDTM ]
+        reconnect_delay: 5s
 
 
   coinbase:

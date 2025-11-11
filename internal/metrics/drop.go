@@ -14,6 +14,8 @@ const (
 	DropMetricDeltaNorm DropMetric = "delta_norm_messages_dropped"
 	// DropMetricLiquidationRaw records dropped liquidation stream messages.
 	DropMetricLiquidationRaw DropMetric = "liquidation_messages_dropped"
+	// DropMetricOpenInterestRaw records dropped open interest stream messages.
+	DropMetricOpenInterestRaw DropMetric = "open_interest_messages_dropped"
 )
 
 // EmitDropMetric logs and emits a metric representing a dropped channel message. The
