@@ -32,7 +32,6 @@ type Bybit_LIQ_Reader struct {
 	ws        *bybit_connector.WebSocket
 }
 
-// Bybit_LIQ_NewReader builds a new reader instance.
 func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string) *Bybit_LIQ_Reader {
 	return &Bybit_LIQ_Reader{
 		config:   cfg,
@@ -42,8 +41,7 @@ func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []stri
 	}
 }
 
-// Bybit_LIQ_Start starts the websocket connection and subscribes to
-// liquidation topics for configured symbols.
+// Start the websocket and subscribe to allLiquidation topics.
 func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
@@ -62,6 +60,7 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		return fmt.Errorf("bybit futures liquidation stream disabled")
 	}
 
+	// Symbols
 	if len(r.symbols) == 0 {
 		if len(cfg.Symbols) == 0 {
 			log.Warn("no symbols configured for bybit liquidation reader")
@@ -69,15 +68,21 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		}
 		r.symbols = cfg.Symbols
 	}
-
 	r.symbolSet = make(map[string]struct{}, len(r.symbols))
+
 	topics := make([]string, 0, len(r.symbols))
 	for _, sym := range r.symbols {
-		symbol := strings.ToUpper(sym)
-		r.symbolSet[symbol] = struct{}{}
-		topics = append(topics, fmt.Sprintf("liquidation.linear.%s", symbol))
+		s := strings.ToUpper(strings.TrimSpace(sym))
+		if s == "" {
+			continue
+		}
+		r.symbolSet[s] = struct{}{}
+		// ✅ v5 "All Liquidations" topic (symbol-scoped). Do NOT prefix with ".linear".
+		// Category (linear/inverse/spot/option) is determined by the endpoint URL.
+		topics = append(topics, fmt.Sprintf("allLiquidation.%s", s))
 	}
 
+	// Endpoint: linear (USDT/USDC perps). Change if you need inverse/spot/options.
 	wsURL := cfg.URL
 	if wsURL == "" {
 		wsURL = "wss://stream.bybit.com/v5/public/linear"
@@ -92,7 +97,6 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		log.Error("failed to create bybit websocket client")
 		return fmt.Errorf("failed to create bybit websocket client")
 	}
-
 	if ws.Connect() == nil {
 		log.Error("failed to connect to bybit websocket")
 		return fmt.Errorf("failed to connect to bybit websocket")
@@ -104,13 +108,11 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 	}
 
 	r.ws = ws
-	log.WithFields(logger.Fields{"topics": topics}).Info("bybit liquidation reader started")
-
+	log.WithFields(logger.Fields{"topics": topics, "endpoint": wsURL}).Info("bybit liquidation reader started")
 	go r.monitorContext()
 	return nil
 }
 
-// Bybit_LIQ_Stop disconnects the websocket and cancels background goroutines.
 func (r *Bybit_LIQ_Reader) Bybit_LIQ_Stop() {
 	r.mu.Lock()
 	if !r.running {
@@ -137,6 +139,7 @@ func (r *Bybit_LIQ_Reader) monitorContext() {
 	r.Bybit_LIQ_Stop()
 }
 
+// Payload for (all) liquidation stream
 type bybitLiquidationPayload struct {
 	Topic string `json:"topic"`
 	Type  string `json:"type"`
@@ -153,6 +156,7 @@ type bybitLiquidationPayload struct {
 }
 
 func (r *Bybit_LIQ_Reader) handleMessage(msg string) error {
+	// Subscription ack (success/failure)
 	var ack struct {
 		Op      string `json:"op"`
 		Success bool   `json:"success"`
@@ -160,18 +164,28 @@ func (r *Bybit_LIQ_Reader) handleMessage(msg string) error {
 	}
 	if err := json.Unmarshal([]byte(msg), &ack); err == nil && ack.Op != "" {
 		if !ack.Success {
-			r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{"operation": ack.Op, "message": ack.RetMsg}).Warn("subscription acknowledgement failure")
+			lf := r.log.WithComponent("bybit_liq_reader").WithFields(
+				logger.Fields{"operation": ack.Op, "message": ack.RetMsg},
+			)
+			// Helpful hint for common topic mistake
+			if strings.Contains(ack.RetMsg, "handler not found") &&
+				strings.Contains(ack.RetMsg, "liquidation.") {
+				lf.Warn("subscription acknowledgement failure (did you mean allLiquidation.<SYMBOL> and the /v5/public/linear endpoint?)")
+			} else {
+				lf.Warn("subscription acknowledgement failure")
+			}
 		}
 		return nil
 	}
 
+	// Data payload
 	var payload bybitLiquidationPayload
 	if err := json.Unmarshal([]byte(msg), &payload); err != nil {
 		r.log.WithComponent("bybit_liq_reader").WithError(err).Debug("failed to decode bybit message")
 		return nil
 	}
-
-	if !strings.HasPrefix(payload.Topic, "liquidation") {
+	// Only handle liquidation topics
+	if !strings.HasPrefix(payload.Topic, "allLiquidation") && !strings.HasPrefix(payload.Topic, "liquidation") {
 		return nil
 	}
 
