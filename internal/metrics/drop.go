@@ -16,6 +16,8 @@ const (
 	DropMetricLiquidationRaw DropMetric = "liquidation_messages_dropped"
 	// DropMetricOpenInterestRaw records dropped open interest stream messages.
 	DropMetricOpenInterestRaw DropMetric = "open_interest_messages_dropped"
+	// DropMetricPremiumIndexRaw records dropped premium index stream messages.
+	DropMetricPremiumIndexRaw DropMetric = "premium_index_messages_dropped"
 )
 
 // EmitDropMetric logs and emits a metric representing a dropped channel message. The

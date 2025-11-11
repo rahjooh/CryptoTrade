@@ -5,6 +5,7 @@ import (
 	"cryptoflow/internal/channel/fobs"
 	"cryptoflow/internal/channel/liq"
 	"cryptoflow/internal/channel/oi"
+	"cryptoflow/internal/channel/pi"
 )
 
 type Channels struct {
@@ -12,6 +13,7 @@ type Channels struct {
 	FOBD *fobd.Channels
 	Liq  *liq.Channels
 	OI   *oi.Channels
+	PI   *pi.Channels
 }
 
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
@@ -20,6 +22,7 @@ func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 		FOBD: fobd.NewChannels(rawBufferSize, normBufferSize),
 		Liq:  liq.NewChannels(rawBufferSize),
 		OI:   oi.NewChannels(rawBufferSize),
+		PI:   pi.NewChannels(rawBufferSize),
 	}
 }
 
@@ -35,5 +38,8 @@ func (c *Channels) Close() {
 	}
 	if c.OI != nil {
 		c.OI.Close()
+	}
+	if c.PI != nil {
+		c.PI.Close()
 	}
 }

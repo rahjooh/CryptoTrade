@@ -191,24 +191,28 @@ type BinanceFutureConfig struct {
 	Orderbook    BinanceFutureOrderbookConfig `yaml:"orderbook"`
 	Liquidation  BinanceLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig           `yaml:"open_interest"`
+	PremiumIndex PremiumIndexConfig           `yaml:"premium_index"`
 }
 
 type BybitFutureConfig struct {
 	Orderbook    BybitFutureOrderbookConfig `yaml:"orderbook"`
 	Liquidation  BybitLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig         `yaml:"open_interest"`
+	PremiumIndex PremiumIndexConfig         `yaml:"premium_index"`
 }
 
 type KucoinFutureConfig struct {
 	Orderbook    KucoinFutureOrderbookConfig `yaml:"orderbook"`
 	Liquidation  KucoinLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig          `yaml:"open_interest"`
+	PremiumIndex PremiumIndexConfig          `yaml:"premium_index"`
 }
 
 type OkxFutureConfig struct {
 	Orderbook    OkxFutureOrderbookConfig `yaml:"orderbook"`
 	Liquidation  OkxLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig       `yaml:"open_interest"`
+	PremiumIndex PremiumIndexConfig       `yaml:"premium_index"`
 }
 
 type BinanceFutureOrderbookConfig struct {
@@ -339,6 +343,19 @@ type OkxLiquidationConfig struct {
 }
 
 type OpenInterestConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	Connection      string        `yaml:"connection"`
+	URL             string        `yaml:"url"`
+	Symbols         []string      `yaml:"symbols"`
+	IntervalMs      int           `yaml:"interval_ms"`
+	IntervalMinutes int           `yaml:"interval_minutes"`
+	StreamInterval  time.Duration `yaml:"stream_interval"`
+	ReconnectDelay  time.Duration `yaml:"reconnect_delay"`
+	Category        string        `yaml:"category"`
+	InstType        string        `yaml:"inst_type"`
+}
+
+type PremiumIndexConfig struct {
 	Enabled         bool          `yaml:"enabled"`
 	Connection      string        `yaml:"connection"`
 	URL             string        `yaml:"url"`
