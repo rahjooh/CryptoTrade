@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	appconfig "cryptoflow/config"
@@ -94,12 +95,16 @@ func (r *Bybit_FOBD_Reader) stream(symbols []string, wsURL string) {
 		"worker":  "delta_stream",
 	})
 
+	var lastMsgMs int64
+	updateLast := func() { atomic.StoreInt64(&lastMsgMs, time.Now().UnixMilli()) }
+
 	args := make([]string, len(symbols))
 	for i, s := range symbols {
 		args[i] = fmt.Sprintf("orderbook.50.%s", s)
 	}
 
 	handler := func(message string) error {
+		updateLast()
 		var base struct {
 			Topic string `json:"topic"`
 		}
@@ -137,15 +142,62 @@ func (r *Bybit_FOBD_Reader) stream(symbols []string, wsURL string) {
 		return nil
 	}
 
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
+
 	for {
+		if r.ctx.Err() != nil {
+			return
+		}
+
+		// Reset last message time when (re)connecting
+		updateLast()
+		closed := make(chan struct{}, 1)
+		reconnect := make(chan struct{}, 1)
+
 		ws := bybit.NewBybitPublicWebSocket(wsURL, handler)
 		ws.Connect().SendSubscription(args)
 
+		// Heartbeat watchdog: if no messages for > 45s, force reconnect
+		watch := time.NewTicker(15 * time.Second)
+		go func() {
+			for {
+				select {
+				case <-r.ctx.Done():
+					select {
+					case reconnect <- struct{}{}:
+					default:
+					}
+					return
+				case <-watch.C:
+					if time.Since(time.UnixMilli(atomic.LoadInt64(&lastMsgMs))) > 45*time.Second {
+						ws.Disconnect()
+						select {
+						case closed <- struct{}{}:
+						default:
+						}
+						return
+					}
+				}
+			}
+		}()
+
 		select {
 		case <-r.ctx.Done():
+			watch.Stop()
 			ws.Disconnect()
 			return
+		case <-reconnect:
+			watch.Stop()
+			ws.Disconnect()
+		}
+
+		time.Sleep(backoff)
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
 		}
 	}
-
 }

@@ -46,6 +46,29 @@ type DeltaProcessor struct {
 // NewDeltaProcessor creates a new processor instance.
 func NewDeltaProcessor(cfg *appconfig.Config, ch *fobd.Channels) *DeltaProcessor {
 	symSet := make(map[string]struct{})
+	if cfg.Source != nil {
+		if s := cfg.Source.Binance; s != nil && s.Future != nil && s.Future.Orderbook.Delta.Enabled {
+			for _, x := range s.Future.Orderbook.Delta.Symbols {
+				symSet[x] = struct{}{}
+			}
+		}
+		if s := cfg.Source.Kucoin; s != nil && s.Future != nil && s.Future.Orderbook.Delta.Enabled {
+			for _, x := range s.Future.Orderbook.Delta.Symbols {
+				symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
+			}
+		}
+		if s := cfg.Source.Okx; s != nil && s.Future != nil && s.Future.Orderbook.Delta.Enabled {
+			for _, x := range s.Future.Orderbook.Delta.Symbols {
+				symSet[symbols.ToBinance("okx", x)] = struct{}{}
+			}
+		}
+		if s := cfg.Source.Bybit; s != nil && s.Future != nil && s.Future.Orderbook.Delta.Enabled {
+			for _, x := range s.Future.Orderbook.Delta.Symbols {
+				symSet[symbols.ToBinance("bybit", x)] = struct{}{}
+			}
+		}
+	}
+
 	for _, s := range cfg.Source.Binance.Future.Orderbook.Delta.Symbols {
 		symSet[s] = struct{}{}
 	}
@@ -223,7 +246,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 	for _, b := range bids {
 		price, err1 := strconv.ParseFloat(b.Price, 64)
 		qty, err2 := strconv.ParseFloat(b.Quantity, 64)
-		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
+		if err1 != nil || err2 != nil {
 			continue
 		}
 		entries = append(entries, models.NormFOBDMessage{
@@ -241,7 +264,7 @@ func (p *DeltaProcessor) handleMessage(raw models.RawFOBDMessage) {
 	for _, a := range asks {
 		price, err1 := strconv.ParseFloat(a.Price, 64)
 		qty, err2 := strconv.ParseFloat(a.Quantity, 64)
-		if err1 != nil || err2 != nil || price == 0 || qty == 0 {
+		if err1 != nil || err2 != nil {
 			continue
 		}
 		entries = append(entries, models.NormFOBDMessage{

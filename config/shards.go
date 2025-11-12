@@ -57,7 +57,7 @@ func LoadIPShards(path string) (*IPShards, error) {
 }
 
 // FilterByIP returns only the shards that match one of the provided IPv4
-// addresses. The search is case sensitive because IP addresses are normalised
+// addresses. The search is case-sensitive because IP addresses are normalised
 // strings. The order of the returned shards matches the original configuration
 // to keep deterministic reader creation.
 func (s *IPShards) FilterByIP(ips []string) []IPShard {
