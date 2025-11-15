@@ -2,11 +2,12 @@ package bybit
 
 import (
 	"context"
-	appconfig "cryptoflow/config"
-	foi "cryptoflow/internal/channel/oi"
-	"cryptoflow/logger"
 	"fmt"
 	"sync"
+
+	appconfig "cryptoflow/config"
+	foichannel "cryptoflow/internal/channel/foi"
+	"cryptoflow/logger"
 )
 
 // ---------- Public Reader (Open Interest) ----------
@@ -15,7 +16,7 @@ import (
 // to your Raw FOI channel. The topic prefix is configurable, default "tickers".
 type Bybit_FOI_Reader struct {
 	config   *appconfig.Config
-	channels *foi.Channels
+	channels *foichannel.Channels
 	log      *logger.Log
 	symbols  []string
 	ip       string
@@ -25,7 +26,7 @@ type Bybit_FOI_Reader struct {
 	running  bool
 }
 
-func Bybit_FOI_NewReader(cfg *appconfig.Config, ch *foi.Channels, symbols []string, localIP string) *Bybit_FOI_Reader {
+func Bybit_FOI_NewReader(cfg *appconfig.Config, ch *foichannel.Channels, symbols []string, localIP string) *Bybit_FOI_Reader {
 	return &Bybit_FOI_Reader{config: cfg, channels: ch, wg: &sync.WaitGroup{}, log: logger.GetLogger(), symbols: symbols, ip: localIP}
 }
 

@@ -53,22 +53,34 @@ func StartChannelSizeMetrics(ctx context.Context, channels *channel.Channels, in
 						"capacity": cap(channels.FOBD.Norm),
 					})
 				}
+				if channels.FOI != nil {
+					EmitMetric(log, component, "foi_raw_buffer_length", len(channels.FOI.Raw), "gauge", logger.Fields{
+						"buffer":   "foi_raw",
+						"capacity": cap(channels.FOI.Raw),
+					})
+					EmitMetric(log, component, "foi_norm_buffer_length", len(channels.FOI.Norm), "gauge", logger.Fields{
+						"buffer":   "foi_norm",
+						"capacity": cap(channels.FOI.Norm),
+					})
+				}
 				if channels.Liq != nil {
 					EmitMetric(log, component, "liq_raw_buffer_length", len(channels.Liq.Raw), "gauge", logger.Fields{
 						"buffer":   "liq_raw",
 						"capacity": cap(channels.Liq.Raw),
 					})
-				}
-				if channels.OI != nil {
-					EmitMetric(log, component, "oi_raw_buffer_length", len(channels.OI.Raw), "gauge", logger.Fields{
-						"buffer":   "oi_raw",
-						"capacity": cap(channels.OI.Raw),
+					EmitMetric(log, component, "liq_norm_buffer_length", len(channels.Liq.Norm), "gauge", logger.Fields{
+						"buffer":   "liq_norm",
+						"capacity": cap(channels.Liq.Norm),
 					})
 				}
 				if channels.PI != nil {
 					EmitMetric(log, component, "pi_raw_buffer_length", len(channels.PI.Raw), "gauge", logger.Fields{
 						"buffer":   "pi_raw",
 						"capacity": cap(channels.PI.Raw),
+					})
+					EmitMetric(log, component, "pi_norm_buffer_length", len(channels.PI.Norm), "gauge", logger.Fields{
+						"buffer":   "pi_norm",
+						"capacity": cap(channels.PI.Norm),
 					})
 				}
 			}

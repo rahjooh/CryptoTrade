@@ -15,16 +15,6 @@ type FOBSEntry struct {
 	Quantity float64 `json:"quantity"`
 }
 
-//// FOBSresp represents the complete orderbook state
-//type FOBSresp struct {
-//	Exchange     string      `json:"exchange"`
-//	Symbol       string      `json:"symbol"`
-//	Bids         []FOBSEntry `json:"bids"`
-//	Asks         []FOBSEntry `json:"asks"`
-//	LastUpdateID int64       `json:"lastUpdateId"`
-//	Timestamp    time.Time   `json:"timestamp"`
-//}
-
 // RawFOBSMessage represents the raw message from exchange websocket
 type RawFOBSMessage struct {
 	Exchange    string

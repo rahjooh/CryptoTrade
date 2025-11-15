@@ -11,7 +11,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
-	oichannel "cryptoflow/internal/channel/oi"
+	oichannel "cryptoflow/internal/channel/foi"
 	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
@@ -22,8 +22,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Kucoin_OI_Reader polls KuCoin futures open-interest via the REST API until a websocket feed becomes available.
-type Kucoin_OI_Reader struct {
+// Kucoin_FOI_Reader polls KuCoin futures open-interest via the REST API until a websocket feed becomes available.
+type Kucoin_FOI_Reader struct {
 	config    *appconfig.Config
 	marketAPI futuresmarket.MarketAPI
 	channels  *oichannel.Channels
@@ -37,8 +37,8 @@ type Kucoin_OI_Reader struct {
 	interval  time.Duration
 }
 
-// Kucoin_OI_NewReader initialises the REST client backed reader.
-func Kucoin_OI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols []string) *Kucoin_OI_Reader {
+// Kucoin_FOI_NewReader initialises the REST client backed reader.
+func Kucoin_FOI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols []string) *Kucoin_FOI_Reader {
 	log := logger.GetLogger()
 	openCfg := cfg.Source.Kucoin.Future.OpenInterest
 
@@ -75,7 +75,7 @@ func Kucoin_OI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols 
 		burst = 1
 	}
 
-	return &Kucoin_OI_Reader{
+	return &Kucoin_FOI_Reader{
 		config:    cfg,
 		marketAPI: marketAPI,
 		channels:  ch,
@@ -86,8 +86,8 @@ func Kucoin_OI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols 
 	}
 }
 
-// Kucoin_OI_Start begins the polling loops per symbol.
-func (r *Kucoin_OI_Reader) Kucoin_OI_Start(ctx context.Context) error {
+// Kucoin_FOI_Start begins the polling loops per symbol.
+func (r *Kucoin_FOI_Reader) Kucoin_FOI_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -124,15 +124,15 @@ func (r *Kucoin_OI_Reader) Kucoin_OI_Start(ctx context.Context) error {
 		go r.pollSymbol(sym)
 	}
 
-	r.log.WithComponent("kucoin_oi_reader").WithFields(logger.Fields{
+	r.log.WithComponent("kucoin_foi_reader").WithFields(logger.Fields{
 		"symbols":  r.symbols,
 		"interval": interval.String(),
 	}).Info("kucoin open-interest reader started")
 	return nil
 }
 
-// Kucoin_OI_Stop cancels all polling goroutines.
-func (r *Kucoin_OI_Reader) Kucoin_OI_Stop() {
+// Kucoin_FOI_Stop cancels all polling goroutines.
+func (r *Kucoin_FOI_Reader) Kucoin_FOI_Stop() {
 	r.mu.Lock()
 	if !r.running {
 		r.mu.Unlock()
@@ -141,12 +141,12 @@ func (r *Kucoin_OI_Reader) Kucoin_OI_Stop() {
 	r.running = false
 	r.mu.Unlock()
 
-	r.log.WithComponent("kucoin_oi_reader").Info("stopping kucoin open-interest reader")
+	r.log.WithComponent("kucoin_foi_reader").Info("stopping kucoin open-interest reader")
 	r.wg.Wait()
-	r.log.WithComponent("kucoin_oi_reader").Info("kucoin open-interest reader stopped")
+	r.log.WithComponent("kucoin_foi_reader").Info("kucoin open-interest reader stopped")
 }
 
-func (r *Kucoin_OI_Reader) pollSymbol(symbol string) {
+func (r *Kucoin_FOI_Reader) pollSymbol(symbol string) {
 	defer r.wg.Done()
 
 	ticker := time.NewTicker(r.interval)
@@ -154,7 +154,7 @@ func (r *Kucoin_OI_Reader) pollSymbol(symbol string) {
 
 	for {
 		if err := r.fetchOnce(symbol); err != nil {
-			r.log.WithComponent("kucoin_oi_reader").WithFields(logger.Fields{
+			r.log.WithComponent("kucoin_foi_reader").WithFields(logger.Fields{
 				"symbol": symbol,
 			}).WithError(err).Debug("failed to fetch kucoin open-interest")
 		}
@@ -167,7 +167,7 @@ func (r *Kucoin_OI_Reader) pollSymbol(symbol string) {
 	}
 }
 
-func (r *Kucoin_OI_Reader) fetchOnce(symbol string) error {
+func (r *Kucoin_FOI_Reader) fetchOnce(symbol string) error {
 	if err := r.limiter.Wait(r.ctx); err != nil {
 		return err
 	}
@@ -181,8 +181,6 @@ func (r *Kucoin_OI_Reader) fetchOnce(symbol string) error {
 		return fmt.Errorf("empty response for symbol %s", symbol)
 	}
 
-	value, _ := strconv.ParseFloat(resp.OpenInterest, 64)
-
 	payload := map[string]any{
 		"symbol":       resp.Symbol,
 		"openInterest": resp.OpenInterest,
@@ -190,21 +188,19 @@ func (r *Kucoin_OI_Reader) fetchOnce(symbol string) error {
 	}
 	raw, _ := json.Marshal(payload)
 
-	msg := models.RawOIMessage{
+	msg := models.RawFOIMessage{
 		Exchange:  "kucoin",
 		Symbol:    strings.ToUpper(symbol),
-		Market:    "oi",
-		Value:     value,
-		Source:    "kucoin_rest",
+		Market:    "future-openinterest",
+		Data:      raw,
 		Timestamp: time.Now().UTC(),
-		Payload:   raw,
 	}
 
 	if !r.channels.SendRaw(r.ctx, msg) {
 		if r.ctx.Err() != nil {
 			return r.ctx.Err()
 		}
-		metrics.EmitDropMetric(r.log, metrics.DropMetricOpenInterestRaw, "kucoin", "oi", symbol, "raw")
+		metrics.EmitDropMetric(r.log, metrics.DropMetricOpenInterestRaw, "kucoin", "future-openinterest", symbol, "raw")
 	}
 	return nil
 }

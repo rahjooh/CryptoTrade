@@ -25,73 +25,51 @@ import (
 	"cryptoflow/logger"
 )
 
-type oiParquetRecord struct {
-	Exchange  string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Market    string  `parquet:"name=market, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Symbol    string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Timestamp int64   `parquet:"name=timestamp, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
-	Value     float64 `parquet:"name=value, type=DOUBLE"`
-	ValueUSD  float64 `parquet:"name=value_usd, type=DOUBLE"`
-	Currency  string  `parquet:"name=currency, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Source    string  `parquet:"name=source, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Interval  string  `parquet:"name=interval, type=BYTE_ARRAY, convertedtype=UTF8"`
+type foiParquetRecord struct {
+	Exchange     string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Market       string  `parquet:"name=market, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol       string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	EventTime    int64   `parquet:"name=event_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	OpenInterest float64 `parquet:"name=open_interest, type=DOUBLE"`
+	ReceivedTime int64   `parquet:"name=received_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
 }
 
-type oiBatch struct {
-	Exchange    string
-	Market      string
-	Symbol      string
-	Entries     []models.RawOIMessage
-	Timestamp   time.Time
-	Reason      string
-	RecordCount int
+type foiMemFile struct{ buffer *bytes.Buffer }
+
+func newFoiMemFile() *foiMemFile                                 { return &foiMemFile{buffer: &bytes.Buffer{}} }
+func (m *foiMemFile) Create(string) (source.ParquetFile, error)  { return m, nil }
+func (m *foiMemFile) Open(string) (source.ParquetFile, error)    { return m, nil }
+func (m *foiMemFile) Seek(int64, int) (int64, error)             { return int64(m.buffer.Len()), nil }
+func (m *foiMemFile) Read([]byte) (int, error)                   { return 0, fmt.Errorf("read not supported") }
+func (m *foiMemFile) Write(b []byte) (int, error)                { return m.buffer.Write(b) }
+func (m *foiMemFile) Close() error                               { return nil }
+func (m *foiMemFile) Bytes() []byte                              { return m.buffer.Bytes() }
+
+// FOIWriter consumes normalized FOI batches and persists them to S3.
+type FOIWriter struct {
+	cfg       *appconfig.Config
+	normChan  <-chan models.BatchFOIMessage
+	s3Client  *s3.Client
+	metaGen   *metadata.Generator
+	log       *logger.Log
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        *sync.WaitGroup
+	buffer    map[string][]models.NormFOIMessage
+	lastFlush map[string]time.Time
+	flushTick *time.Ticker
+	maxBuffer int
+	running   bool
+	mu        sync.Mutex
 }
 
-type oiMemFile struct {
-	buffer *bytes.Buffer
-}
-
-func newOIMemFile() *oiMemFile {
-	return &oiMemFile{buffer: &bytes.Buffer{}}
-}
-
-func (m *oiMemFile) Create(string) (source.ParquetFile, error) { return m, nil }
-func (m *oiMemFile) Open(string) (source.ParquetFile, error)   { return m, nil }
-func (m *oiMemFile) Seek(int64, int) (int64, error)            { return int64(m.buffer.Len()), nil }
-func (m *oiMemFile) Read([]byte) (int, error)                  { return 0, fmt.Errorf("read not supported") }
-func (m *oiMemFile) Write(b []byte) (int, error)               { return m.buffer.Write(b) }
-func (m *oiMemFile) Close() error                              { return nil }
-func (m *oiMemFile) Bytes() []byte                             { return m.buffer.Bytes() }
-
-// OIWriter persists open-interest observations to S3 as partitioned Parquet files.
-type OIWriter struct {
-	cfg      *appconfig.Config
-	rawChan  <-chan models.RawOIMessage
-	s3Client *s3.Client
-	metaGen  *metadata.Generator
-
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     *sync.WaitGroup
-
-	log *logger.Log
-
-	mu          sync.Mutex
-	buffer      map[string][]models.RawOIMessage
-	flushTicker *time.Ticker
-	maxBuffer   int
-
-	jobCh   chan oiBatch
-	running bool
-}
-
-// NewOIWriter configures an OIWriter backed by the provided configuration.
-func NewOIWriter(cfg *appconfig.Config, raw <-chan models.RawOIMessage) (*OIWriter, error) {
+// NewFOIWriter configures a writer using S3 credentials from cfg.
+func NewFOIWriter(cfg *appconfig.Config, norm <-chan models.BatchFOIMessage) (*FOIWriter, error) {
 	if !cfg.Storage.S3.Enabled {
 		return nil, fmt.Errorf("s3 storage disabled")
 	}
-	if raw == nil {
-		return nil, fmt.Errorf("nil raw channel provided")
+	if norm == nil {
+		return nil, fmt.Errorf("nil normalized channel provided")
 	}
 
 	ctx := context.Background()
@@ -118,76 +96,65 @@ func NewOIWriter(cfg *appconfig.Config, raw <-chan models.RawOIMessage) (*OIWrit
 		o.UsePathStyle = cfg.Storage.S3.PathStyle
 	})
 
-	metaDir, err := os.MkdirTemp("", "oi-metadata")
+	metaDir, err := os.MkdirTemp("", "foi-metadata")
 	if err != nil {
 		return nil, fmt.Errorf("create metadata dir: %w", err)
 	}
-
-	tablePrefix := filepath.ToSlash(filepath.Join("open_interest"))
+	tablePrefix := filepath.ToSlash(filepath.Join("future_open_interest"))
 	location := fmt.Sprintf("s3://%s/%s", cfg.Storage.S3.Bucket, tablePrefix)
-	meta := metadata.NewGenerator(metaDir, location, cfg.Storage.S3.Bucket, tablePrefix, cfg.Cryptoflow.Name+"_oi", s3Client)
+	meta := metadata.NewGenerator(metaDir, location, cfg.Storage.S3.Bucket, tablePrefix, cfg.Cryptoflow.Name+"_foi", s3Client)
 
 	maxBuffer := cfg.Writer.Buffer.MaxSize
 	if maxBuffer <= 0 {
 		maxBuffer = 512
 	}
 
-	jobCapacity := maxBuffer * 2
-	if jobCapacity < 128 {
-		jobCapacity = 128
-	}
-
-	return &OIWriter{
+	return &FOIWriter{
 		cfg:       cfg,
-		rawChan:   raw,
+		normChan:  norm,
 		s3Client:  s3Client,
 		metaGen:   meta,
-		wg:        &sync.WaitGroup{},
 		log:       logger.GetLogger(),
-		buffer:    make(map[string][]models.RawOIMessage),
+		wg:        &sync.WaitGroup{},
+		buffer:    make(map[string][]models.NormFOIMessage),
+		lastFlush: make(map[string]time.Time),
 		maxBuffer: maxBuffer,
-		jobCh:     make(chan oiBatch, jobCapacity),
 	}, nil
 }
 
-// Start launches the ingestion, flush and upload workers.
-func (w *OIWriter) Start(ctx context.Context) error {
+// Start launches the ingest and flush loops.
+func (w *FOIWriter) Start(ctx context.Context) error {
 	w.mu.Lock()
 	if w.running {
 		w.mu.Unlock()
-		return fmt.Errorf("oi writer already running")
+		return fmt.Errorf("foi writer already running")
 	}
 	w.running = true
 	w.ctx, w.cancel = context.WithCancel(ctx)
-	w.buffer = make(map[string][]models.RawOIMessage)
-	w.flushTicker = time.NewTicker(w.cfg.Writer.Buffer.SnapshotFlushInterval)
+	interval := w.cfg.Writer.Buffer.SnapshotFlushInterval
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	w.flushTick = time.NewTicker(interval)
+	w.buffer = make(map[string][]models.NormFOIMessage)
+	w.lastFlush = make(map[string]time.Time)
 	w.mu.Unlock()
 
-	w.log.WithComponent("oi_writer").WithFields(logger.Fields{
-		"flush_interval": w.cfg.Writer.Buffer.SnapshotFlushInterval,
+	w.log.WithComponent("foi_writer").WithFields(logger.Fields{
+		"flush_interval": interval,
 		"max_buffer":     w.maxBuffer,
-	}).Info("starting open-interest writer")
+	}).Info("starting FOI writer")
 
 	w.wg.Add(1)
 	go w.ingest()
 
 	w.wg.Add(1)
 	go w.flushLoop()
-
-	workers := w.cfg.Writer.MaxWorkers
-	if workers <= 0 {
-		workers = 2
-	}
-	for i := 0; i < workers; i++ {
-		w.wg.Add(1)
-		go w.uploadWorker(i)
-	}
-
 	return nil
 }
 
-// Stop flushes pending buffers and waits for all workers to finish.
-func (w *OIWriter) Stop() {
+// Stop halts workers and flushes remaining buffers.
+func (w *FOIWriter) Stop() {
 	w.mu.Lock()
 	if !w.running {
 		w.mu.Unlock()
@@ -195,7 +162,7 @@ func (w *OIWriter) Stop() {
 	}
 	w.running = false
 	cancel := w.cancel
-	ticker := w.flushTicker
+	ticker := w.flushTick
 	w.mu.Unlock()
 
 	if cancel != nil {
@@ -205,209 +172,193 @@ func (w *OIWriter) Stop() {
 		ticker.Stop()
 	}
 
-	w.flushBuffers("shutdown")
-	close(w.jobCh)
+	w.flushAll("shutdown")
 	w.wg.Wait()
-	w.log.WithComponent("oi_writer").Info("open-interest writer stopped")
+	w.log.WithComponent("foi_writer").Info("foi writer stopped")
 }
 
-func (w *OIWriter) ingest() {
+func (w *FOIWriter) ingest() {
 	defer w.wg.Done()
 	for {
 		select {
 		case <-w.ctx.Done():
 			return
-		case msg, ok := <-w.rawChan:
+		case batch, ok := <-w.normChan:
 			if !ok {
-				w.flushBuffers("channel_closed")
+				w.flushAll("norm_channel_closed")
 				return
 			}
-			if msg.Market == "" {
-				msg.Market = "oi"
-			}
-			if msg.Timestamp.IsZero() {
-				msg.Timestamp = time.Now().UTC()
-			}
-			w.addMessage(msg)
+			w.addBatch(batch)
 		}
 	}
 }
 
-func (w *OIWriter) flushLoop() {
+func (w *FOIWriter) addBatch(batch models.BatchFOIMessage) {
+	key := bufferKey(batch.Exchange, batch.Market, batch.Symbol)
+	w.mu.Lock()
+	w.buffer[key] = append(w.buffer[key], batch.Entries...)
+	if _, ok := w.lastFlush[key]; !ok {
+		w.lastFlush[key] = time.Now()
+	}
+	shouldFlush := len(w.buffer[key]) >= w.maxBuffer
+	w.mu.Unlock()
+
+	if shouldFlush {
+		w.flushKey(key)
+	}
+}
+
+func (w *FOIWriter) flushLoop() {
 	defer w.wg.Done()
 	for {
 		select {
 		case <-w.ctx.Done():
 			return
-		case <-w.flushTicker.C:
-			w.flushBuffers("interval")
+		case <-w.flushTick.C:
+			w.flushTimedOut()
 		}
 	}
 }
 
-func (w *OIWriter) uploadWorker(id int) {
-	defer w.wg.Done()
-	for batch := range w.jobCh {
-		w.processBatch(batch)
-	}
-}
-
-func (w *OIWriter) addMessage(msg models.RawOIMessage) {
-	key := w.bufferKey(msg.Exchange, msg.Market, msg.Symbol)
-
-	var flushEntries []models.RawOIMessage
+func (w *FOIWriter) flushTimedOut() {
 	w.mu.Lock()
-	w.buffer[key] = append(w.buffer[key], msg)
-	if len(w.buffer[key]) >= w.maxBuffer {
-		flushEntries = w.buffer[key]
-		delete(w.buffer, key)
-	}
-	w.mu.Unlock()
-
-	if len(flushEntries) > 0 {
-		w.enqueueBatch(key, flushEntries, "max_buffer")
-	}
-}
-
-func (w *OIWriter) flushBuffers(reason string) {
-	w.mu.Lock()
-	buffers := w.buffer
-	w.buffer = make(map[string][]models.RawOIMessage)
-	w.mu.Unlock()
-
-	for key, entries := range buffers {
-		if len(entries) == 0 {
-			continue
+	now := time.Now()
+	keys := make([]string, 0, len(w.lastFlush))
+	for key, ts := range w.lastFlush {
+		if now.Sub(ts) >= w.cfg.Writer.Buffer.SnapshotFlushInterval && len(w.buffer[key]) > 0 {
+			keys = append(keys, key)
 		}
-		w.enqueueBatch(key, entries, reason)
+	}
+	w.mu.Unlock()
+	for _, key := range keys {
+		w.flushKey(key)
 	}
 }
 
-func (w *OIWriter) enqueueBatch(key string, entries []models.RawOIMessage, reason string) {
-	batch := w.makeBatch(key, entries, reason)
-	select {
-	case w.jobCh <- batch:
-	case <-w.ctx.Done():
+func (w *FOIWriter) flushAll(reason string) {
+	w.mu.Lock()
+	keys := make([]string, 0, len(w.buffer))
+	for key := range w.buffer {
+		if len(w.buffer[key]) > 0 {
+			keys = append(keys, key)
+		}
+	}
+	w.mu.Unlock()
+
+	if len(keys) == 0 {
+		return
+	}
+
+	w.log.WithComponent("foi_writer").WithFields(logger.Fields{
+		"flushed_buffers": len(keys),
+		"reason":          reason,
+	}).Info("flushing foi buffers")
+
+	for _, key := range keys {
+		w.flushKey(key)
 	}
 }
 
-func (w *OIWriter) makeBatch(key string, entries []models.RawOIMessage, reason string) oiBatch {
+func (w *FOIWriter) flushKey(key string) {
+	w.mu.Lock()
+	entries := w.buffer[key]
+	if len(entries) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	delete(w.buffer, key)
+	delete(w.lastFlush, key)
+	w.mu.Unlock()
+
 	parts := strings.SplitN(key, "|", 3)
-	exchange, market, symbol := parts[0], "", ""
+	exchange := parts[0]
+	market := ""
+	symbol := ""
 	if len(parts) > 1 {
 		market = parts[1]
 	}
 	if len(parts) > 2 {
 		symbol = parts[2]
 	}
-	if market == "" {
-		market = "oi"
-	}
-	ts := time.Now().UTC()
-	if len(entries) > 0 && !entries[len(entries)-1].Timestamp.IsZero() {
-		ts = entries[len(entries)-1].Timestamp
-	}
-	return oiBatch{
+
+	batch := models.BatchFOIMessage{
+		BatchID:     uuid.New().String(),
 		Exchange:    exchange,
 		Market:      market,
 		Symbol:      symbol,
 		Entries:     entries,
-		Timestamp:   ts,
-		Reason:      reason,
 		RecordCount: len(entries),
+		Timestamp:   time.Now().UTC(),
+		ProcessedAt: time.Now(),
 	}
+	w.writeBatch(batch)
 }
 
-func (w *OIWriter) bufferKey(exchange, market, symbol string) string {
-	return strings.Join([]string{strings.ToLower(exchange), strings.ToLower(market), strings.ToUpper(symbol)}, "|")
-}
-
-func (w *OIWriter) processBatch(batch oiBatch) {
-	entryLog := w.log.WithComponent("oi_writer").WithFields(logger.Fields{
-		"exchange":     batch.Exchange,
-		"symbol":       batch.Symbol,
-		"record_count": batch.RecordCount,
-		"reason":       batch.Reason,
-	})
-
-	if batch.RecordCount == 0 {
-		entryLog.Debug("open-interest batch empty, skipping")
-		return
-	}
-
-	key := w.generateS3Key(batch)
+func (w *FOIWriter) writeBatch(batch models.BatchFOIMessage) {
 	data, size, err := w.createParquet(batch)
 	if err != nil {
-		entryLog.WithError(err).Error("failed to create open-interest parquet")
+		w.log.WithComponent("foi_writer").WithError(err).Error("failed to create FOI parquet")
+		return
+	}
+	key := w.s3Key(batch)
+	if err := w.upload(key, data); err != nil {
+		w.log.WithComponent("foi_writer").WithError(err).WithFields(logger.Fields{
+			"s3_key": key,
+		}).Error("failed to upload FOI batch")
 		return
 	}
 
-	if err := w.uploadToS3(key, data); err != nil {
-		entryLog.WithError(err).WithFields(logger.Fields{"key": key}).Error("failed to upload open-interest parquet")
-		return
-	}
-
-	df := metadata.DataFile{
-		Path:        fmt.Sprintf("s3://%s/%s", w.cfg.Storage.S3.Bucket, key),
-		FileSize:    size,
-		RecordCount: int64(batch.RecordCount),
-		Partition: map[string]any{
-			"exchange": batch.Exchange,
-			"market":   batch.Market,
-			"symbol":   batch.Symbol,
-			"date":     batch.Timestamp.UTC().Format("2006-01-02"),
-		},
-		Timestamp: batch.Timestamp,
-	}
 	if w.metaGen != nil {
+		df := metadata.DataFile{
+			Path:        fmt.Sprintf("s3://%s/%s", w.cfg.Storage.S3.Bucket, key),
+			FileSize:    size,
+			RecordCount: int64(len(batch.Entries)),
+			Partition: map[string]any{
+				"exchange": batch.Exchange,
+				"market":   batch.Market,
+				"symbol":   batch.Symbol,
+				"date":     batch.Timestamp.UTC().Format("2006-01-02"),
+			},
+			Timestamp: batch.Timestamp,
+		}
 		if err := w.metaGen.AddFile(df); err != nil {
-			entryLog.WithError(err).Warn("failed to update open-interest metadata")
+			w.log.WithComponent("foi_writer").WithError(err).Warn("failed to update FOI metadata")
 		}
 	}
 
-	entryLog.WithFields(logger.Fields{
-		"s3_key":    key,
-		"file_size": size,
-	}).Info("open-interest batch uploaded")
+	w.log.WithComponent("foi_writer").WithFields(logger.Fields{
+		"s3_key":  key,
+		"records": batch.RecordCount,
+		"bytes":   size,
+	}).Info("FOI batch uploaded")
 }
 
-func (w *OIWriter) createParquet(batch oiBatch) ([]byte, int64, error) {
-	records := make([]oiParquetRecord, 0, len(batch.Entries))
-	for _, entry := range batch.Entries {
-		ts := entry.Timestamp
-		if ts.IsZero() {
-			ts = batch.Timestamp
-		}
-		records = append(records, oiParquetRecord{
-			Exchange:  entry.Exchange,
-			Market:    entry.Market,
-			Symbol:    entry.Symbol,
-			Timestamp: ts.UnixMilli(),
-			Value:     entry.Value,
-			ValueUSD:  entry.ValueUSD,
-			Currency:  entry.Currency,
-			Source:    entry.Source,
-			Interval:  entry.Interval,
-		})
-	}
-
-	mem := newOIMemFile()
-	pw, err := writer.NewParquetWriter(mem, new(oiParquetRecord), 1)
+func (w *FOIWriter) createParquet(batch models.BatchFOIMessage) ([]byte, int64, error) {
+	mem := newFoiMemFile()
+	pw, err := writer.NewParquetWriter(mem, new(foiParquetRecord), 1)
 	if err != nil {
 		return nil, 0, fmt.Errorf("new parquet writer: %w", err)
 	}
 
 	switch strings.ToLower(w.cfg.Writer.Formats.Parquet.Compression) {
-	case "snappy":
-		pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	case "gzip":
 		pw.CompressionType = parquet.CompressionCodec_GZIP
+	case "snappy", "":
+		pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	default:
 		pw.CompressionType = parquet.CompressionCodec_UNCOMPRESSED
 	}
 
-	for _, rec := range records {
-		if err := pw.Write(rec); err != nil {
+	for _, entry := range batch.Entries {
+		record := foiParquetRecord{
+			Exchange:     strings.ToLower(batch.Exchange),
+			Market:       batch.Market,
+			Symbol:       batch.Symbol,
+			EventTime:    entry.EventTime,
+			OpenInterest: entry.OpenInterest,
+			ReceivedTime: entry.ReceivedTime,
+		}
+		if err := pw.Write(record); err != nil {
 			pw.WriteStop()
 			return nil, 0, fmt.Errorf("write parquet record: %w", err)
 		}
@@ -421,45 +372,65 @@ func (w *OIWriter) createParquet(batch oiBatch) ([]byte, int64, error) {
 	return data, int64(len(data)), nil
 }
 
-func (w *OIWriter) generateS3Key(batch oiBatch) string {
-	market := batch.Market
-	if market == "" {
-		market = "oi"
-	}
-	datePart := batch.Timestamp.UTC().Format("2006-01-02")
-	filename := fmt.Sprintf("%s_%s_%s_oi.parquet",
-		strings.ToLower(batch.Exchange),
-		strings.ToUpper(batch.Symbol),
-		time.Now().UTC().Format("20060102150405")+uuid.NewString(),
-	)
-	key := filepath.Join(
-		fmt.Sprintf("exchange=%s", strings.ToLower(batch.Exchange)),
-		fmt.Sprintf("market=%s", market),
-		fmt.Sprintf("symbol=%s", strings.ToUpper(batch.Symbol)),
-		fmt.Sprintf("date=%s", datePart),
-		filename,
-	)
-	return filepath.ToSlash(key)
-}
-
-func (w *OIWriter) uploadToS3(key string, data []byte) error {
+func (w *FOIWriter) upload(key string, data []byte) error {
 	input := &s3.PutObjectInput{
-		Bucket:      aws.String(w.cfg.Storage.S3.Bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String("application/octet-stream"),
+		Bucket: aws.String(w.cfg.Storage.S3.Bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(data),
 		Metadata: map[string]string{
 			"content-type":       "parquet",
 			"compression":        w.cfg.Writer.Formats.Parquet.Compression,
 			"cryptoflow-version": w.cfg.Cryptoflow.Version,
 		},
 	}
-
 	ctx, cancel := context.WithTimeout(w.ctx, 2*time.Minute)
 	defer cancel()
 	_, err := w.s3Client.PutObject(ctx, input)
-	if err != nil {
-		return fmt.Errorf("upload open-interest parquet: %w", err)
+	return err
+}
+
+func (w *FOIWriter) s3Key(batch models.BatchFOIMessage) string {
+	timestamp := batch.Timestamp.UTC()
+	var parts []string
+	for _, key := range w.cfg.Writer.Partitioning.AdditionalKeys {
+		switch key {
+		case "exchange":
+			if batch.Exchange != "" {
+				parts = append(parts, fmt.Sprintf("exchange=%s", strings.ToLower(batch.Exchange)))
+			}
+		case "market":
+			if batch.Market != "" {
+				parts = append(parts, fmt.Sprintf("market=%s", batch.Market))
+			}
+		case "symbol":
+			if batch.Symbol != "" {
+				parts = append(parts, fmt.Sprintf("symbol=%s", strings.ToUpper(batch.Symbol)))
+			}
+		}
 	}
-	return nil
+
+	timeFormat := w.cfg.Writer.Partitioning.TimeFormat
+	if timeFormat == "" {
+		timeFormat = "date={year}-{month}-{day}"
+	}
+	timePath := strings.ReplaceAll(timeFormat, "{year}", fmt.Sprintf("%04d", timestamp.Year()))
+	timePath = strings.ReplaceAll(timePath, "{month}", fmt.Sprintf("%02d", timestamp.Month()))
+	timePath = strings.ReplaceAll(timePath, "{day}", fmt.Sprintf("%02d", timestamp.Day()))
+	timePath = strings.ReplaceAll(timePath, "{hour}", fmt.Sprintf("%02d", timestamp.Hour()))
+
+	parts = append(parts, timePath)
+	filename := fmt.Sprintf("%s_foi_%s_%s.parquet",
+		strings.ToLower(batch.Exchange),
+		strings.ToUpper(batch.Symbol),
+		timestamp.Format("20060102150405")+uuid.NewString(),
+	)
+	return filepath.ToSlash(filepath.Join(append(parts, filename)...))
+}
+
+func bufferKey(exchange, market, symbol string) string {
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(exchange)),
+		strings.ToLower(strings.TrimSpace(market)),
+		strings.ToUpper(strings.TrimSpace(symbol)),
+	}, "|")
 }

@@ -46,18 +46,23 @@ func (m *liquidationMemFile) Bytes() []byte                             { return
 
 // liquidationRecord defines the schema for liquidation payloads stored in parquet.
 type liquidationRecord struct {
-	Exchange  string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Market    string `parquet:"name=market, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Symbol    string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
-	Timestamp int64  `parquet:"name=timestamp, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
-	Payload   string `parquet:"name=payload, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Exchange    string  `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Market      string  `parquet:"name=market, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol      string  `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	EventTime   int64   `parquet:"name=event_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Side        string  `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8"`
+	OrderType   string  `parquet:"name=order_type, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Price       float64 `parquet:"name=price, type=DOUBLE"`
+	Quantity    float64 `parquet:"name=quantity, type=DOUBLE"`
+	ReceivedTime int64  `parquet:"name=received_time, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Payload     string  `parquet:"name=payload, type=BYTE_ARRAY, convertedtype=UTF8"`
 }
 
 type liquidationBatch struct {
 	Exchange    string
 	Market      string
 	Symbol      string
-	Entries     []models.RawLiquidationMessage
+	Entries     []models.NormLiquidationMessage
 	Timestamp   time.Time
 	RecordCount int
 }
@@ -66,7 +71,7 @@ type liquidationBatch struct {
 // using snappy-compressed parquet files.
 type LiquidationWriter struct {
 	cfg            *appconfig.Config
-	rawChan        <-chan models.RawLiquidationMessage
+	normChan       <-chan models.BatchLiquidationMessage
 	s3Client       *s3.Client
 	log            *logger.Log
 	bucket         string
@@ -75,7 +80,7 @@ type LiquidationWriter struct {
 	wg             *sync.WaitGroup
 	running        bool
 	mu             sync.Mutex
-	buffer         map[string][]models.RawLiquidationMessage
+	buffer         map[string][]models.NormLiquidationMessage
 	lastFlush      map[string]time.Time
 	flushIntervals map[string]time.Duration
 	flushTicker    *time.Ticker
@@ -84,7 +89,7 @@ type LiquidationWriter struct {
 
 // NewLiquidationWriter initializes the writer using S3 credentials from config and
 // prepares buffering structures.
-func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquidationMessage) (*LiquidationWriter, error) {
+func NewLiquidationWriter(cfg *appconfig.Config, normChan <-chan models.BatchLiquidationMessage) (*LiquidationWriter, error) {
 	log := logger.GetLogger()
 	if !cfg.Storage.S3.Enabled {
 		return nil, fmt.Errorf("s3 storage is disabled")
@@ -121,12 +126,12 @@ func NewLiquidationWriter(cfg *appconfig.Config, rawChan <-chan models.RawLiquid
 
 	writer := &LiquidationWriter{
 		cfg:            cfg,
-		rawChan:        rawChan,
+		normChan:       normChan,
 		s3Client:       s3Client,
 		log:            log,
 		bucket:         bucket,
 		wg:             &sync.WaitGroup{},
-		buffer:         make(map[string][]models.RawLiquidationMessage),
+		buffer:         make(map[string][]models.NormLiquidationMessage),
 		lastFlush:      make(map[string]time.Time),
 		flushIntervals: buildLiquidationIntervals(cfg),
 	}
@@ -164,7 +169,7 @@ func (w *LiquidationWriter) Start(ctx context.Context) error {
 	}
 	w.running = true
 	w.ctx, w.cancel = context.WithCancel(ctx)
-	w.buffer = make(map[string][]models.RawLiquidationMessage)
+	w.buffer = make(map[string][]models.NormLiquidationMessage)
 	w.lastFlush = make(map[string]time.Time)
 	tickerInterval := w.determineTickerInterval()
 	w.flushTicker = time.NewTicker(tickerInterval)
@@ -216,11 +221,11 @@ func (w *LiquidationWriter) worker() {
 		select {
 		case <-w.ctx.Done():
 			return
-		case msg, ok := <-w.rawChan:
+		case batch, ok := <-w.normChan:
 			if !ok {
 				return
 			}
-			w.addMessage(msg)
+			w.addBatch(batch)
 		}
 	}
 }
@@ -238,15 +243,13 @@ func (w *LiquidationWriter) flushWorker() {
 	}
 }
 
-func (w *LiquidationWriter) addMessage(msg models.RawLiquidationMessage) {
-	if msg.Exchange == "" || msg.Symbol == "" {
+func (w *LiquidationWriter) addBatch(batch models.BatchLiquidationMessage) {
+	if batch.Exchange == "" || batch.Symbol == "" {
 		return
 	}
-
-	key := w.bufferKey(msg.Exchange, msg.Market, msg.Symbol)
-
+	key := w.bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
-	w.buffer[key] = append(w.buffer[key], msg)
+	w.buffer[key] = append(w.buffer[key], batch.Entries...)
 	if _, ok := w.lastFlush[key]; !ok {
 		w.lastFlush[key] = time.Now()
 	}
@@ -327,11 +330,11 @@ func (w *LiquidationWriter) flushKey(key string) {
 
 	var batchTimestamp time.Time
 	for _, entry := range entries {
-		if entry.Timestamp.IsZero() {
-			continue
-		}
-		if entry.Timestamp.After(batchTimestamp) {
-			batchTimestamp = entry.Timestamp
+		if entry.EventTime > 0 {
+			ts := time.UnixMilli(entry.EventTime)
+			if ts.After(batchTimestamp) {
+				batchTimestamp = ts
+			}
 		}
 	}
 	if batchTimestamp.IsZero() {
@@ -381,16 +384,21 @@ func (w *LiquidationWriter) createParquet(batch liquidationBatch) ([]byte, int64
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 
 	for _, entry := range batch.Entries {
-		ts := entry.Timestamp
-		if ts.IsZero() {
-			ts = batch.Timestamp
+		eventTime := entry.EventTime
+		if eventTime == 0 {
+			eventTime = batch.Timestamp.UTC().UnixMilli()
 		}
 		rec := liquidationRecord{
-			Exchange:  strings.ToLower(batch.Exchange),
-			Market:    batch.Market,
-			Symbol:    strings.ToUpper(batch.Symbol),
-			Timestamp: ts.UTC().UnixMilli(),
-			Payload:   string(entry.Data),
+			Exchange:    strings.ToLower(batch.Exchange),
+			Market:      batch.Market,
+			Symbol:      strings.ToUpper(batch.Symbol),
+			EventTime:   eventTime,
+			Side:        entry.Side,
+			OrderType:   entry.OrderType,
+			Price:       entry.Price,
+			Quantity:    entry.Quantity,
+			ReceivedTime: entry.ReceivedTime,
+			Payload:     string(entry.RawPayload),
 		}
 		if err := pw.Write(rec); err != nil {
 			return nil, 0, err

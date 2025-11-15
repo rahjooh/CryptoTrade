@@ -11,7 +11,7 @@ import (
 	"time"
 
 	appconfig "cryptoflow/config"
-	oichannel "cryptoflow/internal/channel/oi"
+	oichannel "cryptoflow/internal/channel/foi"
 	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
@@ -19,8 +19,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Okx_OI_Reader consumes open-interest updates from the OKX websocket.
-type Okx_OI_Reader struct {
+// Okx_FOI_Reader consumes open-interest updates from the OKX websocket.
+type Okx_FOI_Reader struct {
 	config   *appconfig.Config
 	channels *oichannel.Channels
 	ctx      context.Context
@@ -33,9 +33,9 @@ type Okx_OI_Reader struct {
 	instType string
 }
 
-// Okx_OI_NewReader creates the reader with the provided symbol set.
-func Okx_OI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols []string, localIP string) *Okx_OI_Reader {
-	return &Okx_OI_Reader{
+// Okx_FOI_NewReader creates the reader with the provided symbol set.
+func Okx_FOI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols []string, localIP string) *Okx_FOI_Reader {
+	return &Okx_FOI_Reader{
 		config:   cfg,
 		channels: ch,
 		wg:       &sync.WaitGroup{},
@@ -45,8 +45,8 @@ func Okx_OI_NewReader(cfg *appconfig.Config, ch *oichannel.Channels, symbols []s
 	}
 }
 
-// Okx_OI_Start connects to the websocket and subscribes to open-interest channels.
-func (r *Okx_OI_Reader) Okx_OI_Start(ctx context.Context) error {
+// Okx_FOI_Start connects to the websocket and subscribes to open-interest channels.
+func (r *Okx_FOI_Reader) Okx_FOI_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -75,15 +75,15 @@ func (r *Okx_OI_Reader) Okx_OI_Start(ctx context.Context) error {
 	r.wg.Add(1)
 	go r.stream(cfg)
 
-	r.log.WithComponent("okx_oi_reader").WithFields(logger.Fields{
+	r.log.WithComponent("okx_foi_reader").WithFields(logger.Fields{
 		"symbols":  r.symbols,
 		"instType": r.instType,
 	}).Info("okx open-interest reader started")
 	return nil
 }
 
-// Okx_OI_Stop waits for stream goroutine to exit.
-func (r *Okx_OI_Reader) Okx_OI_Stop() {
+// Okx_FOI_Stop waits for stream goroutine to exit.
+func (r *Okx_FOI_Reader) Okx_FOI_Stop() {
 	r.mu.Lock()
 	if !r.running {
 		r.mu.Unlock()
@@ -92,12 +92,12 @@ func (r *Okx_OI_Reader) Okx_OI_Stop() {
 	r.running = false
 	r.mu.Unlock()
 
-	r.log.WithComponent("okx_oi_reader").Info("stopping okx open-interest reader")
+	r.log.WithComponent("okx_foi_reader").Info("stopping okx open-interest reader")
 	r.wg.Wait()
-	r.log.WithComponent("okx_oi_reader").Info("okx open-interest reader stopped")
+	r.log.WithComponent("okx_foi_reader").Info("okx open-interest reader stopped")
 }
 
-func (r *Okx_OI_Reader) stream(cfg appconfig.OpenInterestConfig) {
+func (r *Okx_FOI_Reader) stream(cfg appconfig.OpenInterestConfig) {
 	defer r.wg.Done()
 
 	wsURL := cfg.URL
@@ -117,7 +117,7 @@ func (r *Okx_OI_Reader) stream(cfg appconfig.OpenInterestConfig) {
 		}
 	}
 
-	log := r.log.WithComponent("okx_oi_reader")
+	log := r.log.WithComponent("okx_foi_reader")
 
 	for {
 		if r.ctx.Err() != nil {
@@ -185,10 +185,10 @@ type okxOpenInterestPayload struct {
 	Event string `json:"event"`
 }
 
-func (r *Okx_OI_Reader) processMessage(raw []byte) bool {
+func (r *Okx_FOI_Reader) processMessage(raw []byte) bool {
 	var payload okxOpenInterestPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		r.log.WithComponent("okx_oi_reader").WithError(err).Debug("failed to decode okx open-interest payload")
+		r.log.WithComponent("okx_foi_reader").WithError(err).Debug("failed to decode okx open-interest payload")
 		return false
 	}
 
@@ -200,36 +200,25 @@ func (r *Okx_OI_Reader) processMessage(raw []byte) bool {
 	}
 
 	for _, entry := range payload.Data {
-		value, _ := strconv.ParseFloat(entry.OI, 64)
-		valueCcy, _ := strconv.ParseFloat(entry.OICcy, 64)
 		ts := time.Now().UTC()
 		if entry.Ts != "" {
 			if parsed, err := strconv.ParseInt(entry.Ts, 10, 64); err == nil {
 				ts = time.UnixMilli(parsed).UTC()
 			}
 		}
-		currency := payload.Arg.InstType
-		if currency == "" {
-			currency = "USD"
-		}
-
-		msg := models.RawOIMessage{
+		msg := models.RawFOIMessage{
 			Exchange:  "okx",
 			Symbol:    strings.ToUpper(entry.InstID),
-			Market:    "oi",
-			Value:     value,
-			ValueUSD:  valueCcy,
-			Currency:  currency,
-			Source:    "okx_ws",
+			Market:    "future-openinterest",
+			Data:      append([]byte(nil), raw...),
 			Timestamp: ts,
-			Payload:   append([]byte(nil), raw...),
 		}
 
 		if !r.channels.SendRaw(r.ctx, msg) {
 			if r.ctx.Err() != nil {
 				return false
 			}
-			metrics.EmitDropMetric(r.log, metrics.DropMetricOpenInterestRaw, "okx", "oi", msg.Symbol, "raw")
+			metrics.EmitDropMetric(r.log, metrics.DropMetricOpenInterestRaw, "okx", "future-openinterest", msg.Symbol, "raw")
 		}
 	}
 	return true
