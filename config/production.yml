@@ -322,6 +322,9 @@ writer:
     max_size: 10
     snapshot_flush_interval: "3m"
     delta_flush_interval: "3m"
+    oi_flush_interval: "1m"
+    pi_flush_interval: "1m"
+    liq_flush_interval: "1m"
     memory_threshold: 0.8
   partitioning:
     scheme: "time"

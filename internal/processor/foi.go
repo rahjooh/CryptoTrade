@@ -246,9 +246,13 @@ func (p *FOIProcessor) handleOkx(raw models.RawFOIMessage, log *logger.Entry) {
 		log.WithError(err).Warn("failed to unmarshal okx FOI message")
 		return
 	}
+	if evt.OI == "" {
+		log.WithField("symbol", evt.InstID).Warn("okx open interest payload missing value")
+		return
+	}
 	oi, err := strconv.ParseFloat(evt.OI, 64)
 	if err != nil {
-		log.WithError(err).Warn("invalid okx oi value")
+		log.WithError(err).WithField("symbol", evt.InstID).Warn("invalid okx oi value")
 		return
 	}
 	ts, err := strconv.ParseInt(evt.Ts, 10, 64)

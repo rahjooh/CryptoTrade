@@ -9,7 +9,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const defaultReconnectDelay = 5 * time.Second
+const (
+	defaultReconnectDelay = 5 * time.Second
+	defaultKeepAlive      = 20 * time.Second
+)
 
 type bybitSubscriptionAck struct {
 	Op      string `json:"op"`
@@ -53,8 +56,14 @@ func runBybitWebSocket(ctx context.Context, url string, topics []string, reconne
 			}
 		}
 
+		pingCancel := startPingLoop(ctx, conn, defaultKeepAlive, log)
+
 		if err := readMessages(ctx, conn, handler); err != nil && ctx.Err() == nil {
 			log.WithError(err).WithField("url", url).Warn("bybit websocket read loop ended")
+		}
+
+		if pingCancel != nil {
+			pingCancel()
 		}
 
 		if onConn != nil {
@@ -113,4 +122,29 @@ func waitForReconnect(ctx context.Context, delay time.Duration) bool {
 	case <-timer.C:
 		return false
 	}
+}
+
+func startPingLoop(ctx context.Context, conn *websocket.Conn, interval time.Duration, log *logger.Entry) context.CancelFunc {
+	if interval <= 0 {
+		interval = defaultKeepAlive
+	}
+	pingCtx, cancel := context.WithCancel(ctx)
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pingCtx.Done():
+				return
+			case <-ticker.C:
+				conn.SetWriteDeadline(time.Now().Add(time.Second))
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second)); err != nil {
+					log.WithError(err).Warn("failed to send websocket ping")
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return cancel
 }
