@@ -32,13 +32,11 @@ source:
           url: https://api.binance.com/api/v3/depth
           limit: 1000      # Max allowed for spot order book depth
           interval_ms: 10000
-          symbols: [ BTCUSDT, ETHUSDT ]
         delta:
           enabled: false
           connection: websocket
           url: wss://stream.binance.com:9443/ws
           interval_ms: 100
-          symbols: [ BTCUSDT, ETHUSDT ]
     future:
       orderbook:
         snapshots:
@@ -63,20 +61,17 @@ source:
         enabled: true
         connection: websocket
         url: wss://fstream.binance.com/ws
-        symbols: [ BTCUSDT, ETHUSDT ]
         flush_interval: "1m"
       open_interest:
         enabled: true
         connection: websocket
         url: wss://fstream.binance.com/ws
-        symbols: [ BTCUSDT, ETHUSDT ]
         stream_interval: 1s
         reconnect_delay: 5s
       premium_index:
         enabled: true
         connection: websocket
         url: wss://fstream.binance.com/ws
-        symbols: [ BTCUSDT, ETHUSDT ]
         stream_interval: 1s
         reconnect_delay: 5s
       funding_rate:
@@ -121,20 +116,17 @@ source:
         enabled: true
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
-        symbols: [ BTCUSDT, ETHUSDT ]
         flush_interval: "1m"
       open_interest:
         enabled: true
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
-        symbols: [ BTCUSDT, ETHUSDT ]
         category: linear
         reconnect_delay: 5s
       premium_index:
         enabled: true
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
-        symbols: [ BTCUSDT, ETHUSDT ]
         category: linear
         reconnect_delay: 5s
       funding_rate:
@@ -179,20 +171,17 @@ source:
         enabled: true
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
-        symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
         flush_interval: "1m"
       open_interest:
         enabled: true
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
-        symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
         inst_type: SWAP
         reconnect_delay: 5s
       premium_index:
         enabled: true
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
-        symbols: [ BTC-USDT-SWAP, ETH-USDT-SWAP ]
         inst_type: SWAP
         reconnect_delay: 5s
       funding_rate:
@@ -239,7 +228,6 @@ source:
         enabled: true
         connection: websocket
         url: wss://api-futures.kucoin.com/endpoint
-        symbols: [ XBTUSDTM, ETHUSDTM ]
         read_buffer_bytes: 4194304
         read_message_buffer: 4096
         write_message_buffer: 1024
@@ -248,13 +236,11 @@ source:
         enabled: true
         connection: websocket
         url: wss://api-futures.kucoin.com/endpoint
-        symbols: [ XBTUSDTM, ETHUSDTM ]
         reconnect_delay: 5s
       premium_index:
         enabled: true
         connection: rest
         url: https://api-futures.kucoin.com/api/v1/premium/query
-        symbols: [ XBTUSDTM, ETHUSDTM ]
         interval_minutes: 1
         reconnect_delay: 5s
 
