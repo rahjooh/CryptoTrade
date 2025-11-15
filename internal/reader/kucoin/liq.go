@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -93,8 +94,24 @@ func (r *Kucoin_LIQ_Reader) Kucoin_LIQ_Start(ctx context.Context) error {
 		}
 	})
 
+	futuresEndpoint := cfg.URL
+	if parsedURL, err := url.Parse(cfg.URL); err == nil && parsedURL.Host != "" {
+		scheme := strings.ToLower(parsedURL.Scheme)
+		switch scheme {
+		case "wss", "https":
+			scheme = "https"
+		case "ws", "http":
+			scheme = "http"
+		default:
+			scheme = "https"
+		}
+		futuresEndpoint = fmt.Sprintf("%s://%s", scheme, parsedURL.Host)
+		if parsedURL.Path != "" {
+			futuresEndpoint = fmt.Sprintf("%s%s", futuresEndpoint, parsedURL.Path)
+		}
+	}
 	clientOption := types.NewClientOptionBuilder().
-		WithFuturesEndpoint(cfg.URL).
+		WithFuturesEndpoint(futuresEndpoint).
 		WithWebSocketClientOption(wsOptionBuilder.Build()).
 		Build()
 
