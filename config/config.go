@@ -321,6 +321,7 @@ type BybitLiquidationConfig struct {
 	URL           string        `yaml:"url"`
 	Symbols       []string      `yaml:"symbols"`
 	FlushInterval time.Duration `yaml:"flush_interval"`
+	ReconnectDelay time.Duration `yaml:"reconnect_delay"`
 }
 
 type KucoinLiquidationConfig struct {

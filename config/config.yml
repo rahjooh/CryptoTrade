@@ -123,6 +123,7 @@ source:
         url: wss://stream.bybit.com/v5/public/linear
         symbols: [ BTCUSDT, ETHUSDT ]
         flush_interval: "1m"
+        reconnect_delay: 5s
       open_interest:
         enabled: false
         connection: websocket

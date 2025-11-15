@@ -15,7 +15,7 @@ import (
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
-	bybit_connector "github.com/bybit-exchange/bybit.go.api"
+	"github.com/gorilla/websocket"
 )
 
 // Bybit_LIQ_Reader consumes liquidation updates from Bybit public websocket.
@@ -29,7 +29,9 @@ type Bybit_LIQ_Reader struct {
 	log       *logger.Log
 	symbols   []string
 	symbolSet map[string]struct{}
-	ws        *bybit_connector.WebSocket
+	wsConn    *websocket.Conn
+	connMu    sync.Mutex
+	wg        sync.WaitGroup
 }
 
 func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string) *Bybit_LIQ_Reader {
@@ -88,26 +90,17 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		wsURL = "wss://stream.bybit.com/v5/public/linear"
 	}
 
-	handler := func(message string) error {
-		return r.handleMessage(message)
+	reconnectDelay := cfg.ReconnectDelay
+	if reconnectDelay <= 0 {
+		reconnectDelay = 5 * time.Second
 	}
 
-	ws := bybit_connector.NewBybitPublicWebSocket(wsURL, handler)
-	if ws == nil {
-		log.Error("failed to create bybit websocket client")
-		return fmt.Errorf("failed to create bybit websocket client")
-	}
-	if ws.Connect() == nil {
-		log.Error("failed to connect to bybit websocket")
-		return fmt.Errorf("failed to connect to bybit websocket")
-	}
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		runBybitWebSocket(r.ctx, wsURL, topics, reconnectDelay, log, r.handleMessage, r.trackConn)
+	}()
 
-	if _, err := ws.SendSubscription(topics); err != nil {
-		log.WithError(err).Error("failed to subscribe to bybit liquidation topics")
-		return fmt.Errorf("failed to subscribe to bybit liquidation topics: %w", err)
-	}
-
-	r.ws = ws
 	log.WithFields(logger.Fields{"topics": topics, "endpoint": wsURL}).Info("bybit liquidation reader started")
 	go r.monitorContext()
 	return nil
@@ -121,16 +114,14 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Stop() {
 	}
 	r.running = false
 	cancel := r.cancel
-	ws := r.ws
 	r.mu.Unlock()
 
 	r.log.WithComponent("bybit_liq_reader").Info("stopping bybit liquidation reader")
 	if cancel != nil {
 		cancel()
 	}
-	if ws != nil {
-		ws.Disconnect()
-	}
+	r.closeActiveConn()
+	r.wg.Wait()
 	r.log.WithComponent("bybit_liq_reader").Info("bybit liquidation reader stopped")
 }
 
@@ -239,4 +230,20 @@ func (r *Bybit_LIQ_Reader) handleMessage(msg string) error {
 	}
 
 	return nil
+}
+
+func (r *Bybit_LIQ_Reader) trackConn(conn *websocket.Conn) {
+	r.connMu.Lock()
+	r.wsConn = conn
+	r.connMu.Unlock()
+}
+
+func (r *Bybit_LIQ_Reader) closeActiveConn() {
+	r.connMu.Lock()
+	conn := r.wsConn
+	r.wsConn = nil
+	r.connMu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
 }

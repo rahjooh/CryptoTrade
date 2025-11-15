@@ -15,7 +15,7 @@ import (
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
 
-	bybit_connector "github.com/bybit-exchange/bybit.go.api"
+	"github.com/gorilla/websocket"
 )
 
 // Bybit_PI_Reader streams premium index information from Bybit tickers websocket.
@@ -30,7 +30,9 @@ type Bybit_PI_Reader struct {
 	symbols   []string
 	category  string
 	symbolSet map[string]struct{}
-	ws        *bybit_connector.WebSocket
+	wsConn    *websocket.Conn
+	connMu    sync.Mutex
+	wg        sync.WaitGroup
 }
 
 // Bybit_PI_NewReader creates a new reader instance.
@@ -74,9 +76,16 @@ func (r *Bybit_PI_Reader) Bybit_PI_Start(ctx context.Context) error {
 	r.symbolSet = make(map[string]struct{}, len(r.symbols))
 	args := make([]string, 0, len(r.symbols))
 	for _, sym := range r.symbols {
-		symbol := strings.ToUpper(sym)
+		symbol := strings.ToUpper(strings.TrimSpace(sym))
+		if symbol == "" {
+			continue
+		}
 		r.symbolSet[symbol] = struct{}{}
 		args = append(args, fmt.Sprintf("tickers.%s.%s", r.category, symbol))
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("no valid symbols configured for bybit premium-index reader")
 	}
 
 	wsURL := cfg.URL
@@ -84,24 +93,17 @@ func (r *Bybit_PI_Reader) Bybit_PI_Start(ctx context.Context) error {
 		wsURL = "wss://stream.bybit.com/v5/public/linear"
 	}
 
-	handler := func(message string) error {
-		return r.handleMessage(message)
+	reconnectDelay := cfg.ReconnectDelay
+	if reconnectDelay <= 0 {
+		reconnectDelay = 5 * time.Second
 	}
 
-	ws := bybit_connector.NewBybitPublicWebSocket(wsURL, handler)
-	if ws == nil {
-		return fmt.Errorf("failed to create bybit websocket client")
-	}
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		runBybitWebSocket(r.ctx, wsURL, args, reconnectDelay, r.log.WithComponent("bybit_pi_reader"), r.handleMessage, r.trackConn)
+	}()
 
-	if ws.Connect() == nil {
-		return fmt.Errorf("failed to connect to bybit websocket")
-	}
-
-	if _, err := ws.SendSubscription(args); err != nil {
-		return fmt.Errorf("failed to subscribe to bybit tickers: %w", err)
-	}
-
-	r.ws = ws
 	go r.monitorContext()
 
 	r.log.WithComponent("bybit_pi_reader").WithFields(logger.Fields{
@@ -120,15 +122,13 @@ func (r *Bybit_PI_Reader) Bybit_PI_Stop() {
 	}
 	r.running = false
 	cancel := r.cancel
-	ws := r.ws
 	r.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
 	}
-	if ws != nil {
-		ws.Disconnect()
-	}
+	r.closeActiveConn()
+	r.wg.Wait()
 	r.log.WithComponent("bybit_pi_reader").Info("bybit premium-index reader stopped")
 }
 
@@ -136,20 +136,6 @@ func (r *Bybit_PI_Reader) monitorContext() {
 	<-r.ctx.Done()
 	r.Bybit_PI_Stop()
 }
-
-type bybitPITickerPayload struct {
-	Topic string `json:"topic"`
-	Type  string `json:"type"`
-	Ts    int64  `json:"ts"`
-	Data  []struct {
-		Symbol          string `json:"symbol"`
-		MarkPrice       string `json:"markPrice"`
-		IndexPrice      string `json:"indexPrice"`
-		FundingRate     string `json:"fundingRate"`
-		NextFundingTime string `json:"nextFundingTime"`
-	} `json:"data"`
-}
-
 func (r *Bybit_PI_Reader) handleMessage(raw string) error {
 	var ack struct {
 		Op      string `json:"op"`
@@ -166,7 +152,7 @@ func (r *Bybit_PI_Reader) handleMessage(raw string) error {
 		return nil
 	}
 
-	var payload bybitPITickerPayload
+	var payload bybitTickerPayload
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return nil
 	}
@@ -220,6 +206,22 @@ func (r *Bybit_PI_Reader) handleMessage(raw string) error {
 		}
 	}
 	return nil
+}
+
+func (r *Bybit_PI_Reader) trackConn(conn *websocket.Conn) {
+	r.connMu.Lock()
+	r.wsConn = conn
+	r.connMu.Unlock()
+}
+
+func (r *Bybit_PI_Reader) closeActiveConn() {
+	r.connMu.Lock()
+	conn := r.wsConn
+	r.wsConn = nil
+	r.connMu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
 }
 
 func parseNumber(value string) float64 {

@@ -117,6 +117,7 @@ source:
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
         flush_interval: "1m"
+        reconnect_delay: 5s
       open_interest:
         enabled: true
         connection: websocket
