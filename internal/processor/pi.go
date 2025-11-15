@@ -39,26 +39,24 @@ type PIProcessor struct {
 // NewPIProcessor creates a processor bound to the PI channels.
 func NewPIProcessor(cfg *appconfig.Config, ch *piChannel.Channels) *PIProcessor {
 	symSet := make(map[string]struct{})
-	if cfg.Source != nil {
-		if s := cfg.Source.Binance; s != nil && s.Future != nil && s.Future.PremiumIndex.Enabled {
-			for _, x := range s.Future.PremiumIndex.Symbols {
-				symSet[x] = struct{}{}
-			}
+	if cfg.Source.Binance.Future.PremiumIndex.Enabled {
+		for _, x := range cfg.Source.Binance.Future.PremiumIndex.Symbols {
+			symSet[x] = struct{}{}
 		}
-		if s := cfg.Source.Bybit; s != nil && s.Future != nil && s.Future.PremiumIndex.Enabled {
-			for _, x := range s.Future.PremiumIndex.Symbols {
-				symSet[symbols.ToBinance("bybit", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Bybit.Future.PremiumIndex.Enabled {
+		for _, x := range cfg.Source.Bybit.Future.PremiumIndex.Symbols {
+			symSet[symbols.ToBinance("bybit", x)] = struct{}{}
 		}
-		if s := cfg.Source.Kucoin; s != nil && s.Future != nil && s.Future.PremiumIndex.Enabled {
-			for _, x := range s.Future.PremiumIndex.Symbols {
-				symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Kucoin.Future.PremiumIndex.Enabled {
+		for _, x := range cfg.Source.Kucoin.Future.PremiumIndex.Symbols {
+			symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
 		}
-		if s := cfg.Source.Okx; s != nil && s.Future != nil && s.Future.PremiumIndex.Enabled {
-			for _, x := range s.Future.PremiumIndex.Symbols {
-				symSet[symbols.ToBinance("okx", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Okx.Future.PremiumIndex.Enabled {
+		for _, x := range cfg.Source.Okx.Future.PremiumIndex.Symbols {
+			symSet[symbols.ToBinance("okx", x)] = struct{}{}
 		}
 	}
 

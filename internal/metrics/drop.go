@@ -12,6 +12,8 @@ const (
 	DropMetricDeltaRaw DropMetric = "delta_messages_dropped"
 	// DropMetricDeltaNorm records dropped delta batches after normalisation.
 	DropMetricDeltaNorm DropMetric = "delta_norm_messages_dropped"
+	// DropMetricOther records dropped channel messages that do not fall into other categories.
+	DropMetricOther DropMetric = "other_messages_dropped"
 	// DropMetricLiquidationRaw records dropped liquidation stream messages.
 	DropMetricLiquidationRaw DropMetric = "liquidation_messages_dropped"
 	// DropMetricOpenInterestRaw records dropped open interest stream messages.

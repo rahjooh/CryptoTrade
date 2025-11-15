@@ -9,7 +9,7 @@ import (
 )
 
 func TestChannels_SendRaw(t *testing.T) {
-	ch := NewChannels(1)
+	ch := NewChannels(1, 1)
 	defer ch.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

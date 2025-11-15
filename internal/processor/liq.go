@@ -42,26 +42,24 @@ type LiquidationProcessor struct {
 // NewLiquidationProcessor builds the processor instance.
 func NewLiquidationProcessor(cfg *appconfig.Config, ch *liqchannel.Channels) *LiquidationProcessor {
 	symSet := make(map[string]struct{})
-	if cfg.Source != nil {
-		if s := cfg.Source.Binance; s != nil && s.Future != nil && s.Future.Liquidation.Enabled {
-			for _, x := range s.Future.Liquidation.Symbols {
-				symSet[x] = struct{}{}
-			}
+	if cfg.Source.Binance.Future.Liquidation.Enabled {
+		for _, x := range cfg.Source.Binance.Future.Liquidation.Symbols {
+			symSet[x] = struct{}{}
 		}
-		if s := cfg.Source.Bybit; s != nil && s.Future != nil && s.Future.Liquidation.Enabled {
-			for _, x := range s.Future.Liquidation.Symbols {
-				symSet[symbols.ToBinance("bybit", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Bybit.Future.Liquidation.Enabled {
+		for _, x := range cfg.Source.Bybit.Future.Liquidation.Symbols {
+			symSet[symbols.ToBinance("bybit", x)] = struct{}{}
 		}
-		if s := cfg.Source.Kucoin; s != nil && s.Future != nil && s.Future.Liquidation.Enabled {
-			for _, x := range s.Future.Liquidation.Symbols {
-				symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Kucoin.Future.Liquidation.Enabled {
+		for _, x := range cfg.Source.Kucoin.Future.Liquidation.Symbols {
+			symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
 		}
-		if s := cfg.Source.Okx; s != nil && s.Future != nil && s.Future.Liquidation.Enabled {
-			for _, x := range s.Future.Liquidation.Symbols {
-				symSet[symbols.ToBinance("okx", x)] = struct{}{}
-			}
+	}
+	if cfg.Source.Okx.Future.Liquidation.Enabled {
+		for _, x := range cfg.Source.Okx.Future.Liquidation.Symbols {
+			symSet[symbols.ToBinance("okx", x)] = struct{}{}
 		}
 	}
 	filter := len(symSet) > 0

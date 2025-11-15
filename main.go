@@ -199,7 +199,7 @@ func main() {
 		kucoinLiqReaders = append(kucoinLiqReaders, kucoin.Kucoin_LIQ_NewReader(&sc, channels.Liq, shard.KucoinSymbols))
 		okxLiqReaders = append(okxLiqReaders, okxreader.Okx_LIQ_NewReader(&sc, channels.Liq, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		binanceFOIReaders = append(binanceFOIReaders, binance.Binance_FOI_NewReader(&sc, channels.FOI, shard.BinanceSymbols, shard.IP))
-		bybitFOIReaders = append(bybitFOIReaders, bybitreader.Bybit_FOI_NewReader(&sc, channels.FOI, shard.BybitSymbols))
+		bybitFOIReaders = append(bybitFOIReaders, bybitreader.Bybit_FOI_NewReader(&sc, channels.FOI, shard.BybitSymbols, shard.IP))
 		kucoinFOIReaders = append(kucoinFOIReaders, kucoin.Kucoin_FOI_NewReader(&sc, channels.FOI, shard.KucoinSymbols))
 		okxFOIReaders = append(okxFOIReaders, okxreader.Okx_FOI_NewReader(&sc, channels.FOI, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		binancePIReaders = append(binancePIReaders, binance.Binance_PI_NewReader(&sc, channels.PI, shard.BinanceSymbols, shard.IP))
