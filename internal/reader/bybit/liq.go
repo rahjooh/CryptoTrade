@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,32 +17,30 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Bybit_LIQ_Reader consumes liquidation updates from Bybit public websocket.
+// Bybit_LIQ_Reader streams liquidation orders from the Bybit futures websocket.
 type Bybit_LIQ_Reader struct {
-	config    *appconfig.Config
-	channels  *liq.Channels
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.RWMutex
-	running   bool
-	log       *logger.Log
-	symbols   []string
-	symbolSet map[string]struct{}
-	wsConn    *websocket.Conn
-	connMu    sync.Mutex
-	wg        sync.WaitGroup
+	config   *appconfig.Config
+	channels *liq.Channels
+	ctx      context.Context
+	wg       *sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
+	log      *logger.Log
+	symbols  []string
 }
 
+// Bybit_LIQ_NewReader constructs a new Bybit liquidation reader.
 func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string) *Bybit_LIQ_Reader {
 	return &Bybit_LIQ_Reader{
 		config:   cfg,
 		channels: ch,
+		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
 	}
 }
 
-// Start the websocket and subscribe to allLiquidation topics.
+// Bybit_LIQ_Start launches websocket subscriptions for each configured symbol.
 func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 	r.mu.Lock()
 	if r.running {
@@ -51,18 +48,18 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		return fmt.Errorf("bybit liquidation reader already running")
 	}
 	r.running = true
-	r.ctx, r.cancel = context.WithCancel(ctx)
+	r.ctx = ctx
 	r.mu.Unlock()
 
 	cfg := r.config.Source.Bybit.Future.Liquidation
-	log := r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{"operation": "Bybit_LIQ_Start"})
+	log := r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{
+		"operation": "Bybit_LIQ_Start",
+	})
 
 	if !cfg.Enabled {
 		log.Warn("bybit futures liquidation stream disabled via configuration")
 		return fmt.Errorf("bybit futures liquidation stream disabled")
 	}
-
-	// Symbols
 	if len(r.symbols) == 0 {
 		if len(cfg.Symbols) == 0 {
 			log.Warn("no symbols configured for bybit liquidation reader")
@@ -70,42 +67,25 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Start(ctx context.Context) error {
 		}
 		r.symbols = cfg.Symbols
 	}
-	r.symbolSet = make(map[string]struct{}, len(r.symbols))
 
-	topics := make([]string, 0, len(r.symbols))
-	for _, sym := range r.symbols {
-		s := strings.ToUpper(strings.TrimSpace(sym))
-		if s == "" {
+	log.WithFields(logger.Fields{
+		"symbols": strings.Join(r.symbols, ","),
+	}).Info("starting bybit liquidation reader")
+
+	for _, symbol := range r.symbols {
+		sym := strings.ToUpper(strings.TrimSpace(symbol))
+		if sym == "" {
 			continue
 		}
-		r.symbolSet[s] = struct{}{}
-		// ✅ v5 "All Liquidations" topic (symbol-scoped). Do NOT prefix with ".linear".
-		// Category (linear/inverse/spot/option) is determined by the endpoint URL.
-		topics = append(topics, fmt.Sprintf("allLiquidation.%s", s))
+		r.wg.Add(1)
+		go r.streamSymbol(sym)
 	}
 
-	// Endpoint: linear (USDT/USDC perps). Change if you need inverse/spot/options.
-	wsURL := cfg.URL
-	if wsURL == "" {
-		wsURL = "wss://stream.bybit.com/v5/public/linear"
-	}
-
-	reconnectDelay := cfg.ReconnectDelay
-	if reconnectDelay <= 0 {
-		reconnectDelay = 5 * time.Second
-	}
-
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		runBybitWebSocket(r.ctx, wsURL, topics, reconnectDelay, log, r.handleMessage, r.trackConn)
-	}()
-
-	log.WithFields(logger.Fields{"topics": topics, "endpoint": wsURL}).Info("bybit liquidation reader started")
-	go r.monitorContext()
+	log.Info("bybit liquidation reader started successfully")
 	return nil
 }
 
+// Bybit_LIQ_Stop waits for all symbol workers to stop.
 func (r *Bybit_LIQ_Reader) Bybit_LIQ_Stop() {
 	r.mu.Lock()
 	if !r.running {
@@ -113,137 +93,140 @@ func (r *Bybit_LIQ_Reader) Bybit_LIQ_Stop() {
 		return
 	}
 	r.running = false
-	cancel := r.cancel
 	r.mu.Unlock()
 
 	r.log.WithComponent("bybit_liq_reader").Info("stopping bybit liquidation reader")
-	if cancel != nil {
-		cancel()
-	}
-	r.closeActiveConn()
 	r.wg.Wait()
 	r.log.WithComponent("bybit_liq_reader").Info("bybit liquidation reader stopped")
 }
 
-func (r *Bybit_LIQ_Reader) monitorContext() {
-	<-r.ctx.Done()
-	r.Bybit_LIQ_Stop()
-}
+func (r *Bybit_LIQ_Reader) streamSymbol(symbol string) {
+	defer r.wg.Done()
 
-// Payload for (all) liquidation stream
-type bybitLiquidationPayload struct {
-	Topic string `json:"topic"`
-	Type  string `json:"type"`
-	Ts    int64  `json:"ts"`
-	Data  []struct {
-		Symbol      string `json:"symbol"`
-		Side        string `json:"side"`
-		Size        string `json:"size"`
-		Price       string `json:"price"`
-		UpdatedTime string `json:"updatedTime"`
-		ExecQty     string `json:"execQty"`
-		ExecPrice   string `json:"execPrice"`
-	} `json:"data"`
-}
+	log := r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{
+		"symbol": symbol,
+		"worker": "liquidation_stream",
+	})
 
-func (r *Bybit_LIQ_Reader) handleMessage(msg string) error {
-	// Subscription ack (success/failure)
-	var ack struct {
-		Op      string `json:"op"`
-		Success bool   `json:"success"`
-		RetMsg  string `json:"ret_msg"`
+	cfg := r.config.Source.Bybit.Future.Liquidation
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
+	if baseURL == "" {
+		baseURL = "wss://stream.bybit.com/v5/public/linear"
 	}
-	if err := json.Unmarshal([]byte(msg), &ack); err == nil && ack.Op != "" {
-		if !ack.Success {
-			lf := r.log.WithComponent("bybit_liq_reader").WithFields(
-				logger.Fields{"operation": ack.Op, "message": ack.RetMsg},
-			)
-			// Helpful hint for common topic mistake
-			if strings.Contains(ack.RetMsg, "handler not found") &&
-				strings.Contains(ack.RetMsg, "liquidation.") {
-				lf.Warn("subscription acknowledgement failure (did you mean allLiquidation.<SYMBOL> and the /v5/public/linear endpoint?)")
-			} else {
-				lf.Warn("subscription acknowledgement failure")
+
+	for {
+		if r.ctx.Err() != nil {
+			return
+		}
+
+		conn, _, err := websocket.DefaultDialer.DialContext(r.ctx, baseURL, nil)
+		if err != nil {
+			log.WithError(err).Warn("failed to connect to bybit liquidation websocket, retrying")
+			select {
+			case <-time.After(5 * time.Second):
+				continue
+			case <-r.ctx.Done():
+				return
 			}
 		}
-		return nil
-	}
 
-	// Data payload
-	var payload bybitLiquidationPayload
-	if err := json.Unmarshal([]byte(msg), &payload); err != nil {
-		r.log.WithComponent("bybit_liq_reader").WithError(err).Debug("failed to decode bybit message")
-		return nil
-	}
-	// Only handle liquidation topics
-	if !strings.HasPrefix(payload.Topic, "allLiquidation") && !strings.HasPrefix(payload.Topic, "liquidation") {
-		return nil
-	}
+		// subscribe to allLiquidation.<symbol>
+		topic := fmt.Sprintf("allLiquidation.%s", symbol)
+		subMsg := map[string]any{
+			"op":   "subscribe",
+			"args": []string{topic},
+		}
+		if err := conn.WriteJSON(subMsg); err != nil {
+			log.WithError(err).Warn("failed to send bybit subscription, reconnecting")
+			_ = conn.Close()
+			select {
+			case <-time.After(5 * time.Second):
+				continue
+			case <-r.ctx.Done():
+				return
+			}
+		}
 
-	baseTime := time.Now().UTC()
-	if payload.Ts > 0 {
-		baseTime = time.UnixMilli(payload.Ts).UTC()
-	}
+		conn.SetReadDeadline(time.Now().Add(35 * time.Second))
+		pingCtx, pingCancel := context.WithCancel(context.Background())
+		pingTicker := time.NewTicker(20 * time.Second)
 
-	for _, entry := range payload.Data {
-		symbol := strings.ToUpper(entry.Symbol)
-		if len(r.symbolSet) > 0 {
-			if _, ok := r.symbolSet[symbol]; !ok {
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(35 * time.Second))
+			return nil
+		})
+
+		go func() {
+			defer pingTicker.Stop()
+			for {
+				select {
+				case <-pingCtx.Done():
+					return
+				case <-pingTicker.C:
+					conn.SetWriteDeadline(time.Now().Add(time.Second))
+					if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+						log.WithError(err).Warn("failed to send bybit ping")
+						pingCancel()
+						return
+					}
+				}
+			}
+		}()
+
+	loop:
+		for {
+			if r.ctx.Err() != nil {
+				_ = conn.Close()
+				break loop
+			}
+
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				_ = conn.Close()
+				log.WithError(err).Warn("bybit liquidation stream error, reconnecting")
+				break loop
+			}
+
+			// quick filter: ensure this is our liquidation topic
+			var probe struct {
+				Topic string `json:"topic"`
+			}
+			if err := json.Unmarshal(msg, &probe); err != nil {
+				log.WithError(err).Debug("failed to unmarshal bybit probe, skipping message")
 				continue
 			}
-		}
-
-		eventTime := baseTime
-		if entry.UpdatedTime != "" {
-			if ts, err := strconv.ParseInt(entry.UpdatedTime, 10, 64); err == nil {
-				eventTime = time.UnixMilli(ts).UTC()
+			if !strings.HasPrefix(probe.Topic, "allLiquidation.") {
+				continue
 			}
+
+			r.forwardMessage(msg, symbol, log)
 		}
 
-		wrapped := map[string]any{
-			"topic": payload.Topic,
-			"type":  payload.Type,
-			"ts":    payload.Ts,
-			"data":  entry,
-		}
-		raw, err := json.Marshal(wrapped)
-		if err != nil {
-			r.log.WithComponent("bybit_liq_reader").WithError(err).Warn("failed to marshal liquidation entry")
-			continue
-		}
-
-		msg := models.RawLiquidationMessage{
-			Exchange:  "bybit",
-			Symbol:    symbol,
-			Market:    "liquidation",
-			Data:      raw,
-			Timestamp: eventTime,
-		}
-
-		if !r.channels.SendRaw(r.ctx, msg) {
-			if r.ctx.Err() != nil {
-				return nil
-			}
-			metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "bybit", "liquidation", symbol, "raw")
-			r.log.WithComponent("bybit_liq_reader").WithFields(logger.Fields{"symbol": symbol}).Warn("liquidation raw channel full, dropping message")
+		pingCancel()
+		select {
+		case <-time.After(2 * time.Second):
+		case <-r.ctx.Done():
+			return
 		}
 	}
-
-	return nil
 }
 
-func (r *Bybit_LIQ_Reader) trackConn(conn *websocket.Conn) {
-	r.connMu.Lock()
-	r.wsConn = conn
-	r.connMu.Unlock()
-}
+func (r *Bybit_LIQ_Reader) forwardMessage(payload []byte, symbol string, log *logger.Entry) {
+	data := append([]byte(nil), payload...)
 
-func (r *Bybit_LIQ_Reader) closeActiveConn() {
-	r.connMu.Lock()
-	conn := r.wsConn
-	r.wsConn = nil
-	r.connMu.Unlock()
-	if conn != nil {
-		conn.Close()
+	msg := models.RawLiquidation{
+		Exchange: models.ExchangeBybit,
+		Payload:  data,
+	}
+
+	if r.channels.SendRaw(r.ctx, msg) {
+		log.WithFields(logger.Fields{
+			"payload_bytes": len(payload),
+		}).Debug("forwarded bybit liquidation event to raw channel")
+	} else if r.ctx.Err() != nil {
+		return
+	} else {
+		metrics.EmitDropMetric(r.log, metrics.DropMetricLiquidationRaw, "bybit", "liquidation", strings.ToUpper(symbol), "raw")
+		log.Warn("liquidation raw channel full, dropping bybit message")
 	}
 }

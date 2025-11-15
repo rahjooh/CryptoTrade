@@ -3,440 +3,276 @@ package processor
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
-	appconfig "cryptoflow/config"
-	liqchannel "cryptoflow/internal/channel/liq"
-	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
-	"cryptoflow/internal/symbols"
-	"cryptoflow/logger"
 )
 
-type liqBatchState struct {
-	mu        sync.Mutex
-	batch     *models.BatchLiquidationMessage
-	lastFlush time.Time
+type Processor struct {
+	okxAllowed map[string]bool // uppercase symbol filter; empty => allow all
 }
 
-// LiquidationProcessor normalizes raw liquidation payloads and batches them for S3 writers.
-type LiquidationProcessor struct {
-	config        *appconfig.Config
-	channels      *liqchannel.Channels
-	ctx           context.Context
-	wg            *sync.WaitGroup
-	mu            sync.RWMutex
-	running       bool
-	log           *logger.Log
-	batches       map[string]*liqBatchState
-	symbols       map[string]struct{}
-	filterSymbols bool
-}
-
-// NewLiquidationProcessor builds the processor instance.
-func NewLiquidationProcessor(cfg *appconfig.Config, ch *liqchannel.Channels) *LiquidationProcessor {
-	symSet := make(map[string]struct{})
-	if cfg.Source.Binance.Future.Liquidation.Enabled {
-		for _, x := range cfg.Source.Binance.Future.Liquidation.Symbols {
-			symSet[x] = struct{}{}
+func NewProcessor(okxAllowedSymbols []string) *Processor {
+	m := make(map[string]bool)
+	for _, s := range okxAllowedSymbols {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
 		}
+		m[strings.ToUpper(s)] = true
 	}
-	if cfg.Source.Bybit.Future.Liquidation.Enabled {
-		for _, x := range cfg.Source.Bybit.Future.Liquidation.Symbols {
-			symSet[symbols.ToBinance("bybit", x)] = struct{}{}
-		}
-	}
-	if cfg.Source.Kucoin.Future.Liquidation.Enabled {
-		for _, x := range cfg.Source.Kucoin.Future.Liquidation.Symbols {
-			symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
-		}
-	}
-	if cfg.Source.Okx.Future.Liquidation.Enabled {
-		for _, x := range cfg.Source.Okx.Future.Liquidation.Symbols {
-			symSet[symbols.ToBinance("okx", x)] = struct{}{}
-		}
-	}
-	filter := len(symSet) > 0
-	if !filter {
-		symSet = make(map[string]struct{})
-	}
-
-	return &LiquidationProcessor{
-		config:        cfg,
-		channels:      ch,
-		wg:            &sync.WaitGroup{},
-		log:           logger.GetLogger(),
-		batches:       make(map[string]*liqBatchState),
-		symbols:       symSet,
-		filterSymbols: filter,
-	}
+	return &Processor{okxAllowed: m}
 }
 
-// Start begins consuming raw liquidation messages.
-func (p *LiquidationProcessor) Start(ctx context.Context) error {
-	p.mu.Lock()
-	if p.running {
-		p.mu.Unlock()
-		return fmt.Errorf("liquidation processor already running")
-	}
-	p.running = true
-	p.ctx = ctx
-	p.mu.Unlock()
-
-	log := p.log.WithComponent("liq_processor").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting liquidation processor")
-
-	workers := p.config.Processor.MaxWorkers
-	if workers < 1 {
-		workers = 1
-	}
-	for i := 0; i < workers; i++ {
-		p.wg.Add(1)
-		go p.worker(i)
-	}
-
-	p.wg.Add(1)
-	go p.flusher()
-	return nil
-}
-
-// Stop drains buffers and stops workers.
-func (p *LiquidationProcessor) Stop() {
-	p.mu.Lock()
-	if !p.running {
-		p.mu.Unlock()
-		return
-	}
-	p.running = false
-	p.mu.Unlock()
-
-	p.log.WithComponent("liq_processor").Info("stopping liquidation processor")
-	p.flushAll()
-	p.wg.Wait()
-	p.log.WithComponent("liq_processor").Info("liquidation processor stopped")
-}
-
-func (p *LiquidationProcessor) worker(id int) {
-	defer p.wg.Done()
+func (p *Processor) Run(
+	ctx context.Context,
+	liqRawCh <-chan models.RawLiquidation,
+	liqNormCh chan<- models.NormalizedLiquidation,
+) {
 	for {
 		select {
-		case <-p.ctx.Done():
+		case <-ctx.Done():
+			log.Printf("[processor] context canceled, stopping")
 			return
-		case msg, ok := <-p.channels.Raw:
+
+		case raw, ok := <-liqRawCh:
 			if !ok {
+				log.Printf("[processor] liq.raw closed, stopping")
 				return
 			}
-			if p.filterSymbols {
-				if _, ok := p.symbols[symbols.ToBinance(msg.Exchange, msg.Symbol)]; !ok {
+
+			switch raw.Exchange {
+			case models.ExchangeBinance:
+				env, err := p.flattenBinance(raw)
+				if err != nil {
+					log.Printf("[processor] binance flatten error: %v", err)
 					continue
 				}
+				select {
+				case liqNormCh <- env:
+				case <-ctx.Done():
+					return
+				}
+
+			case models.ExchangeBybit:
+				envs, err := p.flattenBybit(raw)
+				if err != nil {
+					log.Printf("[processor] bybit flatten error: %v", err)
+					continue
+				}
+				for _, env := range envs {
+					select {
+					case liqNormCh <- env:
+					case <-ctx.Done():
+						return
+					}
+				}
+
+			case models.ExchangeOKX:
+				envs, err := p.flattenOKX(raw)
+				if err != nil {
+					log.Printf("[processor] okx flatten error: %v", err)
+					continue
+				}
+				for _, env := range envs {
+					select {
+					case liqNormCh <- env:
+					case <-ctx.Done():
+						return
+					}
+				}
+
+			default:
+				// ignore unknown
 			}
-			p.handleMessage(msg)
 		}
 	}
 }
 
-func (p *LiquidationProcessor) handleMessage(raw models.RawLiquidationMessage) {
-	var (
-		entry models.NormLiquidationMessage
-		ok    bool
-	)
+// ---------------- BINANCE ----------------
 
-	switch raw.Exchange {
-	case "binance":
-		entry, ok = normalizeBinanceLiq(raw)
-	case "bybit":
-		entry, ok = normalizeBybitLiq(raw)
-	case "kucoin":
-		entry, ok = normalizeKucoinLiq(raw)
-	case "okx":
-		entry, ok = normalizeOkxLiq(raw)
-	default:
-		p.log.WithComponent("liq_processor").WithFields(logger.Fields{
-			"exchange": raw.Exchange,
-		}).Debug("unsupported liquidation exchange, dropping message")
-		return
+func (p *Processor) flattenBinance(raw models.RawLiquidation) (models.NormalizedLiquidation, error) {
+	var evt models.BinanceLiquidationEvent
+	if err := json.Unmarshal(raw.Payload, &evt); err != nil {
+		return models.NormalizedLiquidation{}, err
 	}
 
-	if !ok {
-		return
+	o := evt.Order
+
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
 	}
 
-	entry.Exchange = raw.Exchange
-	entry.Market = raw.Market
-	entry.RawPayload = raw.Data
-	if entry.EventTime == 0 {
-		entry.EventTime = raw.Timestamp.UnixMilli()
+	ts := time.UnixMilli(evt.EventTime)
+	if evt.EventTime == 0 && o.TradeTime != 0 {
+		ts = time.UnixMilli(o.TradeTime)
 	}
-	entry.ReceivedTime = time.Now().UnixMilli()
-	p.addToBatch(raw, entry)
+
+	b := &models.BinanceNormalizedLiquidation{
+		Symbol:       o.Symbol,
+		Side:         o.Side,
+		PositionSide: o.PositionSide,
+		OrderType:    o.OrderType,
+		Quantity:     parseF(o.QuantityStr),
+		Price:        parseF(o.PriceStr),
+		AvgPrice:     parseF(o.AvgPriceStr),
+		LastQty:      parseF(o.LastQtyStr),
+		LastPrice:    parseF(o.LastPriceStr),
+		TradeID:      o.TradeID,
+		IsMaker:      o.Maker,
+		IsReduceOnly: o.ReduceOnly,
+		WorkingType:  o.WorkingType,
+		OriginalType: o.OriginalType,
+		CloseAll:     o.CloseAll,
+		RealizedPnl:  parseF(o.RealizedPnl),
+	}
+
+	return models.NormalizedLiquidation{
+		Exchange: models.ExchangeBinance,
+		Time:     ts,
+		Binance:  b,
+	}, nil
 }
 
-func (p *LiquidationProcessor) addToBatch(raw models.RawLiquidationMessage, entry models.NormLiquidationMessage) {
-	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, entry.Symbol)
+// ---------------- BYBIT ----------------
 
-	p.mu.RLock()
-	state, ok := p.batches[key]
-	p.mu.RUnlock()
-	if !ok {
-		p.mu.Lock()
-		if state, ok = p.batches[key]; !ok {
-			state = &liqBatchState{
-				batch: &models.BatchLiquidationMessage{
-					BatchID:     uuid.New().String(),
-					Exchange:    raw.Exchange,
-					Symbol:      entry.Symbol,
-					Market:      raw.Market,
-					Entries:     make([]models.NormLiquidationMessage, 0, p.config.Processor.BatchSize),
-					Timestamp:   raw.Timestamp,
-					ProcessedAt: time.Now(),
-				},
-				lastFlush: time.Now(),
+func (p *Processor) flattenBybit(raw models.RawLiquidation) ([]models.NormalizedLiquidation, error) {
+	var evt models.BybitLiquidationEvent
+	if err := json.Unmarshal(raw.Payload, &evt); err != nil {
+		return nil, err
+	}
+
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	}
+
+	sideNorm := func(s string) string {
+		switch strings.ToLower(s) {
+		case "buy":
+			return "BUY"
+		case "sell":
+			return "SELL"
+		default:
+			return strings.ToUpper(s)
+		}
+	}
+
+	out := make([]models.NormalizedLiquidation, 0, len(evt.Data))
+	for _, d := range evt.Data {
+		ts := time.UnixMilli(d.EventTime)
+
+		b := &models.BybitNormalizedLiquidation{
+			Symbol:   d.Symbol,
+			Side:     sideNorm(d.Side),
+			Quantity: parseF(d.SizeStr),
+			Price:    parseF(d.PriceStr),
+		}
+
+		env := models.NormalizedLiquidation{
+			Exchange: models.ExchangeBybit,
+			Time:     ts,
+			Bybit:    b,
+		}
+		out = append(out, env)
+	}
+
+	return out, nil
+}
+
+// ---------------- OKX ----------------
+
+func (p *Processor) flattenOKX(raw models.RawLiquidation) ([]models.NormalizedLiquidation, error) {
+	var evt models.OKXLiquidationEvent
+	if err := json.Unmarshal(raw.Payload, &evt); err != nil {
+		return nil, err
+	}
+
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	}
+
+	sideNorm := func(s string) string {
+		switch strings.ToLower(s) {
+		case "buy":
+			return "BUY"
+		case "sell":
+			return "SELL"
+		default:
+			return strings.ToUpper(s)
+		}
+	}
+
+	posSideNorm := func(s string) string {
+		switch strings.ToLower(s) {
+		case "long":
+			return "LONG"
+		case "short":
+			return "SHORT"
+		default:
+			return strings.ToUpper(s)
+		}
+	}
+
+	var out []models.NormalizedLiquidation
+
+	for _, block := range evt.Data {
+		symbol := strings.ToUpper(block.InstFamily)
+		if symbol == "" {
+			symbol = strings.ToUpper(block.Uly)
+		}
+
+		// Symbol filter
+		if len(p.okxAllowed) > 0 && !p.okxAllowed[symbol] {
+			continue
+		}
+
+		for _, d := range block.Details {
+			tsMs, err := strconv.ParseInt(d.Ts, 10, 64)
+			if err != nil {
+				tsMs = 0
 			}
-			p.batches[key] = state
-		}
-		p.mu.Unlock()
-	}
+			ts := time.UnixMilli(tsMs)
 
-	state.mu.Lock()
-	b := state.batch
-	b.Entries = append(b.Entries, entry)
-	b.RecordCount = len(b.Entries)
-	if raw.Timestamp.After(b.Timestamp) {
-		b.Timestamp = raw.Timestamp
-	}
-	state.lastFlush = time.Now()
-	shouldFlush := b.RecordCount >= p.config.Processor.BatchSize
-	state.mu.Unlock()
+			o := &models.OKXNormalizedLiquidation{
+				Symbol:       symbol,
+				Side:         sideNorm(d.Side),
+				PositionSide: posSideNorm(d.PosSide),
+				Quantity:     parseF(d.Sz),
+				Price:        parseF(d.BkPx),
+			}
 
-	if shouldFlush {
-		p.flush(key)
-	}
-}
-
-func (p *LiquidationProcessor) flusher() {
-	defer p.wg.Done()
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-ticker.C:
-			p.flushTimedOut()
+			env := models.NormalizedLiquidation{
+				Exchange: models.ExchangeOKX,
+				Time:     ts,
+				OKX:      o,
+			}
+			out = append(out, env)
 		}
 	}
-}
 
-func (p *LiquidationProcessor) flushTimedOut() {
-	p.mu.RLock()
-	now := time.Now()
-	for k, state := range p.batches {
-		state.mu.Lock()
-		if now.Sub(state.lastFlush) >= p.config.Processor.BatchTimeout && state.batch.RecordCount > 0 {
-			state.mu.Unlock()
-			p.flush(k)
-		} else {
-			state.mu.Unlock()
-		}
-	}
-	p.mu.RUnlock()
-}
-
-func (p *LiquidationProcessor) flush(key string) {
-	p.mu.RLock()
-	state, ok := p.batches[key]
-	p.mu.RUnlock()
-	if !ok {
-		return
-	}
-	state.mu.Lock()
-	batch := state.batch
-	if batch == nil || batch.RecordCount == 0 {
-		state.mu.Unlock()
-		return
-	}
-	if p.channels.SendNorm(p.ctx, *batch) {
-		state.batch = &models.BatchLiquidationMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    batch.Exchange,
-			Symbol:      batch.Symbol,
-			Market:      batch.Market,
-			Entries:     make([]models.NormLiquidationMessage, 0, p.config.Processor.BatchSize),
-			ProcessedAt: time.Now(),
-		}
-		state.lastFlush = time.Now()
-	} else if p.ctx.Err() != nil {
-		state.mu.Unlock()
-		return
-	} else {
-		metrics.EmitDropMetric(p.log, metrics.DropMetricOther, batch.Exchange, batch.Market, batch.Symbol, "norm")
-		p.log.WithComponent("liq_processor").WithFields(logger.Fields{"batch_key": key}).Warn("normliq channel full, dropping batch")
-		state.batch = &models.BatchLiquidationMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    batch.Exchange,
-			Symbol:      batch.Symbol,
-			Market:      batch.Market,
-			Entries:     make([]models.NormLiquidationMessage, 0, p.config.Processor.BatchSize),
-			ProcessedAt: time.Now(),
-		}
-		state.lastFlush = time.Now()
-	}
-	state.mu.Unlock()
-}
-
-func (p *LiquidationProcessor) flushAll() {
-	p.mu.RLock()
-	keys := make([]string, 0, len(p.batches))
-	for k := range p.batches {
-		keys = append(keys, k)
-	}
-	p.mu.RUnlock()
-	for _, k := range keys {
-		p.flush(k)
-	}
-}
-
-func normalizeBinanceLiq(raw models.RawLiquidationMessage) (models.NormLiquidationMessage, bool) {
-	type binanceOrder struct {
-		EventTime int64 `json:"E"`
-		Order     struct {
-			Symbol   string `json:"s"`
-			Side     string `json:"S"`
-			OrderType string `json:"o"`
-			Qty      string `json:"q"`
-			Price    string `json:"p"`
-		} `json:"o"`
-	}
-	var evt binanceOrder
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		return models.NormLiquidationMessage{}, false
-	}
-	price := parseFloat(evt.Order.Price)
-	qty := parseFloat(evt.Order.Qty)
-	return models.NormLiquidationMessage{
-		Symbol:     symbols.ToBinance(raw.Exchange, evt.Order.Symbol),
-		Side:       strings.ToUpper(evt.Order.Side),
-		OrderType:  strings.ToUpper(evt.Order.OrderType),
-		Price:      price,
-		Quantity:   qty,
-		EventTime:  evt.EventTime,
-	}, true
-}
-
-func normalizeBybitLiq(raw models.RawLiquidationMessage) (models.NormLiquidationMessage, bool) {
-	type bybitData struct {
-		Topic string `json:"topic"`
-		Ts    int64  `json:"ts"`
-		Data  struct {
-			Symbol    string `json:"symbol"`
-			Side      string `json:"side"`
-			Size      string `json:"size"`
-			Price     string `json:"price"`
-			ExecQty   string `json:"execQty"`
-			ExecPrice string `json:"execPrice"`
-			Updated   string `json:"updatedTime"`
-		} `json:"data"`
-	}
-	var evt bybitData
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		return models.NormLiquidationMessage{}, false
-	}
-	price := parseFloat(evt.Data.ExecPrice)
-	if price == 0 {
-		price = parseFloat(evt.Data.Price)
-	}
-	qty := parseFloat(evt.Data.ExecQty)
-	if qty == 0 {
-		qty = parseFloat(evt.Data.Size)
-	}
-	eventTime := evt.Ts
-	if eventTime == 0 {
-		eventTime = raw.Timestamp.UnixMilli()
-	}
-	return models.NormLiquidationMessage{
-		Symbol:    symbols.ToBinance(raw.Exchange, evt.Data.Symbol),
-		Side:      strings.ToUpper(evt.Data.Side),
-		OrderType: "MARKET",
-		Price:     price,
-		Quantity:  qty,
-		EventTime: eventTime,
-	}, true
-}
-
-func normalizeKucoinLiq(raw models.RawLiquidationMessage) (models.NormLiquidationMessage, bool) {
-	type kucoinPayload struct {
-		Data struct {
-			Symbol string `json:"symbol"`
-			Side   string `json:"side"`
-			Size   int32  `json:"size"`
-			Price  string `json:"price"`
-			Ts     int64  `json:"ts"`
-		} `json:"data"`
-	}
-	var evt kucoinPayload
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		return models.NormLiquidationMessage{}, false
-	}
-	return models.NormLiquidationMessage{
-		Symbol:    symbols.ToBinance(raw.Exchange, evt.Data.Symbol),
-		Side:      strings.ToUpper(evt.Data.Side),
-		OrderType: "MARKET",
-		Price:     parseFloat(evt.Data.Price),
-		Quantity:  float64(evt.Data.Size),
-		EventTime: evt.Data.Ts,
-	}, true
-}
-
-func normalizeOkxLiq(raw models.RawLiquidationMessage) (models.NormLiquidationMessage, bool) {
-	type okxPayload struct {
-		Data struct {
-			InstID string `json:"instId"`
-			Side   string `json:"side"`
-			Size   string `json:"sz"`
-			Price  string `json:"px"`
-			Ts     string `json:"ts"`
-		} `json:"data"`
-	}
-	var evt okxPayload
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		return models.NormLiquidationMessage{}, false
-	}
-	eventTime := parseInt64(evt.Data.Ts)
-	return models.NormLiquidationMessage{
-		Symbol:    symbols.ToBinance(raw.Exchange, evt.Data.InstID),
-		Side:      strings.ToUpper(evt.Data.Side),
-		OrderType: "MARKET",
-		Price:     parseFloat(evt.Data.Price),
-		Quantity:  parseFloat(evt.Data.Size),
-		EventTime: eventTime,
-	}, true
-}
-
-func parseFloat(v string) float64 {
-	if v == "" {
-		return 0
-	}
-	val, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return 0
-	}
-	return val
-}
-
-func parseInt64(v string) int64 {
-	if v == "" {
-		return 0
-	}
-	val, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return val
+	return out, nil
 }
