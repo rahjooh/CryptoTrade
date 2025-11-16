@@ -18,8 +18,8 @@ type ChannelStats struct {
 
 // Channels exposes raw and normalized liquidation streams.
 type Channels struct {
-	Raw  chan models.RawLiquidationMessage
-	Norm chan models.BatchLiquidationMessage
+	Raw  chan models.RawLiquidation
+	Norm chan models.NormalizedLiquidation
 
 	stats      ChannelStats
 	statsMutex sync.RWMutex
@@ -30,8 +30,8 @@ type Channels struct {
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	log := logger.GetLogger()
 	c := &Channels{
-		Raw:  make(chan models.RawLiquidationMessage, rawBufferSize),
-		Norm: make(chan models.BatchLiquidationMessage, normBufferSize),
+		Raw:  make(chan models.RawLiquidation, rawBufferSize),
+		Norm: make(chan models.NormalizedLiquidation, normBufferSize),
 		log:  log,
 	}
 
@@ -75,7 +75,7 @@ func (c *Channels) incrementNormDropped() {
 }
 
 // SendRaw enqueues a raw liquidation payload if capacity is available.
-func (c *Channels) SendRaw(ctx context.Context, msg models.RawLiquidationMessage) bool {
+func (c *Channels) SendRaw(ctx context.Context, msg models.RawLiquidation) bool {
 	select {
 	case c.Raw <- msg:
 		c.incrementRawSent()
@@ -88,8 +88,8 @@ func (c *Channels) SendRaw(ctx context.Context, msg models.RawLiquidationMessage
 	}
 }
 
-// SendNorm enqueues a normalized batch for downstream writers.
-func (c *Channels) SendNorm(ctx context.Context, msg models.BatchLiquidationMessage) bool {
+// SendNorm enqueues a normalized liquidation for downstream writers.
+func (c *Channels) SendNorm(ctx context.Context, msg models.NormalizedLiquidation) bool {
 	select {
 	case c.Norm <- msg:
 		c.incrementNormSent()

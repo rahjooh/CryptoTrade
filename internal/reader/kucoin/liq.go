@@ -217,13 +217,9 @@ func (r *Kucoin_LIQ_Reader) handleExecution(topic, subject string, data *futures
 		return nil
 	}
 
-	ts := kucoinTimestampToTime(data.Ts)
-	msg := models.RawLiquidationMessage{
-		Exchange:  "kucoin",
-		Symbol:    symbol,
-		Market:    "liquidation",
-		Data:      raw,
-		Timestamp: ts,
+	msg := models.RawLiquidation{
+		Exchange: models.ExchangeKucoin,
+		Payload:  raw,
 	}
 
 	if !r.channels.SendRaw(r.ctx, msg) {

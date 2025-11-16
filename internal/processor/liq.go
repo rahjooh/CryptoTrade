@@ -3,12 +3,17 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	appconfig "cryptoflow/config"
+	liqchannel "cryptoflow/internal/channel/liq"
 	"cryptoflow/internal/models"
+	"cryptoflow/logger"
 )
 
 type Processor struct {
@@ -25,6 +30,95 @@ func NewProcessor(okxAllowedSymbols []string) *Processor {
 		m[strings.ToUpper(s)] = true
 	}
 	return &Processor{okxAllowed: m}
+}
+
+// LiquidationProcessor wires the flattening logic to the raw/norm channels.
+type LiquidationProcessor struct {
+	config   *appconfig.Config
+	channels *liqchannel.Channels
+	worker   *Processor
+	ctx      context.Context
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	running  bool
+	log      *logger.Log
+}
+
+// NewLiquidationProcessor constructs a new processor that drains liq channels.
+func NewLiquidationProcessor(cfg *appconfig.Config, ch *liqchannel.Channels) *LiquidationProcessor {
+	var symbols []string
+	if cfg != nil {
+		symbols = cfg.Source.Okx.Future.Liquidation.Symbols
+	}
+	return &LiquidationProcessor{
+		config:   cfg,
+		channels: ch,
+		worker:   NewProcessor(symbols),
+		log:      logger.GetLogger(),
+	}
+}
+
+// Start begins draining the raw liquidation channel.
+func (p *LiquidationProcessor) Start(ctx context.Context) error {
+	p.mu.Lock()
+	if p.running {
+		p.mu.Unlock()
+		return fmt.Errorf("liquidation processor already running")
+	}
+	p.running = true
+	p.ctx = ctx
+	p.mu.Unlock()
+
+	operationLog := p.log.WithComponent("liquidation_processor").WithFields(logger.Fields{
+		"operation": "start",
+	})
+	operationLog.Info("starting liquidation processor")
+
+	workers := 1
+	if p.config != nil && p.config.Processor.MaxWorkers > 0 {
+		workers = p.config.Processor.MaxWorkers
+	}
+	operationLog.WithFields(logger.Fields{"workers": workers}).Info("spawning liquidation workers")
+
+	for i := 0; i < workers; i++ {
+		p.wg.Add(1)
+		go p.workerLoop(ctx, i)
+	}
+
+	return nil
+}
+
+// Stop waits for workers to exit.
+func (p *LiquidationProcessor) Stop() {
+	p.mu.Lock()
+	if !p.running {
+		p.mu.Unlock()
+		return
+	}
+	p.running = false
+	p.mu.Unlock()
+
+	p.log.WithComponent("liquidation_processor").Info("stopping liquidation processor")
+	p.wg.Wait()
+	p.log.WithComponent("liquidation_processor").Info("liquidation processor stopped")
+}
+
+func (p *LiquidationProcessor) workerLoop(ctx context.Context, workerID int) {
+	defer p.wg.Done()
+
+	logEntry := p.log.WithComponent("liquidation_processor").WithFields(logger.Fields{
+		"worker_id": workerID,
+		"operation": "worker",
+	})
+	logEntry.Info("liquidation worker started")
+
+	if p.channels == nil {
+		logEntry.Warn("channels not configured, worker exiting")
+		return
+	}
+
+	p.worker.Run(ctx, p.channels.Raw, p.channels.Norm)
+	logEntry.Info("liquidation worker stopped")
 }
 
 func (p *Processor) Run(

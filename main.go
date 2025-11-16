@@ -147,7 +147,7 @@ func main() {
 	binanceLiqReaders := make([]*binance.Binance_LIQ_Reader, 0, len(activeShards))
 	bybitLiqReaders := make([]*bybitreader.Bybit_LIQ_Reader, 0, len(activeShards))
 	kucoinLiqReaders := make([]*kucoin.Kucoin_LIQ_Reader, 0, len(activeShards))
-	okxLiqReaders := make([]*okxreader.Okx_LIQ_Reader, 0, len(activeShards))
+	okxLiqReaders := make([]*okxreader.OKX_LIQ_Reader, 0, len(activeShards))
 	binanceFOIReaders := make([]*binance.Binance_FOI_Reader, 0, len(activeShards))
 	bybitFOIReaders := make([]*bybitreader.Bybit_FOI_Reader, 0, len(activeShards))
 	kucoinFOIReaders := make([]*kucoin.Kucoin_FOI_Reader, 0, len(activeShards))
@@ -197,7 +197,7 @@ func main() {
 		binanceLiqReaders = append(binanceLiqReaders, binance.Binance_LIQ_NewReader(&sc, channels.Liq, shard.BinanceSymbols))
 		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols))
 		kucoinLiqReaders = append(kucoinLiqReaders, kucoin.Kucoin_LIQ_NewReader(&sc, channels.Liq, shard.KucoinSymbols))
-		okxLiqReaders = append(okxLiqReaders, okxreader.Okx_LIQ_NewReader(&sc, channels.Liq, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
+		okxLiqReaders = append(okxLiqReaders, okxreader.OKX_LIQ_NewReader(&sc, channels.Liq))
 		binanceFOIReaders = append(binanceFOIReaders, binance.Binance_FOI_NewReader(&sc, channels.FOI, shard.BinanceSymbols, shard.IP))
 		bybitFOIReaders = append(bybitFOIReaders, bybitreader.Bybit_FOI_NewReader(&sc, channels.FOI, shard.BybitSymbols, shard.IP))
 		kucoinFOIReaders = append(kucoinFOIReaders, kucoin.Kucoin_FOI_NewReader(&sc, channels.FOI, shard.KucoinSymbols))
@@ -400,9 +400,9 @@ func main() {
 
 	for _, r := range okxLiqReaders {
 		wg.Add(1)
-		go func(reader *okxreader.Okx_LIQ_Reader) {
+		go func(reader *okxreader.OKX_LIQ_Reader) {
 			defer wg.Done()
-			if err := reader.Okx_LIQ_Start(ctx); err != nil {
+			if err := reader.OKX_LIQ_Start(ctx); err != nil {
 				log.WithError(err).Warn("okx liquidation reader failed to start")
 			}
 		}(r)
@@ -692,7 +692,7 @@ func main() {
 
 	log.Info("stopping okx liquidation readers")
 	for _, r := range okxLiqReaders {
-		r.Okx_LIQ_Stop()
+		r.OKX_LIQ_Stop()
 	}
 
 	log.Info("stopping binance open-interest readers")

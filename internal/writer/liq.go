@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/xitongsys/parquet-go/parquet"
-	pqwriter "github.com/xitongsys/parquet-go/writer"
 	"log"
+	"sync"
 	"time"
 
-	"cryptoflow/internal/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
+	"github.com/xitongsys/parquet-go/parquet"
+	pqwriter "github.com/xitongsys/parquet-go/writer"
+
+	appconfig "cryptoflow/config"
+	"cryptoflow/internal/models"
+	"cryptoflow/logger"
 )
 
 type S3WriterConfig struct {
@@ -89,7 +93,7 @@ func (w *S3ParquetWriter) Run(ctx context.Context, liqNormCh <-chan models.Norma
 	}
 }
 
-// group by exchange and write one Parquet object per exchange + time bucket
+// group by exchange and write one or more Parquet objects per exchange
 func (w *S3ParquetWriter) writeBatchesByExchange(ctx context.Context, events []models.NormalizedLiquidation) error {
 	byEx := make(map[string][]models.NormalizedLiquidation)
 	for _, ev := range events {
@@ -103,18 +107,35 @@ func (w *S3ParquetWriter) writeBatchesByExchange(ctx context.Context, events []m
 		if len(group) == 0 {
 			continue
 		}
-		if err := w.writeBatchSingleExchange(ctx, ex, group); err != nil {
+		var err error
+		switch ex {
+		case models.ExchangeBinance:
+			err = w.writeBinanceBatch(ctx, group)
+		case models.ExchangeBybit:
+			err = w.writeBybitBatch(ctx, group)
+		case models.ExchangeOKX:
+			err = w.writeOKXBatch(ctx, group)
+		default:
+			// unknown exchange; ignore
+			continue
+		}
+		if err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// unified Parquet row (superset of fields)
-type parquetNormalizedLiquidation struct {
-	Exchange     string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
-	Symbol       string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
-	Side         string `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+////////////////////////////////////////////////////////////////////////////////
+// BINANCE SCHEMA & WRITER
+////////////////////////////////////////////////////////////////////////////////
+
+// parquet schema just for Binance liquidation normalized data
+type binanceParquetRow struct {
+	Exchange string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Symbol   string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Side     string `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+
 	PositionSide string `parquet:"name=position_side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
 	OrderType    string `parquet:"name=order_type, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
 
@@ -136,94 +157,64 @@ type parquetNormalizedLiquidation struct {
 	RealizedPnl  float64 `parquet:"name=realized_pnl, type=DOUBLE"`
 }
 
-func (w *S3ParquetWriter) writeBatchSingleExchange(
-	ctx context.Context,
-	exchange string,
-	events []models.NormalizedLiquidation,
-) error {
-	if len(events) == 0 {
+func (w *S3ParquetWriter) writeBinanceBatch(ctx context.Context, events []models.NormalizedLiquidation) error {
+	// filter only envelopes that actually have Binance data
+	rows := make([]binanceParquetRow, 0, len(events))
+	for _, env := range events {
+		if env.Binance == nil {
+			continue
+		}
+		b := env.Binance
+		rows = append(rows, binanceParquetRow{
+			Exchange:     models.ExchangeBinance,
+			Symbol:       b.Symbol,
+			Side:         b.Side,
+			PositionSide: b.PositionSide,
+			OrderType:    b.OrderType,
+			TimeMillis:   env.Time.UTC().UnixNano() / int64(time.Millisecond),
+			Quantity:     b.Quantity,
+			Price:        b.Price,
+			AvgPrice:     b.AvgPrice,
+			LastQty:      b.LastQty,
+			LastPrice:    b.LastPrice,
+			TradeID:      b.TradeID,
+			IsMaker:      b.IsMaker,
+			IsReduceOnly: b.IsReduceOnly,
+			WorkingType:  b.WorkingType,
+			OriginalType: b.OriginalType,
+			CloseAll:     b.CloseAll,
+			RealizedPnl:  b.RealizedPnl,
+		})
+	}
+	if len(rows) == 0 {
 		return nil
 	}
 
+	// partition key: exchange/binance/YYYY/MM/DD/HH/<uuid>.parquet
 	t := events[0].Time.UTC().Truncate(time.Hour)
-	key := fmt.Sprintf("%s%s/%04d/%02d/%02d/%02d/%s.parquet",
+	key := fmt.Sprintf("%sbinance/%04d/%02d/%02d/%02d/%s.parquet",
 		w.cfg.Prefix,
-		exchange,
 		t.Year(), t.Month(), t.Day(),
 		t.Hour(),
 		uuid.New().String(),
 	)
 
 	var buf bytes.Buffer
-
-	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(parquetNormalizedLiquidation), 4)
+	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(binanceParquetRow), 4)
 	if err != nil {
-		return fmt.Errorf("create parquet writer: %w", err)
+		return fmt.Errorf("binance: create parquet writer: %w", err)
 	}
-	pw.RowGroupSize = 128 * 1024 * 1024 // 128 MB
+	pw.RowGroupSize = 128 * 1024 * 1024
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 
-	for _, env := range events {
-		row := parquetNormalizedLiquidation{
-			Exchange:   env.Exchange,
-			TimeMillis: env.Time.UTC().UnixNano() / int64(time.Millisecond),
-		}
-
-		switch env.Exchange {
-		case models.ExchangeBinance:
-			if env.Binance != nil {
-				b := env.Binance
-				row.Symbol = b.Symbol
-				row.Side = b.Side
-				row.PositionSide = b.PositionSide
-				row.OrderType = b.OrderType
-				row.Quantity = b.Quantity
-				row.Price = b.Price
-				row.AvgPrice = b.AvgPrice
-				row.LastQty = b.LastQty
-				row.LastPrice = b.LastPrice
-				row.TradeID = b.TradeID
-				row.IsMaker = b.IsMaker
-				row.IsReduceOnly = b.IsReduceOnly
-				row.WorkingType = b.WorkingType
-				row.OriginalType = b.OriginalType
-				row.CloseAll = b.CloseAll
-				row.RealizedPnl = b.RealizedPnl
-			}
-
-		case models.ExchangeBybit:
-			if env.Bybit != nil {
-				b := env.Bybit
-				row.Symbol = b.Symbol
-				row.Side = b.Side
-				row.PositionSide = "" // not present
-				row.OrderType = "LIQUIDATION"
-				row.Quantity = b.Quantity
-				row.Price = b.Price
-				// rest left zero
-			}
-
-		case models.ExchangeOKX:
-			if env.OKX != nil {
-				o := env.OKX
-				row.Symbol = o.Symbol
-				row.Side = o.Side
-				row.PositionSide = o.PositionSide
-				row.OrderType = "LIQUIDATION"
-				row.Quantity = o.Quantity
-				row.Price = o.Price
-				// rest left zero
-			}
-		}
-
-		if err := pw.Write(row); err != nil {
+	for _, r := range rows {
+		if err := pw.Write(r); err != nil {
 			_ = pw.WriteStop()
-			return fmt.Errorf("parquet write row: %w", err)
+			return fmt.Errorf("binance: parquet write row: %w", err)
 		}
 	}
-
 	if err := pw.WriteStop(); err != nil {
-		return fmt.Errorf("parquet write stop: %w", err)
+		return fmt.Errorf("binance: parquet write stop: %w", err)
 	}
 
 	input := &s3.PutObjectInput{
@@ -231,11 +222,247 @@ func (w *S3ParquetWriter) writeBatchSingleExchange(
 		Key:    aws.String(key),
 		Body:   bytes.NewReader(buf.Bytes()),
 	}
-
 	if _, err := w.client.PutObject(ctx, input); err != nil {
-		return fmt.Errorf("s3 put object: %w", err)
+		return fmt.Errorf("binance: s3 put object: %w", err)
 	}
 
-	log.Printf("[s3-parquet-writer] wrote %d events -> s3://%s/%s", len(events), w.cfg.Bucket, key)
+	log.Printf("[s3-parquet-writer] binance wrote %d rows -> s3://%s/%s", len(rows), w.cfg.Bucket, key)
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// BYBIT SCHEMA & WRITER
+////////////////////////////////////////////////////////////////////////////////
+
+type bybitParquetRow struct {
+	Exchange string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Symbol   string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Side     string `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+
+	TimeMillis int64   `parquet:"name=time_millis, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Quantity   float64 `parquet:"name=quantity, type=DOUBLE"`
+	Price      float64 `parquet:"name=price, type=DOUBLE"`
+}
+
+func (w *S3ParquetWriter) writeBybitBatch(ctx context.Context, events []models.NormalizedLiquidation) error {
+	rows := make([]bybitParquetRow, 0, len(events))
+	for _, env := range events {
+		if env.Bybit == nil {
+			continue
+		}
+		b := env.Bybit
+		rows = append(rows, bybitParquetRow{
+			Exchange:   models.ExchangeBybit,
+			Symbol:     b.Symbol,
+			Side:       b.Side,
+			TimeMillis: env.Time.UTC().UnixNano() / int64(time.Millisecond),
+			Quantity:   b.Quantity,
+			Price:      b.Price,
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	t := events[0].Time.UTC().Truncate(time.Hour)
+	key := fmt.Sprintf("%sbybit/%04d/%02d/%02d/%02d/%s.parquet",
+		w.cfg.Prefix,
+		t.Year(), t.Month(), t.Day(),
+		t.Hour(),
+		uuid.New().String(),
+	)
+
+	var buf bytes.Buffer
+	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(bybitParquetRow), 4)
+	if err != nil {
+		return fmt.Errorf("bybit: create parquet writer: %w", err)
+	}
+	pw.RowGroupSize = 128 * 1024 * 1024
+	pw.CompressionType = parquet.CompressionCodec_SNAPPY
+
+	for _, r := range rows {
+		if err := pw.Write(r); err != nil {
+			_ = pw.WriteStop()
+			return fmt.Errorf("bybit: parquet write row: %w", err)
+		}
+	}
+	if err := pw.WriteStop(); err != nil {
+		return fmt.Errorf("bybit: parquet write stop: %w", err)
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(w.cfg.Bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(buf.Bytes()),
+	}
+	if _, err := w.client.PutObject(ctx, input); err != nil {
+		return fmt.Errorf("bybit: s3 put object: %w", err)
+	}
+
+	log.Printf("[s3-parquet-writer] bybit wrote %d rows -> s3://%s/%s", len(rows), w.cfg.Bucket, key)
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OKX SCHEMA & WRITER
+////////////////////////////////////////////////////////////////////////////////
+
+type okxParquetRow struct {
+	Exchange string `parquet:"name=exchange, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Symbol   string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+	Side     string `parquet:"name=side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+
+	PositionSide string `parquet:"name=position_side, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
+
+	TimeMillis int64   `parquet:"name=time_millis, type=INT64, convertedtype=TIMESTAMP_MILLIS"`
+	Quantity   float64 `parquet:"name=quantity, type=DOUBLE"`
+	Price      float64 `parquet:"name=price, type=DOUBLE"`
+}
+
+func (w *S3ParquetWriter) writeOKXBatch(ctx context.Context, events []models.NormalizedLiquidation) error {
+	rows := make([]okxParquetRow, 0, len(events))
+	for _, env := range events {
+		if env.OKX == nil {
+			continue
+		}
+		o := env.OKX
+		rows = append(rows, okxParquetRow{
+			Exchange:     models.ExchangeOKX,
+			Symbol:       o.Symbol,
+			Side:         o.Side,
+			PositionSide: o.PositionSide,
+			TimeMillis:   env.Time.UTC().UnixNano() / int64(time.Millisecond),
+			Quantity:     o.Quantity,
+			Price:        o.Price,
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	t := events[0].Time.UTC().Truncate(time.Hour)
+	key := fmt.Sprintf("%sokx/%04d/%02d/%02d/%02d/%s.parquet",
+		w.cfg.Prefix,
+		t.Year(), t.Month(), t.Day(),
+		t.Hour(),
+		uuid.New().String(),
+	)
+
+	var buf bytes.Buffer
+	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(okxParquetRow), 4)
+	if err != nil {
+		return fmt.Errorf("okx: create parquet writer: %w", err)
+	}
+	pw.RowGroupSize = 128 * 1024 * 1024
+	pw.CompressionType = parquet.CompressionCodec_SNAPPY
+
+	for _, r := range rows {
+		if err := pw.Write(r); err != nil {
+			_ = pw.WriteStop()
+			return fmt.Errorf("okx: parquet write row: %w", err)
+		}
+	}
+	if err := pw.WriteStop(); err != nil {
+		return fmt.Errorf("okx: parquet write stop: %w", err)
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(w.cfg.Bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(buf.Bytes()),
+	}
+	if _, err := w.client.PutObject(ctx, input); err != nil {
+		return fmt.Errorf("okx: s3 put object: %w", err)
+	}
+
+	log.Printf("[s3-parquet-writer] okx wrote %d rows -> s3://%s/%s", len(rows), w.cfg.Bucket, key)
+	return nil
+}
+
+type LiquidationWriter struct {
+	cfg      *appconfig.Config
+	normChan <-chan models.NormalizedLiquidation
+	s3       *S3ParquetWriter
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	running  bool
+	log      *logger.Log
+}
+
+func NewLiquidationWriter(cfg *appconfig.Config, norm <-chan models.NormalizedLiquidation) (*LiquidationWriter, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("nil config")
+	}
+	if !cfg.Storage.S3.Enabled {
+		return nil, fmt.Errorf("s3 storage disabled")
+	}
+	if norm == nil {
+		return nil, fmt.Errorf("nil normalized channel")
+	}
+
+	prefix := "liq/"
+	if cfg.Cryptoflow.Name != "" {
+		prefix = fmt.Sprintf("%s/liquidation/", cfg.Cryptoflow.Name)
+	}
+
+	s3Writer, err := NewS3ParquetWriter(context.Background(), S3WriterConfig{
+		Bucket: cfg.Storage.S3.Bucket,
+		Prefix: prefix,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create liquidation s3 writer: %w", err)
+	}
+
+	return &LiquidationWriter{
+		cfg:      cfg,
+		normChan: norm,
+		s3:       s3Writer,
+		log:      logger.GetLogger(),
+	}, nil
+}
+
+func (w *LiquidationWriter) Start(ctx context.Context) error {
+	if w == nil {
+		return fmt.Errorf("nil liquidation writer")
+	}
+
+	w.mu.Lock()
+	if w.running {
+		w.mu.Unlock()
+		return fmt.Errorf("liquidation writer already running")
+	}
+	w.running = true
+	w.ctx, w.cancel = context.WithCancel(ctx)
+	w.mu.Unlock()
+
+	w.log.WithComponent("liquidation_writer").Info("starting liquidation writer")
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.s3.Run(w.ctx, w.normChan)
+	}()
+	return nil
+}
+
+func (w *LiquidationWriter) Stop() {
+	if w == nil {
+		return
+	}
+
+	w.mu.Lock()
+	if !w.running {
+		w.mu.Unlock()
+		return
+	}
+	w.running = false
+	cancel := w.cancel
+	w.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	w.wg.Wait()
+	w.log.WithComponent("liquidation_writer").Info("liquidation writer stopped")
 }

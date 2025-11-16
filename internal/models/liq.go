@@ -12,6 +12,7 @@ import (
 const (
 	ExchangeBinance = "binance"
 	ExchangeBybit   = "bybit"
+	ExchangeKucoin  = "kucoin"
 	ExchangeOKX     = "okx"
 )
 
