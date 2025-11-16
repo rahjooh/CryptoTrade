@@ -36,14 +36,14 @@ type foiParquetRecord struct {
 
 type foiMemFile struct{ buffer *bytes.Buffer }
 
-func newFoiMemFile() *foiMemFile                                 { return &foiMemFile{buffer: &bytes.Buffer{}} }
-func (m *foiMemFile) Create(string) (source.ParquetFile, error)  { return m, nil }
-func (m *foiMemFile) Open(string) (source.ParquetFile, error)    { return m, nil }
-func (m *foiMemFile) Seek(int64, int) (int64, error)             { return int64(m.buffer.Len()), nil }
-func (m *foiMemFile) Read([]byte) (int, error)                   { return 0, fmt.Errorf("read not supported") }
-func (m *foiMemFile) Write(b []byte) (int, error)                { return m.buffer.Write(b) }
-func (m *foiMemFile) Close() error                               { return nil }
-func (m *foiMemFile) Bytes() []byte                              { return m.buffer.Bytes() }
+func newFoiMemFile() *foiMemFile                                { return &foiMemFile{buffer: &bytes.Buffer{}} }
+func (m *foiMemFile) Create(string) (source.ParquetFile, error) { return m, nil }
+func (m *foiMemFile) Open(string) (source.ParquetFile, error)   { return m, nil }
+func (m *foiMemFile) Seek(int64, int) (int64, error)            { return int64(m.buffer.Len()), nil }
+func (m *foiMemFile) Read([]byte) (int, error)                  { return 0, fmt.Errorf("read not supported") }
+func (m *foiMemFile) Write(b []byte) (int, error)               { return m.buffer.Write(b) }
+func (m *foiMemFile) Close() error                              { return nil }
+func (m *foiMemFile) Bytes() []byte                             { return m.buffer.Bytes() }
 
 // FOIWriter consumes normalized FOI batches and persists them to S3.
 type FOIWriter struct {

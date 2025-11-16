@@ -42,13 +42,13 @@ type piParquetRecord struct {
 type piMemFile struct{ buffer *bytes.Buffer }
 
 func newPiMemFile() *piMemFile                                 { return &piMemFile{buffer: &bytes.Buffer{}} }
-func (m *piMemFile) Create(string) (source.ParquetFile, error)  { return m, nil }
-func (m *piMemFile) Open(string) (source.ParquetFile, error)    { return m, nil }
-func (m *piMemFile) Seek(int64, int) (int64, error)             { return int64(m.buffer.Len()), nil }
-func (m *piMemFile) Read([]byte) (int, error)                   { return 0, fmt.Errorf("read not supported") }
-func (m *piMemFile) Write(b []byte) (int, error)                { return m.buffer.Write(b) }
-func (m *piMemFile) Close() error                               { return nil }
-func (m *piMemFile) Bytes() []byte                              { return m.buffer.Bytes() }
+func (m *piMemFile) Create(string) (source.ParquetFile, error) { return m, nil }
+func (m *piMemFile) Open(string) (source.ParquetFile, error)   { return m, nil }
+func (m *piMemFile) Seek(int64, int) (int64, error)            { return int64(m.buffer.Len()), nil }
+func (m *piMemFile) Read([]byte) (int, error)                  { return 0, fmt.Errorf("read not supported") }
+func (m *piMemFile) Write(b []byte) (int, error)               { return m.buffer.Write(b) }
+func (m *piMemFile) Close() error                              { return nil }
+func (m *piMemFile) Bytes() []byte                             { return m.buffer.Bytes() }
 
 // PIWriter consumes normalized premium-index batches and writes them to S3.
 type PIWriter struct {

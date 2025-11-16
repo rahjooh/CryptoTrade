@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/google/uuid"
 	"github.com/xitongsys/parquet-go/parquet"
 	pqwriter "github.com/xitongsys/parquet-go/writer"
 
@@ -190,15 +192,7 @@ func (w *S3ParquetWriter) writeBinanceBatch(ctx context.Context, events []models
 		return nil
 	}
 
-	// partition key: exchange/binance/YYYY/MM/DD/HH/<uuid>.parquet
-	t := events[0].Time.UTC().Truncate(time.Hour)
-	key := fmt.Sprintf("%sbinance/%04d/%02d/%02d/%02d/%s.parquet",
-		w.cfg.Prefix,
-		t.Year(), t.Month(), t.Day(),
-		t.Hour(),
-		uuid.New().String(),
-	)
-
+	key := w.liq_s3Key(events)
 	var buf bytes.Buffer
 	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(binanceParquetRow), 4)
 	if err != nil {
@@ -264,13 +258,7 @@ func (w *S3ParquetWriter) writeBybitBatch(ctx context.Context, events []models.N
 		return nil
 	}
 
-	t := events[0].Time.UTC().Truncate(time.Hour)
-	key := fmt.Sprintf("%sbybit/%04d/%02d/%02d/%02d/%s.parquet",
-		w.cfg.Prefix,
-		t.Year(), t.Month(), t.Day(),
-		t.Hour(),
-		uuid.New().String(),
-	)
+	key := w.liq_s3Key(events)
 
 	var buf bytes.Buffer
 	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(bybitParquetRow), 4)
@@ -340,13 +328,7 @@ func (w *S3ParquetWriter) writeOKXBatch(ctx context.Context, events []models.Nor
 		return nil
 	}
 
-	t := events[0].Time.UTC().Truncate(time.Hour)
-	key := fmt.Sprintf("%sokx/%04d/%02d/%02d/%02d/%s.parquet",
-		w.cfg.Prefix,
-		t.Year(), t.Month(), t.Day(),
-		t.Hour(),
-		uuid.New().String(),
-	)
+	key := w.liq_s3Key(events)
 
 	var buf bytes.Buffer
 	pw, err := pqwriter.NewParquetWriterFromWriter(&buf, new(okxParquetRow), 4)
@@ -465,4 +447,72 @@ func (w *LiquidationWriter) Stop() {
 	}
 	w.wg.Wait()
 	w.log.WithComponent("liquidation_writer").Info("liquidation writer stopped")
+}
+
+// liqS3Key builds a key like:
+//
+//	<prefix>exchange=binance/market=liquidation/symbol=BTCUSDC/date=2025-09-06/binance_liq_BTCUSDC_20250906T131500.parquet
+func (w *S3ParquetWriter) liq_s3Key(events []models.NormalizedLiquidation) string {
+	if len(events) == 0 {
+		// Defensive fallback
+		return filepath.ToSlash(filepath.Join(strings.TrimSuffix(w.cfg.Prefix, "/"), "exchange=unknown", "market=liquidation", "symbol=unknown", "date=1970-01-01", "empty.parquet"))
+	}
+
+	first := events[0]
+	t := first.Time.UTC()
+
+	// Exchange from envelope
+	exchange := first.Exchange
+	if exchange == "" {
+		exchange = "unknown"
+	}
+
+	// Symbol from the exchange-specific payload
+	symbol := ""
+	switch exchange {
+	case models.ExchangeBinance:
+		if first.Binance != nil {
+			symbol = first.Binance.Symbol
+		}
+	case models.ExchangeBybit:
+		if first.Bybit != nil {
+			symbol = first.Bybit.Symbol
+		}
+	case models.ExchangeOKX:
+		if first.OKX != nil {
+			symbol = first.OKX.Symbol
+		}
+	}
+	if symbol == "" {
+		symbol = "unknown"
+	}
+
+	// date partition: YYYY-MM-DD
+	dateStr := fmt.Sprintf("%04d-%02d-%02d", t.Year(), t.Month(), t.Day())
+
+	// Optional prefix, normalized
+	prefix := strings.TrimSuffix(w.cfg.Prefix, "/")
+
+	// Filename: e.g. binance_liq_BTCUSDC_20250906T131500.parquet
+	ts := t.Format("20060102T150405")
+	filename := fmt.Sprintf("%s_liq_%s_%s_%s.parquet",
+		exchange,
+		symbol,
+		ts,
+		uuid.New().String(),
+	)
+
+	parts := []string{}
+	if prefix != "" {
+		parts = append(parts, prefix)
+	}
+	parts = append(parts,
+		fmt.Sprintf("exchange=%s", exchange),
+		"market=liquidation",
+		fmt.Sprintf("symbol=%s", symbol),
+		fmt.Sprintf("date=%s", dateStr),
+		filename,
+	)
+
+	return filepath.ToSlash(filepath.Join(parts...))
 }
