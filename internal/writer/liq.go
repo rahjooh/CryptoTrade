@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -455,7 +453,7 @@ func (w *LiquidationWriter) Stop() {
 func (w *S3ParquetWriter) liq_s3Key(events []models.NormalizedLiquidation) string {
 	if len(events) == 0 {
 		// Defensive fallback
-		return filepath.ToSlash(filepath.Join(strings.TrimSuffix(w.cfg.Prefix, "/"), "exchange=unknown", "market=liquidation", "symbol=unknown", "date=1970-01-01", "empty.parquet"))
+		return "exchange=unknown/market=liquidation/symbol=unknown/date=1970-01-01/unknown_liq_unknown_19700101T000000.parquet"
 	}
 
 	first := events[0]
@@ -487,26 +485,15 @@ func (w *S3ParquetWriter) liq_s3Key(events []models.NormalizedLiquidation) strin
 		symbol = "unknown"
 	}
 
-	// date partition: YYYY-MM-DD
-	dateStr := fmt.Sprintf("%04d-%02d-%02d", t.Year(), t.Month(), t.Day())
+	// date=YYYY-MM-DD
+	dateStr := t.Format("2006-01-02")
 
-	// Optional prefix, normalized
-	prefix := strings.TrimSuffix(w.cfg.Prefix, "/")
-
-	// Filename: e.g. binance_liq_BTCUSDC_20250906T131500.parquet
+	// Filename WITHOUT UUID:
+	//   binance_liq_ARBUSDT_20251116T073502.parquet
 	ts := t.Format("20060102T150405")
-	filename := fmt.Sprintf("%s_liq_%s_%s_%s.parquet",
-		exchange,
-		symbol,
-		ts,
-		uuid.New().String(),
-	)
+	filename := fmt.Sprintf("%s_liq_%s_%s.parquet", exchange, symbol, ts)
 
-	parts := []string{}
-	if prefix != "" {
-		parts = append(parts, prefix)
-	}
-	parts = append(parts,
+	key := filepath.Join(
 		fmt.Sprintf("exchange=%s", exchange),
 		"market=liquidation",
 		fmt.Sprintf("symbol=%s", symbol),
@@ -514,5 +501,6 @@ func (w *S3ParquetWriter) liq_s3Key(events []models.NormalizedLiquidation) strin
 		filename,
 	)
 
-	return filepath.ToSlash(filepath.Join(parts...))
+	// S3 wants forward slashes
+	return filepath.ToSlash(key)
 }
