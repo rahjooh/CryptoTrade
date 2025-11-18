@@ -17,6 +17,8 @@ import (
 	"cryptoflow/internal/models"
 	//"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -85,6 +87,7 @@ func (w *FOIWorker) Run(
 				}
 				select {
 				case foiNormCh <- env:
+					logFOIEmission(env)
 				case <-ctx.Done():
 					return
 				}
@@ -99,6 +102,7 @@ func (w *FOIWorker) Run(
 				for _, env := range envs {
 					select {
 					case foiNormCh <- env:
+						logFOIEmission(env)
 					case <-ctx.Done():
 						return
 					}
@@ -113,6 +117,7 @@ func (w *FOIWorker) Run(
 				for _, env := range envs {
 					select {
 					case foiNormCh <- env:
+						logFOIEmission(env)
 					case <-ctx.Done():
 						return
 					}
@@ -501,4 +506,39 @@ func (w *FOIWorker) flattenOKX(raw models.RawFOI) ([]models.NormFOI, error) {
 	}
 
 	return out, nil
+}
+
+func logFOIEmission(env models.NormFOI) {
+	log := logger.GetLogger()
+	if log == nil || !log.IsLevelEnabled(logrus.DebugLevel) {
+		return
+	}
+
+	fields := logger.Fields{
+		"exchange": env.Exchange,
+	}
+	if !env.Time.IsZero() {
+		fields["timestamp"] = env.Time
+	}
+	switch env.Exchange {
+	case models.ExchangeBinance:
+		if env.Binance != nil {
+			fields["symbol"] = env.Binance.Symbol
+			fields["open_interest"] = env.Binance.OpenInterest
+		}
+	case models.ExchangeBybit:
+		if env.Bybit != nil {
+			fields["symbol"] = env.Bybit.Symbol
+			fields["category"] = env.Bybit.Category
+			fields["interval"] = env.Bybit.Interval
+			fields["open_interest"] = env.Bybit.OpenInterest
+		}
+	case models.ExchangeOKX:
+		if env.OKX != nil {
+			fields["inst_id"] = env.OKX.InstID
+			fields["inst_type"] = env.OKX.InstType
+			fields["oi"] = env.OKX.OI
+		}
+	}
+	log.WithComponent("foi_worker").WithFields(fields).Debug("emitted normalized FOI envelope")
 }

@@ -15,6 +15,7 @@ import (
 	"cryptoflow/logger"
 
 	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 )
 
 // Okx_FOI_Reader consumes SWAP open-interest data from the OKX public
@@ -279,6 +280,13 @@ func (r *Okx_FOI_Reader) forwardMessage(payload []byte, log *logger.Entry) {
 	if len(peek.Data) == 0 {
 		// Likely a subscription ack {event: "subscribe"} without data; ignore.
 		return
+	}
+
+	if r.log.IsLevelEnabled(logrus.DebugLevel) {
+		log.WithFields(logger.Fields{
+			"channel": peek.Arg.Channel,
+			"payload": string(peek.Data),
+		}).Debug("decoded OKX FOI websocket payload")
 	}
 
 	data := json.RawMessage(append([]byte(nil), payload...))

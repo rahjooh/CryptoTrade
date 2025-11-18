@@ -17,6 +17,8 @@ import (
 	binancemetrics "cryptoflow/internal/metrics/binance"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Binance_FOI_Reader struct {
@@ -262,6 +264,13 @@ func (r *Binance_FOI_Reader) fetchFOI(symbol string, foiCfg appconfig.BinanceOpe
 	if err != nil {
 		log.WithError(err).Warn("failed to marshal FOI response")
 		return
+	}
+
+	if r.log.IsLevelEnabled(logrus.DebugLevel) {
+		log.WithFields(logger.Fields{
+			"decoded_response": binanceResp,
+			"symbol":           symbol,
+		}).Debug("decoded FOI payload")
 	}
 
 	raw := models.RawFOI{

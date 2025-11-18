@@ -228,3 +228,12 @@ func (l *Log) SetLevel(level logrus.Level) {
 func (l *Log) SetFormatter(formatter logrus.Formatter) {
 	l.Logger.SetFormatter(formatter)
 }
+
+// IsLevelEnabled proxies to the embedded logrus.Logger to check if the
+// requested log level is active.
+func (l *Log) IsLevelEnabled(level logrus.Level) bool {
+	if l == nil || l.Logger == nil {
+		return false
+	}
+	return l.Logger.IsLevelEnabled(level)
+}

@@ -15,6 +15,8 @@ import (
 	metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
 	"cryptoflow/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Bybit_FOI_Reader periodically polls Bybit's REST open-interest endpoint
@@ -282,6 +284,13 @@ func (r *Bybit_FOI_Reader) fetchFOI(symbol string, foiCfg appconfig.OpenInterest
 	if err != nil {
 		log.WithError(err).Warn("failed to marshal Bybit FOI response")
 		return
+	}
+
+	if r.log.IsLevelEnabled(logrus.DebugLevel) {
+		log.WithFields(logger.Fields{
+			"decoded_response": bybitResp,
+			"symbol":           symbol,
+		}).Debug("decoded Bybit FOI payload")
 	}
 
 	raw := models.RawFOI{

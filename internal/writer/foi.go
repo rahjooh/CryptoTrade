@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/sirupsen/logrus"
 	"github.com/xitongsys/parquet-go/parquet"
 	pqwriter "github.com/xitongsys/parquet-go/writer"
 
@@ -299,6 +300,29 @@ func (w *foiWriter) worker(workerID int) {
 				log.Info("foi.norm channel closed, worker stopping")
 				return
 			}
+			if w.log.IsLevelEnabled(logrus.DebugLevel) {
+				debugFields := logger.Fields{
+					"exchange": env.Exchange,
+				}
+				switch env.Exchange {
+				case models.ExchangeBinance:
+					if env.Binance != nil {
+						debugFields["symbol"] = env.Binance.Symbol
+						debugFields["open_interest"] = env.Binance.OpenInterest
+					}
+				case models.ExchangeBybit:
+					if env.Bybit != nil {
+						debugFields["symbol"] = env.Bybit.Symbol
+						debugFields["category"] = env.Bybit.Category
+					}
+				case models.ExchangeOKX:
+					if env.OKX != nil {
+						debugFields["inst_id"] = env.OKX.InstID
+						debugFields["inst_type"] = env.OKX.InstType
+					}
+				}
+				log.WithFields(debugFields).Debug("received normalized FOI message")
+			}
 			w.addNorm(env)
 		}
 	}
@@ -423,6 +447,31 @@ func (w *foiWriter) processBatch(batch foiBatch) {
 	if batch.RecordCount == 0 {
 		log.Debug("FOI batch has no records, skipping")
 		return
+	}
+
+	if w.log.IsLevelEnabled(logrus.DebugLevel) && len(batch.Entries) > 0 {
+		entry := batch.Entries[0]
+		symbol := ""
+		switch entry.Exchange {
+		case models.ExchangeBinance:
+			if entry.Binance != nil {
+				symbol = entry.Binance.Symbol
+			}
+		case models.ExchangeBybit:
+			if entry.Bybit != nil {
+				symbol = entry.Bybit.Symbol
+			}
+		case models.ExchangeOKX:
+			if entry.OKX != nil {
+				symbol = entry.OKX.InstID
+			}
+		}
+		sample := logger.Fields{
+			"sample_exchange": entry.Exchange,
+			"sample_symbol":   symbol,
+			"sample_time":     entry.Time,
+		}
+		log.WithFields(sample).Debug("sample FOI entry within batch")
 	}
 
 	s3Key := w.generateS3Key(batch)
