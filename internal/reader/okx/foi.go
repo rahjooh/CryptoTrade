@@ -90,7 +90,7 @@ func (r *Okx_FOI_Reader) Okx_FOI_Start(ctx context.Context) error {
 	})
 
 	if !cfg.Enabled {
-		log.Warn("okx futures open_interest stream disabled via configuration")
+		log.Info("okx futures open_interest stream disabled via configuration; reader will not start")
 		return fmt.Errorf("okx futures open_interest stream disabled")
 	}
 	if cfg.Connection != "websocket" {

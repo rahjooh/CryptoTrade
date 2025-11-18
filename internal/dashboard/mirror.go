@@ -162,6 +162,11 @@ func (m *s3Mirror) flush(ctx context.Context, reason string) {
 		return
 	}
 
+	if err := m.writeLogFiles(ctx, snapshot.Logs); err != nil {
+		m.log.WithComponent("dashboard_mirror").WithError(err).Warn("failed to upload log files")
+		return
+	}
+
 	if err := m.writeDropLog(ctx, snapshot.Drops); err != nil {
 		m.log.WithComponent("dashboard_mirror").WithError(err).Warn("failed to upload drop log")
 		return
@@ -186,6 +191,46 @@ func (m *s3Mirror) writeDropLog(ctx context.Context, entries []dropEntry) error 
 		buf.WriteByte('\n')
 	}
 	return m.putObject(ctx, m.objectKey(m.cfg.DropLogName), buf.Bytes(), "text/plain")
+}
+
+func (m *s3Mirror) writeLogFiles(ctx context.Context, logs []logRecord) error {
+	if len(logs) == 0 {
+		return nil
+	}
+	byLevel := map[string][]logRecord{}
+	for _, entry := range logs {
+		level := strings.ToLower(entry.Level)
+		switch level {
+		case "warning", "error", "fatal", "panic":
+			byLevel[level] = append(byLevel[level], entry)
+		}
+	}
+	if len(byLevel) == 0 {
+		return nil
+	}
+	for level, entries := range byLevel {
+		key := path.Join(m.cfg.Prefix, "logs", fmt.Sprintf("%s-%s.log", level, time.Now().UTC().Format("20060102T150405Z")))
+		if err := m.writeLogEntries(ctx, key, entries); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *s3Mirror) writeLogEntries(ctx context.Context, key string, entries []logRecord) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	var buf bytes.Buffer
+	for _, entry := range entries {
+		line, err := json.Marshal(entry)
+		if err != nil {
+			return fmt.Errorf("failed to serialize log record: %w", err)
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	return m.putObject(ctx, key, buf.Bytes(), "text/plain")
 }
 
 func (m *s3Mirror) putObject(ctx context.Context, key string, data []byte, contentType string) error {

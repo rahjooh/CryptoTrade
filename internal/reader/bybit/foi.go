@@ -117,7 +117,7 @@ func (r *Bybit_FOI_Reader) Bybit_FOI_Start(ctx context.Context) error {
 
 	foiCfg := r.config.Source.Bybit.Future.OpenInterest
 	if !foiCfg.Enabled {
-		log.Warn("bybit futures open_interest is disabled")
+		log.Info("bybit futures open_interest is disabled via configuration; reader will not start")
 		return fmt.Errorf("bybit futures open_interest is disabled")
 	}
 	if foiCfg.Connection != "rest" {

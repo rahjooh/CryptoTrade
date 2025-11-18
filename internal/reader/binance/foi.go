@@ -114,7 +114,7 @@ func (r *Binance_FOI_Reader) Binance_FOI_Start(ctx context.Context) error {
 
 	foiCfg := r.config.Source.Binance.Future.OpenInterest
 	if !foiCfg.Enabled {
-		log.Warn("binance futures open_interest is disabled")
+		log.Info("binance futures open_interest is disabled via configuration; reader will not start")
 		return fmt.Errorf("binance futures open_interest is disabled")
 	}
 	if foiCfg.Connection != "rest" {
