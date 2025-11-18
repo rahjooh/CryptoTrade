@@ -49,6 +49,7 @@ type Okx_FOI_Reader struct {
 
 	log     *logger.Log
 	instIDs []string // e.g. ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+	ip      string
 }
 
 // Okx_FOI_NewReader constructs a new OKX FOI reader.
@@ -57,7 +58,8 @@ type Okx_FOI_Reader struct {
 //   - ch:      FOI channels
 //   - instIDs: optional explicit instrument IDs; if empty, uses config symbols
 //     from source.okx.future.open_interest.symbols
-func Okx_FOI_NewReader(cfg *appconfig.Config, ch *foi.Channels, instIDs []string) *Okx_FOI_Reader {
+//   - localIP: optional outbound IP for sharding; currently unused
+func Okx_FOI_NewReader(cfg *appconfig.Config, ch *foi.Channels, instIDs []string, localIP string) *Okx_FOI_Reader {
 	log := logger.GetLogger()
 	return &Okx_FOI_Reader{
 		config:   cfg,
@@ -65,6 +67,7 @@ func Okx_FOI_NewReader(cfg *appconfig.Config, ch *foi.Channels, instIDs []string
 		wg:       &sync.WaitGroup{},
 		log:      log,
 		instIDs:  instIDs,
+		ip:       localIP,
 	}
 }
 

@@ -367,10 +367,11 @@ type OpenInterestConfig struct {
 }
 
 type BinanceOpenInterestConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	Connection string `yaml:"connection"`  // "rest" for FOI
-	URL        string `yaml:"url"`         // https://fapi.binance.com/fapi/v1/openInterest
-	IntervalMs int    `yaml:"interval_ms"` // poll interval in ms
+	Enabled    bool     `yaml:"enabled"`
+	Connection string   `yaml:"connection"`  // "rest" for FOI
+	URL        string   `yaml:"url"`         // https://fapi.binance.com/fapi/v1/openInterest
+	IntervalMs int      `yaml:"interval_ms"` // poll interval in ms
+	Symbols    []string `yaml:"symbols"`
 }
 
 type PremiumIndexConfig struct {

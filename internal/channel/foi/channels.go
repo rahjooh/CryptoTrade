@@ -18,8 +18,8 @@ type ChannelStats struct {
 
 // Channels exposes the raw open-interest stream.
 type Channels struct {
-	Raw  chan models.RawFOIMessage
-	Norm chan models.BatchFOIMessage
+	Raw  chan models.RawFOI
+	Norm chan models.NormFOI
 
 	stats      ChannelStats
 	statsMutex sync.RWMutex
@@ -29,8 +29,8 @@ type Channels struct {
 func NewChannels(rawBufferSize, normBufferSize int) *Channels {
 	log := logger.GetLogger()
 	c := &Channels{
-		Raw:  make(chan models.RawFOIMessage, rawBufferSize),
-		Norm: make(chan models.BatchFOIMessage, normBufferSize),
+		Raw:  make(chan models.RawFOI, rawBufferSize),
+		Norm: make(chan models.NormFOI, normBufferSize),
 		log:  log,
 	}
 
@@ -72,7 +72,7 @@ func (c *Channels) IncrementNormDropped() {
 	c.statsMutex.Unlock()
 }
 
-func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOIMessage) bool {
+func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOI) bool {
 	select {
 	case c.Raw <- msg:
 		c.IncrementRawSent()
@@ -85,7 +85,7 @@ func (c *Channels) SendRaw(ctx context.Context, msg models.RawFOIMessage) bool {
 	}
 }
 
-func (c *Channels) SendNorm(ctx context.Context, msg models.BatchFOIMessage) bool {
+func (c *Channels) SendNorm(ctx context.Context, msg models.NormFOI) bool {
 	select {
 	case c.Norm <- msg:
 		c.IncrementNormSent()

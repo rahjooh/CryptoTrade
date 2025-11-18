@@ -187,12 +187,9 @@ func (r *Kucoin_FOI_Reader) fetchOnce(symbol string) error {
 	}
 	raw, _ := json.Marshal(payload)
 
-	msg := models.RawFOIMessage{
-		Exchange:  "kucoin",
-		Symbol:    strings.ToUpper(symbol),
-		Market:    "future-openinterest",
-		Data:      raw,
-		Timestamp: time.Now().UTC(),
+	msg := models.RawFOI{
+		Exchange: "kucoin",
+		Payload:  raw,
 	}
 
 	if !r.channels.SendRaw(r.ctx, msg) {

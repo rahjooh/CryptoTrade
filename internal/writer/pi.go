@@ -198,6 +198,10 @@ func (w *PIWriter) ingest() {
 	}
 }
 
+func bufferKey(exchange, market, symbol string) string {
+	return fmt.Sprintf("%s|%s|%s", exchange, market, symbol)
+}
+
 func (w *PIWriter) addBatch(batch models.BatchPIMessage) {
 	key := bufferKey(batch.Exchange, batch.Market, batch.Symbol)
 	w.mu.Lock()
