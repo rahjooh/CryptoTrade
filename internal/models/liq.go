@@ -9,13 +9,6 @@ import (
 ///////////////////////////////// GENERAL ///////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-const (
-	ExchangeBinance = "binance"
-	ExchangeBybit   = "bybit"
-	ExchangeKucoin  = "kucoin"
-	ExchangeOKX     = "okx"
-)
-
 // RawLiquidation is what flows on liq.raw
 type RawLiquidation struct {
 	Exchange string          `json:"exchange"`
@@ -33,29 +26,6 @@ type NormalizedLiquidation struct {
 	Bybit   *BybitNormalizedLiquidation   `json:"bybit,omitempty"`
 	OKX     *OKXNormalizedLiquidation     `json:"okx,omitempty"`
 }
-
-//// ---------------- NORMALIZED ----------------
-//type NormalizedLiquidation struct {
-//	Exchange     string    `json:"exchange"`
-//	Symbol       string    `json:"symbol"`
-//	Side         string    `json:"side"`
-//	PositionSide string    `json:"position_side"`
-//	OrderType    string    `json:"order_type"`
-//	Time         time.Time `json:"time"`
-//	Quantity     float64   `json:"quantity"`
-//	Price        float64   `json:"price"`
-//	AvgPrice     float64   `json:"avg_price"`
-//	LastQty      float64   `json:"last_qty"`
-//	LastPrice    float64   `json:"last_price"`
-//	TradeID      int64     `json:"trade_id"`
-//	IsMaker      bool      `json:"is_maker"`
-//	IsReduceOnly bool      `json:"is_reduce_only"`
-//	WorkingType  string    `json:"working_type"`
-//	OriginalType string    `json:"original_type"`
-//	CloseAll     bool      `json:"close_all"`
-//	RealizedPnl  float64   `json:"realized_pnl"`
-//	//RawJSON       []byte    `json:"raw_json"`
-//}
 
 /////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// BINANCE ///////////////////////////////////

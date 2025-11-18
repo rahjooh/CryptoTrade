@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -26,16 +27,18 @@ type Binance_LIQ_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	localIP  string
 }
 
 // Binance_LIQ_NewReader constructs a new liquidation reader.
-func Binance_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string) *Binance_LIQ_Reader {
+func Binance_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string, localIP string) *Binance_LIQ_Reader {
 	return &Binance_LIQ_Reader{
 		config:   cfg,
 		channels: ch,
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
+		localIP:  localIP,
 	}
 }
 
@@ -114,13 +117,20 @@ func (r *Binance_LIQ_Reader) streamSymbol(symbol string) {
 		baseURL = "wss://fstream.binance.com"
 	}
 
+	dialer := *websocket.DefaultDialer
+	if r.localIP != "" {
+		if ip := net.ParseIP(r.localIP); ip != nil {
+			dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}).DialContext
+		}
+	}
+
 	for {
 		if r.ctx.Err() != nil {
 			return
 		}
 
 		streamURL := fmt.Sprintf("%s/ws/%s@forceOrder", baseURL, strings.ToLower(symbol))
-		conn, _, err := websocket.DefaultDialer.DialContext(r.ctx, streamURL, nil)
+		conn, _, err := dialer.DialContext(r.ctx, streamURL, nil)
 		if err != nil {
 			log.WithError(err).Warn("failed to connect to binance liquidation websocket, retrying")
 			select {

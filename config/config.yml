@@ -11,6 +11,11 @@ dashboard:
   refresh_interval: 5s
   metrics_history: 200
   log_history: 200
+  mirror:
+    enabled: false
+    prefix: "dashboard"
+    interval: 4m
+    drop_log_name: "dropped-messages.log"
 
 # Metrics configuration
 metrics:

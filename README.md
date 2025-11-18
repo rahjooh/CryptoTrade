@@ -126,6 +126,29 @@ Notes:
 
 ---
 
+### Dashboard drill-down and S3 mirror
+
+The built-in dashboard now exposes a sliding navigation header where each exchange expands to its configured markets. Selecting a market switches the view into a market-specific pipeline page that surfaces:
+
+- Live channel buffer sizes for the relevant pipelines (snapshots, deltas, liquidations, open interest, premium index).
+- Filtered drop counters and live logs scoped to the exchange/market combination.
+- The YAML-derived configuration for that market along with the active symbol list.
+
+To keep the UI lightweight for on-host operations while still archiving telemetry, the `dashboard.mirror` block in `config/*.yml` persists dashboard state to S3 at a configurable cadence (default 4 minutes). Every mirror cycle writes `state.json` plus a dedicated `dropped-messages.log` inside the specified `prefix`. Toggle the feature per environment:
+
+```yaml
+dashboard:
+  mirror:
+    enabled: true
+    prefix: "dashboard"         # folder inside your bucket
+    interval: 4m                # cadence for uploads
+    drop_log_name: "dropped-messages.log"
+```
+
+Each DropMetric emission is appended to the in-memory drop log so the exported file contains one line per dropped message, tagged with exchange/market/symbol metadata.
+
+---
+
 ## Running
 
 ```bash

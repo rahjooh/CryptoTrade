@@ -13,7 +13,18 @@ import (
 
 func TestMetricsEndpointEmitsStoredMetrics(t *testing.T) {
 	log := logger.Logger()
-	srv, err := NewServer(config.DashboardConfig{Enabled: true, RefreshInterval: time.Second, MetricsHistory: 10, LogHistory: 10}, log)
+	appCfg := &config.Config{
+		Dashboard: config.DashboardConfig{
+			Enabled:         true,
+			RefreshInterval: time.Second,
+			MetricsHistory:  10,
+			LogHistory:      10,
+		},
+		Storage: config.StorageConfig{
+			S3: config.S3Config{Enabled: false},
+		},
+	}
+	srv, err := NewServer(appCfg, log)
 	if err != nil {
 		t.Fatalf("NewServer error: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -27,16 +28,18 @@ type Bybit_LIQ_Reader struct {
 	running  bool
 	log      *logger.Log
 	symbols  []string
+	localIP  string
 }
 
 // Bybit_LIQ_NewReader constructs a new Bybit liquidation reader.
-func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string) *Bybit_LIQ_Reader {
+func Bybit_LIQ_NewReader(cfg *appconfig.Config, ch *liq.Channels, symbols []string, localIP string) *Bybit_LIQ_Reader {
 	return &Bybit_LIQ_Reader{
 		config:   cfg,
 		channels: ch,
 		wg:       &sync.WaitGroup{},
 		log:      logger.GetLogger(),
 		symbols:  symbols,
+		localIP:  localIP,
 	}
 }
 
@@ -114,12 +117,19 @@ func (r *Bybit_LIQ_Reader) streamSymbol(symbol string) {
 		baseURL = "wss://stream.bybit.com/v5/public/linear"
 	}
 
+	dialer := *websocket.DefaultDialer
+	if r.localIP != "" {
+		if ip := net.ParseIP(r.localIP); ip != nil {
+			dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}).DialContext
+		}
+	}
+
 	for {
 		if r.ctx.Err() != nil {
 			return
 		}
 
-		conn, _, err := websocket.DefaultDialer.DialContext(r.ctx, baseURL, nil)
+		conn, _, err := dialer.DialContext(r.ctx, baseURL, nil)
 		if err != nil {
 			log.WithError(err).Warn("failed to connect to bybit liquidation websocket, retrying")
 			select {

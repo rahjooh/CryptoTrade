@@ -4,113 +4,210 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	//"github.com/google/uuid"
 
 	appconfig "cryptoflow/config"
 	foichannel "cryptoflow/internal/channel/foi"
-	metrics "cryptoflow/internal/metrics"
+	//metrics "cryptoflow/internal/metrics"
 	"cryptoflow/internal/models"
-	"cryptoflow/internal/symbols"
+	//"cryptoflow/internal/symbols"
 	"cryptoflow/logger"
 )
 
-// foiBatchState tracks buffered entries per exchange/symbol bucket.
-type foiBatchState struct {
-	mu        sync.Mutex
-	batch     *models.BatchFOIMessage
-	lastFlush time.Time
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////// FOI WORKER (CORE) ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// FOIWorker contains the core logic for transforming raw FOI messages into
+// normalized FOI envelopes.
+//
+// It is intentionally kept small and stateless (no config or channels), so it
+// can be reused by multiple FOIProcessor workers. All concurrency, channel
+// wiring, and lifecycle management is handled by FOIProcessor; FOIWorker only
+// focuses on:
+//
+//   - reading from foi.raw
+//   - decoding exchange-specific FOI payloads
+//   - emitting normalized FOI messages into foi.norm
+//
+// This mirrors the role of `Processor` in your liquidation pipeline.
+type FOIWorker struct{}
+
+// NewFOIWorker constructs a new FOIWorker. Currently, no configuration is
+// required; this function exists primarily for symmetry and future extension.
+func NewFOIWorker() *FOIWorker {
+	return &FOIWorker{}
 }
 
-// FOIProcessor normalizes raw open-interest payloads into batches for downstream writers.
+// Run is the main FOI processing loop.
+//
+// It:
+//
+//  1. Waits for messages on foiRawCh (models.RawFOI).
+//  2. Inspects raw.Exchange to determine which exchange-specific flattener
+//     to use (binance, bybit, etc.).
+//  3. For each raw payload, produces one or more models.NormFOI envelopes.
+//  4. Sends normalized messages into foiNormCh.
+//  5. Terminates if:
+//     - ctx is cancelled, or
+//     - foiRawCh is closed.
+//
+// This follows the same structure as your liquidation `Processor.Run`.
+func (w *FOIWorker) Run(
+	ctx context.Context,
+	foiRawCh <-chan models.RawFOI,
+	foiNormCh chan<- models.NormFOI,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[foi-processor] context canceled, stopping")
+			return
+
+		case raw, ok := <-foiRawCh:
+			if !ok {
+				log.Printf("[foi-processor] foi.raw closed, stopping")
+				return
+			}
+
+			switch raw.Exchange {
+			case models.ExchangeBinance:
+				// Binance FOI: /fapi/v1/openInterest
+				env, err := w.flattenBinance(raw)
+				if err != nil {
+					log.Printf("[foi-processor] binance flatten error: %v", err)
+					continue
+				}
+				select {
+				case foiNormCh <- env:
+				case <-ctx.Done():
+					return
+				}
+
+			case models.ExchangeBybit:
+				// Bybit FOI: /v5/market/open-interest
+				envs, err := w.flattenBybit(raw)
+				if err != nil {
+					log.Printf("[foi-processor] bybit flatten error: %v", err)
+					continue
+				}
+				for _, env := range envs {
+					select {
+					case foiNormCh <- env:
+					case <-ctx.Done():
+						return
+					}
+				}
+
+			case models.ExchangeOKX:
+				envs, err := w.flattenOKX(raw)
+				if err != nil {
+					log.Printf("[foi-processor] okx flatten error: %v", err)
+					continue
+				}
+				for _, env := range envs {
+					select {
+					case foiNormCh <- env:
+					case <-ctx.Done():
+						return
+					}
+				}
+
+			default:
+				// Unknown or unsupported exchange: ignore silently for now.
+			}
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/////////////////////////// FOI PIPELINE ORCHESTRATOR /////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// FOIProcessor wires FOIWorker to the configured FOI channels, mirroring the
+// structure of your LiquidationProcessor:
+//
+//   - It owns the context, WaitGroup, and running flag.
+//   - It spawns N worker goroutines (N = processor.max_workers).
+//   - Each worker calls FOIWorker.Run with foi.raw and foi.norm.
+//   - Start/Stop follow the same pattern as LiquidationProcessor.
 type FOIProcessor struct {
-	config        *appconfig.Config
-	channels      *foichannel.Channels
-	ctx           context.Context
-	wg            *sync.WaitGroup
-	mu            sync.RWMutex
-	running       bool
-	log           *logger.Log
-	batches       map[string]*foiBatchState
-	symbols       map[string]struct{}
-	filterSymbols bool
+	config   *appconfig.Config
+	channels *foichannel.Channels
+	worker   *FOIWorker
+	ctx      context.Context
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	running  bool
+	log      *logger.Log
 }
 
-// NewFOIProcessor wires a processor to the provided FOI channels and configuration.
+// NewFOIProcessor constructs a new FOIProcessor that drains the FOI channels.
+//
+//   - cfg: global app configuration (used mainly for processor.max_workers).
+//   - ch:  FOI channels wrapper providing foi.raw and foi.norm.
 func NewFOIProcessor(cfg *appconfig.Config, ch *foichannel.Channels) *FOIProcessor {
-	symSet := make(map[string]struct{})
-	if cfg.Source.Binance.Future.OpenInterest.Enabled {
-		for _, x := range cfg.Source.Binance.Future.OpenInterest.Symbols {
-			symSet[x] = struct{}{}
-		}
-	}
-	if cfg.Source.Bybit.Future.OpenInterest.Enabled {
-		for _, x := range cfg.Source.Bybit.Future.OpenInterest.Symbols {
-			symSet[symbols.ToBinance("bybit", x)] = struct{}{}
-		}
-	}
-	if cfg.Source.Kucoin.Future.OpenInterest.Enabled {
-		for _, x := range cfg.Source.Kucoin.Future.OpenInterest.Symbols {
-			symSet[symbols.ToBinance("kucoin", x)] = struct{}{}
-		}
-	}
-	if cfg.Source.Okx.Future.OpenInterest.Enabled {
-		for _, x := range cfg.Source.Okx.Future.OpenInterest.Symbols {
-			symSet[symbols.ToBinance("okx", x)] = struct{}{}
-		}
-	}
-
-	filter := len(symSet) > 0
-	if !filter {
-		// When no source is enabled we still keep map non-nil for future additions.
-		symSet = make(map[string]struct{})
-	}
-
 	return &FOIProcessor{
-		config:        cfg,
-		channels:      ch,
-		wg:            &sync.WaitGroup{},
-		log:           logger.GetLogger(),
-		batches:       make(map[string]*foiBatchState),
-		symbols:       symSet,
-		filterSymbols: filter,
+		config:   cfg,
+		channels: ch,
+		worker:   NewFOIWorker(),
+		log:      logger.GetLogger(),
 	}
 }
 
-// Start begins consuming the raw FOI channel.
+// Start begins draining the raw FOI channel using one or more worker goroutines.
+//
+// It:
+//
+//   - Ensures the processor is not already running.
+//   - Stores the provided context for cancellation.
+//   - Determines worker count from cfg.Processor.MaxWorkers (default = 1).
+//   - Spawns worker goroutines, each executing workerLoop.
+//
+// This mirrors LiquidationProcessor.Start.
 func (p *FOIProcessor) Start(ctx context.Context) error {
 	p.mu.Lock()
 	if p.running {
 		p.mu.Unlock()
-		return fmt.Errorf("FOI processor already running")
+		return fmt.Errorf("foi processor already running")
 	}
 	p.running = true
 	p.ctx = ctx
 	p.mu.Unlock()
 
-	log := p.log.WithComponent("foi_processor").WithFields(logger.Fields{"operation": "start"})
-	log.Info("starting FOI processor")
+	operationLog := p.log.WithComponent("foi_processor").WithFields(logger.Fields{
+		"operation": "start",
+	})
+	operationLog.Info("starting FOI processor")
 
-	workers := p.config.Processor.MaxWorkers
-	if workers < 1 {
-		workers = 1
+	workers := 1
+	if p.config != nil && p.config.Processor.MaxWorkers > 0 {
+		workers = p.config.Processor.MaxWorkers
 	}
+	operationLog.WithFields(logger.Fields{"workers": workers}).Info("spawning FOI workers")
+
 	for i := 0; i < workers; i++ {
 		p.wg.Add(1)
-		go p.worker(i)
+		go p.workerLoop(ctx, i)
 	}
 
-	p.wg.Add(1)
-	go p.flusher()
-
-	log.Info("FOI processor started successfully")
 	return nil
 }
 
-// Stop drains buffers and terminates worker goroutines.
+// Stop requests all workers to exit and waits for them to finish.
+//
+// It:
+//
+//   - Checks if the processor is currently running.
+//   - Clears the running flag.
+//   - Waits on the WaitGroup for all worker goroutines to exit.
+//
+// This mirrors LiquidationProcessor.Stop.
 func (p *FOIProcessor) Stop() {
 	p.mu.Lock()
 	if !p.running {
@@ -121,276 +218,287 @@ func (p *FOIProcessor) Stop() {
 	p.mu.Unlock()
 
 	p.log.WithComponent("foi_processor").Info("stopping FOI processor")
-	p.flushAll()
 	p.wg.Wait()
 	p.log.WithComponent("foi_processor").Info("FOI processor stopped")
 }
 
-func (p *FOIProcessor) worker(id int) {
+// workerLoop wraps FOIWorker.Run with logging and channel checks for a single
+// worker goroutine.
+//
+// Each worker:
+//
+//   - Logs its startup and shutdown.
+//   - Verifies channels are configured.
+//   - Delegates the actual processing to FOIWorker.Run.
+func (p *FOIProcessor) workerLoop(ctx context.Context, workerID int) {
 	defer p.wg.Done()
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case msg, ok := <-p.channels.Raw:
-			if !ok {
-				return
-			}
-			if p.filterSymbols {
-				normalized := symbols.ToBinance(msg.Exchange, msg.Symbol)
-				if _, ok := p.symbols[normalized]; !ok {
-					continue
-				}
-			}
-			p.handleMessage(msg)
-		}
-	}
-}
 
-func (p *FOIProcessor) handleMessage(raw models.RawFOIMessage) {
-	log := p.log.WithComponent("foi_processor").WithFields(logger.Fields{
-		"symbol":   raw.Symbol,
-		"exchange": raw.Exchange,
+	logEntry := p.log.WithComponent("foi_processor").WithFields(logger.Fields{
+		"worker_id": workerID,
+		"operation": "worker",
 	})
+	logEntry.Info("FOI worker started")
 
-	switch raw.Exchange {
-	case "binance":
-		p.handleBinance(raw, log)
-	case "bybit":
-		p.handleBybit(raw, log)
-	case "kucoin":
-		p.handleKucoin(raw, log)
-	case "okx":
-		p.handleOkx(raw, log)
-	default:
-		log.Debug("unsupported FOI exchange, dropping message")
+	if p.channels == nil {
+		logEntry.Warn("FOI channels not configured, worker exiting")
+		return
 	}
+
+	p.worker.Run(ctx, p.channels.Raw, p.channels.Norm)
+	logEntry.Info("FOI worker stopped")
 }
 
-func (p *FOIProcessor) handleBinance(raw models.RawFOIMessage, log *logger.Entry) {
-	var evt models.BinanceFOICurrentResp
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		log.WithError(err).Warn("failed to unmarshal binance FOI message")
-		return
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////// EXCHANGE: BINANCE ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// flattenBinance transforms a RawFOI message originating from Binance into a
+// single models.NormFOI containing a *BinanceNormalizedFOI payload.
+//
+// Expected raw payload type: models.BinanceFOICurrentResp:
+//
+//	{
+//	  "symbol": "BTCUSDT",
+//	  "openInterest": "97880.696",
+//	  "time": 1763286138100
+//	}
+//
+// Mapping:
+//
+//   - symbol         -> BinanceNormalizedFOI.Symbol
+//   - openInterest   -> BinanceNormalizedFOI.OpenInterest (float64)
+//   - time (ms)      -> BinanceNormalizedFOI.EventTimeMs and NormFOI.Time
+//   - ReceivedTimeMs -> current wall-clock at processing time
+//
+// Behavior:
+//
+//   - If JSON decoding fails, an error is returned.
+//   - If openInterest cannot be parsed, it is set to 0 and no error is returned.
+func (w *FOIWorker) flattenBinance(raw models.RawFOI) (models.NormFOI, error) {
+	var resp models.BinanceFOICurrentResp
+	if err := json.Unmarshal(raw.Payload, &resp); err != nil {
+		return models.NormFOI{}, err
 	}
 
-	oi, err := strconv.ParseFloat(evt.OpenInterest, 64)
-	if err != nil {
-		log.WithError(err).Warn("invalid binance openInterest")
-		return
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
 	}
 
-	eventTime := evt.Time
-	if eventTime == 0 {
-		eventTime = raw.Timestamp.UnixMilli()
-	}
+	oi := parseF(resp.OpenInterest)
+	eventTime := time.UnixMilli(resp.Time).UTC()
 
-	entry := models.NormFOIMessage{
-		Symbol:       symbols.ToBinance(raw.Exchange, raw.Symbol),
-		EventTime:    eventTime,
+	b := &models.BinanceNormFOI{
+		Symbol:       resp.Symbol,
+		EventTimeMs:  resp.Time,
 		OpenInterest: oi,
-		ReceivedTime: raw.Timestamp.UnixMilli(),
 	}
-	p.addToBatch(raw, entry)
+
+	return models.NormFOI{
+		Exchange: models.ExchangeBinance,
+		Time:     eventTime,
+		Binance:  b,
+	}, nil
 }
 
-func (p *FOIProcessor) handleBybit(raw models.RawFOIMessage, log *logger.Entry) {
-	var evt models.BybitFOIResp
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		log.WithError(err).Warn("failed to unmarshal bybit FOI message")
-		return
-	}
-	oi, err := strconv.ParseFloat(evt.OpenInterest, 64)
-	if err != nil {
-		log.WithError(err).Warn("invalid bybit openInterest")
-		return
-	}
-	entry := models.NormFOIMessage{
-		Symbol:       symbols.ToBinance(raw.Exchange, raw.Symbol),
-		EventTime:    evt.Ts,
-		OpenInterest: oi,
-		ReceivedTime: raw.Timestamp.UnixMilli(),
-	}
-	if entry.EventTime == 0 {
-		entry.EventTime = raw.Timestamp.UnixMilli()
-	}
-	p.addToBatch(raw, entry)
-}
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////// EXCHANGE: BYBIT /////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
-func (p *FOIProcessor) handleKucoin(raw models.RawFOIMessage, log *logger.Entry) {
-	var evt models.BinanceFOICurrentResp
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		log.WithError(err).Warn("failed to unmarshal kucoin FOI message")
-		return
+// flattenBybit transforms a RawFOI message originating from Bybit into zero,
+// one, or many models.NormFOI envelopes containing *BybitNormalizedFOI.
+//
+// Expected raw payload type: models.BybitFOIOpenInterestResponse:
+//
+//	GET /v5/market/open-interest
+//	  ?category=linear
+//	  ?symbol=BTCUSDT
+//	  ?intervalTime=5min
+//	  ?limit=200
+//
+// Response (simplified):
+//
+//	{
+//	  "retCode": 0,
+//	  "retMsg": "OK",
+//	  "result": {
+//	    "symbol": "BTCUSDT",
+//	    "category": "linear",
+//	    "list": [
+//	      {
+//	        "openInterest": "123456.78900000",
+//	        "timestamp": "1669571400000"
+//	      }
+//	    ],
+//	    "nextPageCursor": ""
+//	  },
+//	  "retExtInfo": {},
+//	  "time": 1672053548579
+//	}
+//
+// Each element in result.list becomes one NormFOI:
+//
+//   - Exchange             = "bybit"
+//   - Time                 = event time from list.timestamp
+//   - Bybit.Symbol         = result.symbol
+//   - Bybit.Category       = result.category
+//   - Bybit.Interval       = "5min" (fixed for now)
+//   - Bybit.EventTimeMs    = parsed timestamp
+//   - Bybit.OpenInterest   = parsed openInterest
+//   - Bybit.ReceivedTimeMs = now()
+//
+// Behavior:
+//
+//   - If retCode != 0, no rows are emitted (soft failure).
+//   - Individual list entries with invalid numeric fields are skipped
+//     without failing the entire payload.
+func (w *FOIWorker) flattenBybit(raw models.RawFOI) ([]models.NormFOI, error) {
+	var resp models.BybitFOIOpenInterestResponse
+	if err := json.Unmarshal(raw.Payload, &resp); err != nil {
+		return nil, err
 	}
-	oi, err := strconv.ParseFloat(evt.OpenInterest, 64)
-	if err != nil {
-		log.WithError(err).Warn("invalid kucoin openInterest")
-		return
-	}
-	entry := models.NormFOIMessage{
-		Symbol:       symbols.ToBinance(raw.Exchange, raw.Symbol),
-		EventTime:    evt.Time,
-		OpenInterest: oi,
-		ReceivedTime: raw.Timestamp.UnixMilli(),
-	}
-	if entry.EventTime == 0 {
-		entry.EventTime = raw.Timestamp.UnixMilli()
-	}
-	p.addToBatch(raw, entry)
-}
 
-func (p *FOIProcessor) handleOkx(raw models.RawFOIMessage, log *logger.Entry) {
-	var evt models.OKXFOIResp
-	if err := json.Unmarshal(raw.Data, &evt); err != nil {
-		log.WithError(err).Warn("failed to unmarshal okx FOI message")
-		return
+	// Non-zero retCode indicates a failure at Bybit level; we do not treat
+	// it as an error to the caller but simply emit no normalized rows.
+	if resp.RetCode != 0 {
+		return nil, nil
 	}
-	if evt.OI == "" {
-		log.WithField("symbol", evt.InstID).Warn("okx open interest payload missing value")
-		return
-	}
-	oi, err := strconv.ParseFloat(evt.OI, 64)
-	if err != nil {
-		log.WithError(err).WithField("symbol", evt.InstID).Warn("invalid okx oi value")
-		return
-	}
-	ts, err := strconv.ParseInt(evt.Ts, 10, 64)
-	if err != nil {
-		ts = raw.Timestamp.UnixMilli()
-	}
-	entry := models.NormFOIMessage{
-		Symbol:       symbols.ToBinance(raw.Exchange, raw.Symbol),
-		EventTime:    ts,
-		OpenInterest: oi,
-		ReceivedTime: raw.Timestamp.UnixMilli(),
-	}
-	p.addToBatch(raw, entry)
-}
 
-func (p *FOIProcessor) addToBatch(raw models.RawFOIMessage, entry models.NormFOIMessage) {
-	normalSymbol := symbols.ToBinance(raw.Exchange, raw.Symbol)
-	key := fmt.Sprintf("%s_%s_%s", raw.Exchange, raw.Market, normalSymbol)
-
-	p.mu.RLock()
-	state, ok := p.batches[key]
-	p.mu.RUnlock()
-	if !ok {
-		p.mu.Lock()
-		if state, ok = p.batches[key]; !ok {
-			state = &foiBatchState{
-				batch: &models.BatchFOIMessage{
-					BatchID:     uuid.New().String(),
-					Exchange:    raw.Exchange,
-					Symbol:      normalSymbol,
-					Market:      raw.Market,
-					Entries:     make([]models.NormFOIMessage, 0, p.config.Processor.BatchSize),
-					Timestamp:   raw.Timestamp,
-					ProcessedAt: time.Now(),
-				},
-				lastFlush: time.Now(),
-			}
-			p.batches[key] = state
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
 		}
-		p.mu.Unlock()
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
 	}
 
-	state.mu.Lock()
-	b := state.batch
-	b.Entries = append(b.Entries, entry)
-	b.RecordCount = len(b.Entries)
-	if raw.Timestamp.After(b.Timestamp) {
-		b.Timestamp = raw.Timestamp
-	}
-	state.lastFlush = time.Now()
-	shouldFlush := b.RecordCount >= p.config.Processor.BatchSize
-	state.mu.Unlock()
+	out := make([]models.NormFOI, 0, len(resp.Result.List))
 
-	if shouldFlush {
-		p.flush(key)
+	for _, item := range resp.Result.List {
+		if item.OpenInterest == "" || item.Timestamp == "" {
+			// Incomplete entry: skip it rather than producing partial rows.
+			continue
+		}
+
+		oi := parseF(item.OpenInterest)
+		if oi == 0 {
+			// If parsing failed or returned zero, we still accept it; zero FOI
+			// is a valid, albeit uncommon, state. You can tighten this if needed.
+		}
+
+		tsMs, err := strconv.ParseInt(item.Timestamp, 10, 64)
+		if err != nil {
+			// Malformed timestamp; skip just this entry.
+			continue
+		}
+		eventTime := time.UnixMilli(tsMs).UTC()
+
+		b := &models.BybitNormalizedFOI{
+			Symbol:       resp.Result.Symbol,
+			Category:     resp.Result.Category,
+			Interval:     "5min", // matches requested intervalTime
+			EventTimeMs:  tsMs,
+			OpenInterest: oi,
+		}
+
+		env := models.NormFOI{
+			Exchange: models.ExchangeBybit,
+			Time:     eventTime,
+			Bybit:    b,
+		}
+		out = append(out, env)
 	}
+
+	return out, nil
 }
 
-func (p *FOIProcessor) flusher() {
-	defer p.wg.Done()
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-ticker.C:
-			p.flushTimedOut()
-		}
-	}
-}
+// ---------------- OKX ----------------
 
-func (p *FOIProcessor) flushTimedOut() {
-	p.mu.RLock()
-	now := time.Now()
-	for k, state := range p.batches {
-		state.mu.Lock()
-		if now.Sub(state.lastFlush) >= p.config.Processor.BatchTimeout && state.batch.RecordCount > 0 {
-			state.mu.Unlock()
-			p.flush(k)
-		} else {
-			state.mu.Unlock()
-		}
+// flattenOKX converts an OKX FOI websocket payload into one or more
+// models.NormFOI entries, each embedding an *OKXNormalizedFOI.
+//
+// Expected payload:
+//
+//	{
+//	  "arg": {
+//	    "channel": "open-interest",
+//	    "instId": "BTC-USDT-SWAP"
+//	  },
+//	  "data": [
+//	    {
+//	      "instId": "BTC-USDT-SWAP",
+//	      "instType": "SWAP",
+//	      "oi": "2216113.01000000309",
+//	      "oiCcy": "22161.1301000000309",
+//	      "oiUsd": "1939251795.54769270396321",
+//	      "ts": "1743041250440"
+//	    }
+//	  ]
+//	}
+//
+// Each entry in data[] becomes one NormFOI with:
+//
+//   - Exchange            = "okx"
+//   - Time                = event time derived from ts (ms)
+//   - OKX.InstID          = instId
+//   - OKX.InstType        = instType
+//   - OKX.OI              = parsed oi
+//   - OKX.OICcy           = parsed oiCcy
+//   - OKX.OIUsd           = parsed oiUsd
+//   - OKX.EventTimeMs     = parsed ts
+//   - OKX.ReceivedTimeMs  = now()
+func (w *FOIWorker) flattenOKX(raw models.RawFOI) ([]models.NormFOI, error) {
+	var evt models.OKXFOIEvent
+	if err := json.Unmarshal(raw.Payload, &evt); err != nil {
+		return nil, err
 	}
-	p.mu.RUnlock()
-}
 
-func (p *FOIProcessor) flush(key string) {
-	p.mu.RLock()
-	state, ok := p.batches[key]
-	p.mu.RUnlock()
-	if !ok {
-		return
+	parseF := func(s string) float64 {
+		if s == "" {
+			return 0
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return f
 	}
 
-	state.mu.Lock()
-	batch := state.batch
-	if batch == nil || batch.RecordCount == 0 {
-		state.mu.Unlock()
-		return
-	}
-	if p.channels.SendNorm(p.ctx, *batch) {
-		state.batch = &models.BatchFOIMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    batch.Exchange,
-			Symbol:      batch.Symbol,
-			Market:      batch.Market,
-			Entries:     make([]models.NormFOIMessage, 0, p.config.Processor.BatchSize),
-			ProcessedAt: time.Now(),
-		}
-		state.lastFlush = time.Now()
-	} else if p.ctx.Err() != nil {
-		state.mu.Unlock()
-		return
-	} else {
-		metrics.EmitDropMetric(p.log, metrics.DropMetricOther, batch.Exchange, batch.Market, batch.Symbol, "norm")
-		p.log.WithComponent("foi_processor").WithFields(logger.Fields{"batch_key": key}).Warn("normfoi channel full, dropping batch")
-		state.batch = &models.BatchFOIMessage{
-			BatchID:     uuid.New().String(),
-			Exchange:    batch.Exchange,
-			Symbol:      batch.Symbol,
-			Market:      batch.Market,
-			Entries:     make([]models.NormFOIMessage, 0, p.config.Processor.BatchSize),
-			ProcessedAt: time.Now(),
-		}
-		state.lastFlush = time.Now()
-	}
-	state.mu.Unlock()
-}
+	out := make([]models.NormFOI, 0, len(evt.Data))
 
-func (p *FOIProcessor) flushAll() {
-	p.mu.RLock()
-	keys := make([]string, 0, len(p.batches))
-	for k := range p.batches {
-		keys = append(keys, k)
+	for _, d := range evt.Data {
+		tsMs, err := strconv.ParseInt(d.Ts, 10, 64)
+		if err != nil {
+			// If timestamp is invalid, skip this single entry.
+			continue
+		}
+		eventTime := time.UnixMilli(tsMs).UTC()
+
+		okxNorm := &models.OKXNormalizedFOI{
+			InstID:      d.InstID,
+			InstType:    d.InstType,
+			OI:          parseF(d.OI),
+			OICcy:       parseF(d.OICcy),
+			OIUsd:       parseF(d.OIUsd),
+			EventTimeMs: tsMs,
+		}
+
+		env := models.NormFOI{
+			Exchange: models.ExchangeOKX,
+			Time:     eventTime,
+			OKX:      okxNorm,
+		}
+		out = append(out, env)
 	}
-	p.mu.RUnlock()
-	for _, k := range keys {
-		p.flush(k)
-	}
+
+	return out, nil
 }

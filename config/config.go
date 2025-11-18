@@ -45,11 +45,19 @@ type MetricsConfig struct {
 }
 
 type DashboardConfig struct {
-	Enabled         bool          `yaml:"enabled"`
-	Address         string        `yaml:"address"`
-	RefreshInterval time.Duration `yaml:"refresh_interval"`
-	MetricsHistory  int           `yaml:"metrics_history"`
-	LogHistory      int           `yaml:"log_history"`
+	Enabled         bool                  `yaml:"enabled"`
+	Address         string                `yaml:"address"`
+	RefreshInterval time.Duration         `yaml:"refresh_interval"`
+	MetricsHistory  int                   `yaml:"metrics_history"`
+	LogHistory      int                   `yaml:"log_history"`
+	Mirror          DashboardMirrorConfig `yaml:"mirror"`
+}
+
+type DashboardMirrorConfig struct {
+	Enabled     bool          `yaml:"enabled"`
+	Prefix      string        `yaml:"prefix"`
+	Interval    time.Duration `yaml:"interval"`
+	DropLogName string        `yaml:"drop_log_name"`
 }
 
 type ChannelsConfig struct {
@@ -129,6 +137,7 @@ type BufferConfig struct {
 	MaxSize               int           `yaml:"max_size"`
 	SnapshotFlushInterval time.Duration `yaml:"snapshot_flush_interval"`
 	DeltaFlushInterval    time.Duration `yaml:"delta_flush_interval"`
+	OpenInterestInterval  time.Duration `yaml:"foi_flush_interval"`
 	MemoryThreshold       float64       `yaml:"memory_threshold"`
 }
 
@@ -190,7 +199,7 @@ type OkxSourceConfig struct {
 type BinanceFutureConfig struct {
 	Orderbook    BinanceFutureOrderbookConfig `yaml:"orderbook"`
 	Liquidation  BinanceLiquidationConfig     `yaml:"liquidation"`
-	OpenInterest OpenInterestConfig           `yaml:"open_interest"`
+	OpenInterest BinanceOpenInterestConfig    `yaml:"open_interest"`
 	PremiumIndex PremiumIndexConfig           `yaml:"premium_index"`
 }
 
@@ -316,11 +325,11 @@ type BinanceLiquidationConfig struct {
 }
 
 type BybitLiquidationConfig struct {
-	Enabled       bool          `yaml:"enabled"`
-	Connection    string        `yaml:"connection"`
-	URL           string        `yaml:"url"`
-	Symbols       []string      `yaml:"symbols"`
-	FlushInterval time.Duration `yaml:"flush_interval"`
+	Enabled        bool          `yaml:"enabled"`
+	Connection     string        `yaml:"connection"`
+	URL            string        `yaml:"url"`
+	Symbols        []string      `yaml:"symbols"`
+	FlushInterval  time.Duration `yaml:"flush_interval"`
 	ReconnectDelay time.Duration `yaml:"reconnect_delay"`
 }
 
@@ -343,6 +352,7 @@ type OkxLiquidationConfig struct {
 	FlushInterval time.Duration `yaml:"flush_interval"`
 }
 
+// todo: delete
 type OpenInterestConfig struct {
 	Enabled         bool          `yaml:"enabled"`
 	Connection      string        `yaml:"connection"`
@@ -354,6 +364,13 @@ type OpenInterestConfig struct {
 	ReconnectDelay  time.Duration `yaml:"reconnect_delay"`
 	Category        string        `yaml:"category"`
 	InstType        string        `yaml:"inst_type"`
+}
+
+type BinanceOpenInterestConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	Connection string `yaml:"connection"`  // "rest" for FOI
+	URL        string `yaml:"url"`         // https://fapi.binance.com/fapi/v1/openInterest
+	IntervalMs int    `yaml:"interval_ms"` // poll interval in ms
 }
 
 type PremiumIndexConfig struct {

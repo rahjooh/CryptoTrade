@@ -62,7 +62,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dashboardServer, err := dashboard.NewServer(cfg.Dashboard, log)
+	dashboardServer, err := dashboard.NewServer(cfg, log)
 	if err != nil {
 		log.WithError(err).Error("failed to initialise dashboard server")
 		os.Exit(1)
@@ -194,8 +194,8 @@ func main() {
 		bybitFOBDReaders = append(bybitFOBDReaders, bybitreader.Bybit_FOBD_NewReader(&sc, channels.FOBD, shard.BybitSymbols, shard.IP))
 		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
 		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols.SwapOrderbookDelta, shard.IP))
-		binanceLiqReaders = append(binanceLiqReaders, binance.Binance_LIQ_NewReader(&sc, channels.Liq, shard.BinanceSymbols))
-		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols))
+		binanceLiqReaders = append(binanceLiqReaders, binance.Binance_LIQ_NewReader(&sc, channels.Liq, shard.BinanceSymbols, shard.IP))
+		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols, shard.IP))
 		kucoinLiqReaders = append(kucoinLiqReaders, kucoin.Kucoin_LIQ_NewReader(&sc, channels.Liq, shard.KucoinSymbols))
 		okxLiqReaders = append(okxLiqReaders, okxreader.OKX_LIQ_NewReader(&sc, channels.Liq))
 		binanceFOIReaders = append(binanceFOIReaders, binance.Binance_FOI_NewReader(&sc, channels.FOI, shard.BinanceSymbols, shard.IP))

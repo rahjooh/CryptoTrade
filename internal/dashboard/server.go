@@ -4,11 +4,13 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,14 +31,39 @@ type Server struct {
 	metricStore       *metricStore
 	logStore          *logStore
 	metricHandler     metrics.MetricHandlerID
+	metricObserver    metrics.MetricHandlerID
 	httpServer        *http.Server
 	refreshIntervalMs int
 	resourceSampler   *resourceSampler
+	exchanges         []ExchangeMetadata
+	marketIndex       map[string]marketIndexEntry
+	dropLog           *dropLog
+	mirror            *s3Mirror
+}
+
+type marketIndexEntry struct {
+	exchange *ExchangeMetadata
+	market   *MarketMetadata
+}
+
+type channelSample struct {
+	Timestamp time.Time `json:"timestamp"`
+	Value     float64   `json:"value"`
+}
+
+type channelSeries struct {
+	Samples  []channelSample `json:"samples"`
+	Capacity float64         `json:"capacity,omitempty"`
 }
 
 // NewServer constructs a dashboard server when the dashboard feature is enabled.
 // When the dashboard is disabled the returned server will be nil.
-func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
+func NewServer(appCfg *config.Config, log *logger.Log) (*Server, error) {
+	if appCfg == nil {
+		return nil, fmt.Errorf("dashboard requires application configuration")
+	}
+
+	cfg := appCfg.Dashboard
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -63,6 +90,10 @@ func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
 
 	sampler := newResourceSampler(cfg.MetricsHistory, cfg.RefreshInterval, "/", log)
 
+	dropLog := newDropLog(cfg.LogHistory * 2)
+	exchanges := buildExchangeMetadata(appCfg)
+	marketIndex := buildMarketIndex(exchanges)
+
 	server := &Server{
 		cfg:               cfg,
 		log:               log,
@@ -71,13 +102,49 @@ func NewServer(cfg config.DashboardConfig, log *logger.Log) (*Server, error) {
 		metricHandler:     handlerID,
 		refreshIntervalMs: int(cfg.RefreshInterval / time.Millisecond),
 		resourceSampler:   sampler,
+		exchanges:         exchanges,
+		marketIndex:       marketIndex,
+		dropLog:           dropLog,
 	}
 
 	if server.refreshIntervalMs <= 0 {
 		server.refreshIntervalMs = int((5 * time.Second) / time.Millisecond)
 	}
 
+	server.metricObserver = metrics.RegisterMetricHandler(server.observeMetric)
+
+	if cfg.Mirror.Enabled {
+		mirror, err := newS3Mirror(server, cfg.Mirror, appCfg.Storage.S3, log)
+		if err != nil {
+			log.WithComponent("dashboard").WithError(err).Warn("failed to initialise dashboard mirror")
+		} else {
+			server.mirror = mirror
+		}
+	}
+
 	return server, nil
+}
+
+func buildMarketIndex(exchanges []ExchangeMetadata) map[string]marketIndexEntry {
+	if len(exchanges) == 0 {
+		return nil
+	}
+	index := make(map[string]marketIndexEntry)
+	for i := range exchanges {
+		exchange := &exchanges[i]
+		for j := range exchange.Markets {
+			market := &exchange.Markets[j]
+			if market.Key == "" {
+				continue
+			}
+			key := marketLookupKey(exchange.Name, market.Key)
+			index[key] = marketIndexEntry{
+				exchange: exchange,
+				market:   market,
+			}
+		}
+	}
+	return index
 }
 
 // Run starts the dashboard HTTP server and blocks until the provided context is
@@ -96,6 +163,9 @@ func (s *Server) Run(ctx context.Context, appName string) error {
 
 	if s.resourceSampler != nil {
 		s.resourceSampler.start(ctx)
+	}
+	if s.mirror != nil {
+		s.mirror.start(ctx)
 	}
 
 	s.httpServer = &http.Server{
@@ -130,11 +200,15 @@ func (s *Server) Run(ctx context.Context, appName string) error {
 
 func (s *Server) cleanup() {
 	metrics.UnregisterMetricHandler(s.metricHandler)
+	metrics.UnregisterMetricHandler(s.metricObserver)
 	if s.logStore != nil {
 		s.logStore.close()
 	}
 	if s.resourceSampler != nil {
 		s.resourceSampler.stop()
+	}
+	if s.mirror != nil {
+		s.mirror.stop()
 	}
 }
 
@@ -221,7 +295,49 @@ func (s *Server) buildRouter(appName string) (*gin.Engine, error) {
 		c.JSON(http.StatusOK, gin.H{"resources": payload})
 	})
 
+	router.GET("/api/exchanges", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"exchanges": s.exchanges})
+	})
+
+	router.GET("/api/exchanges/:exchange/:market", func(c *gin.Context) {
+		s.handleMarketDetail(c)
+	})
+
 	return router, nil
+}
+
+func (s *Server) handleMarketDetail(c *gin.Context) {
+	if s == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "dashboard server unavailable"})
+		return
+	}
+	exchangeParam := strings.ToLower(strings.TrimSpace(c.Param("exchange")))
+	marketParam := strings.ToLower(strings.TrimSpace(c.Param("market")))
+	if exchangeParam == "" || marketParam == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "exchange and market required"})
+		return
+	}
+
+	entry, ok := s.marketIndex[marketLookupKey(exchangeParam, marketParam)]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "unknown exchange or market"})
+		return
+	}
+
+	marketData := *entry.market
+	response := gin.H{
+		"exchange": gin.H{
+			"name":         entry.exchange.Name,
+			"display_name": entry.exchange.DisplayName,
+		},
+		"market":       marketData,
+		"channels":     s.channelSeries(marketData.Channels),
+		"drops":        s.aggregateDropMetrics(entry.exchange.Name, marketData.Key),
+		"logs":         s.filterLogs(entry.exchange.Name, marketData.Key),
+		"generated_at": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func fsSub(path string) (fs.FS, error) {
@@ -275,4 +391,214 @@ func normalizeAddress(addr string) string {
 	}
 
 	return addr
+}
+
+func marketLookupKey(exchange, market string) string {
+	exchange = strings.ToLower(strings.TrimSpace(exchange))
+	market = strings.ToLower(strings.TrimSpace(market))
+	return exchange + "|" + market
+}
+
+func (s *Server) observeMetric(metric metrics.Metric) {
+	if s == nil || s.dropLog == nil {
+		return
+	}
+	s.dropLog.add(metric)
+}
+
+func (s *Server) channelSeries(metricNames []string) map[string]channelSeries {
+	if s == nil || len(metricNames) == 0 {
+		return nil
+	}
+	desired := make(map[string]struct{}, len(metricNames))
+	for _, name := range metricNames {
+		if name == "" {
+			continue
+		}
+		desired[name] = struct{}{}
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+
+	snapshot := s.metricStore.snapshot()
+	result := make(map[string]channelSeries, len(desired))
+	for _, metric := range snapshot {
+		if _, ok := desired[metric.Name]; !ok {
+			continue
+		}
+		value, ok := toFloat(metric.Value)
+		if !ok {
+			continue
+		}
+		ts := metric.Timestamp
+		if ts.IsZero() {
+			ts = time.Now()
+		}
+		series := result[metric.Name]
+		series.Samples = append(series.Samples, channelSample{
+			Timestamp: ts,
+			Value:     value,
+		})
+		if capacity, ok := extractCapacity(metric.Fields); ok {
+			series.Capacity = capacity
+		}
+		result[metric.Name] = series
+	}
+
+	for name, series := range result {
+		if len(series.Samples) > 150 {
+			series.Samples = append([]channelSample(nil), series.Samples[len(series.Samples)-150:]...)
+			result[name] = series
+		}
+	}
+
+	return result
+}
+
+func (s *Server) aggregateDropMetrics(exchange, market string) map[string]int64 {
+	if s == nil {
+		return nil
+	}
+	exchange = strings.ToLower(strings.TrimSpace(exchange))
+	market = strings.ToLower(strings.TrimSpace(market))
+	if exchange == "" {
+		return nil
+	}
+
+	snapshot := s.metricStore.snapshot()
+	aggregates := make(map[string]int64)
+	for _, metric := range snapshot {
+		if _, ok := dropMetricNames[metric.Name]; !ok {
+			continue
+		}
+		metricExchange := strings.ToLower(fieldString(metric.Fields, "exchange"))
+		if metricExchange != exchange {
+			continue
+		}
+		metricMarket := strings.ToLower(fieldString(metric.Fields, "market"))
+		if market != "" && metricMarket != market {
+			continue
+		}
+		value, ok := toFloat(metric.Value)
+		if !ok {
+			continue
+		}
+		aggregates[metric.Name] += int64(value)
+	}
+	return aggregates
+}
+
+func (s *Server) filterLogs(exchange, market string) []logRecord {
+	if s == nil {
+		return nil
+	}
+	exchange = strings.ToLower(strings.TrimSpace(exchange))
+	market = strings.ToLower(strings.TrimSpace(market))
+	if exchange == "" {
+		return nil
+	}
+	logs := s.logStore.snapshot()
+	filtered := make([]logRecord, 0, len(logs))
+	for _, entry := range logs {
+		if matchesLog(entry, exchange, market) {
+			filtered = append(filtered, entry)
+		}
+	}
+	if limit := s.cfg.LogHistory; limit > 0 && len(filtered) > limit {
+		filtered = append([]logRecord(nil), filtered[len(filtered)-limit:]...)
+	}
+	return filtered
+}
+
+func matchesLog(entry logRecord, exchange, market string) bool {
+	entryExchange := strings.ToLower(fieldString(entry.Fields, "exchange"))
+	entryMarket := strings.ToLower(fieldString(entry.Fields, "market"))
+	if entryExchange == exchange {
+		if market == "" || entryMarket == market {
+			return true
+		}
+	}
+	if entry.Component != "" && strings.Contains(strings.ToLower(entry.Component), exchange) {
+		if market == "" || entryMarket == market {
+			return true
+		}
+	}
+	return false
+}
+
+func extractCapacity(fields map[string]interface{}) (float64, bool) {
+	if len(fields) == 0 {
+		return 0, false
+	}
+	value, ok := fields["capacity"]
+	if !ok {
+		return 0, false
+	}
+	capacity, ok := toFloat(value)
+	if !ok || capacity <= 0 {
+		return 0, false
+	}
+	return capacity, true
+}
+
+func toFloat(value interface{}) (float64, bool) {
+	switch v := value.(type) {
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	case string:
+		if v == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
+func (s *Server) snapshotState() mirrorSnapshot {
+	if s == nil {
+		return mirrorSnapshot{}
+	}
+	metricsSnapshot := s.metricStore.snapshot()
+	logsSnapshot := s.logStore.snapshot()
+	resourceSnapshot := s.resourceSampler.snapshot()
+	var drops []dropEntry
+	if s.dropLog != nil {
+		drops = s.dropLog.snapshot()
+	}
+
+	exchanges := make([]ExchangeMetadata, len(s.exchanges))
+	copy(exchanges, s.exchanges)
+
+	return mirrorSnapshot{
+		GeneratedAt: time.Now().UTC(),
+		Exchanges:   exchanges,
+		Metrics:     metricsSnapshot,
+		Logs:        logsSnapshot,
+		Resources:   resourceSnapshot,
+		Drops:       drops,
+	}
 }

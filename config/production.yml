@@ -11,6 +11,11 @@ dashboard:
   refresh_interval: 5s
   metrics_history: 200
   log_history: 200
+  mirror:
+    enabled: true
+    prefix: "dashboard"
+    interval: 4m
+    drop_log_name: "dropped-messages.log"
 
 # Metrics configuration
 metrics:
@@ -64,10 +69,9 @@ source:
         flush_interval: "1m"
       open_interest:
         enabled: true
-        connection: websocket
-        url: wss://fstream.binance.com/ws
-        stream_interval: 1s
-        reconnect_delay: 5s
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/openInterest
+        interval_ms: 1000      # poll every 1 second
       premium_index:
         enabled: true
         connection: websocket
@@ -322,7 +326,7 @@ writer:
     max_size: 10
     snapshot_flush_interval: "3m"
     delta_flush_interval: "3m"
-    oi_flush_interval: "1m"
+    foi_flush_interval: "1m"
     pi_flush_interval: "1m"
     liq_flush_interval: "10m"
     memory_threshold: 0.8

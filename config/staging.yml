@@ -11,6 +11,11 @@ dashboard:
   refresh_interval: 5s
   metrics_history: 200
   log_history: 200
+  mirror:
+    enabled: true
+    prefix: "dashboard"
+    interval: 4m
+    drop_log_name: "dropped-messages.log"
 
 # Metrics configuration
 metrics:
@@ -58,16 +63,15 @@ source:
         url: https://fapi.binance.com/fapi/v1/exchangeInfo
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://fstream.binance.com/ws
         flush_interval: "1m"
       open_interest:
-        enabled: false
-        connection: websocket
-        url: wss://fstream.binance.com/ws
-        stream_interval: 1s
-        reconnect_delay: 5s
+        enabled: true
+        connection: rest
+        url: https://fapi.binance.com/fapi/v1/openInterest
+        interval_ms: 1000
       premium_index:
         enabled: false
         connection: websocket
@@ -113,17 +117,18 @@ source:
         url: https://api.bybit.com/v5/market/instruments-info
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://stream.bybit.com/v5/public/linear
         flush_interval: "1m"
         reconnect_delay: 5s
       open_interest:
-        enabled: false
-        connection: websocket
-        url: wss://stream.bybit.com/v5/public/linear
+        enabled: true
+        connection: rest
+        url: https://api.bybit.com/v5/market/open-interest
         category: linear
         reconnect_delay: 5s
+        interval_ms: 300000   # 5min
       premium_index:
         enabled: false
         connection: websocket
@@ -169,12 +174,12 @@ source:
         url: https://www.okx.com/api/v5/public/instruments
         interval_minutes: 10
       liquidation:
-        enabled: true
+        enabled: false
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
         flush_interval: "1m"
       open_interest:
-        enabled: false
+        enabled: true
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
         inst_type: SWAP
@@ -224,15 +229,6 @@ source:
           interval_ms: 100
           read_buffer_bytes: 4194304
           read_message_buffer: 4096
-
-      liquidation:
-        enabled: true
-        connection: websocket
-        url: wss://api-futures.kucoin.com/endpoint
-        read_buffer_bytes: 4194304
-        read_message_buffer: 4096
-        write_message_buffer: 1024
-        flush_interval: "1m"
       open_interest:
         enabled: false
         connection: websocket
@@ -322,6 +318,9 @@ writer:
     max_size: 10
     snapshot_flush_interval: "3m"
     delta_flush_interval: "3m"
+    foi_flush_interval: "1m"
+    pi_flush_interval: "1m"
+    liq_flush_interval: "10m"
     memory_threshold: 0.8
   partitioning:
     scheme: "time"

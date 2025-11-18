@@ -22,6 +22,15 @@
     </nav>
 
     <main class="container-fluid py-4">
+        <div class="view-switcher mb-4">
+            <div class="switcher-track">
+                <button class="nav-pill active" id="overview-pill">Overview</button>
+                <div class="nav-scroll" id="exchange-menu"></div>
+            </div>
+            <div class="nav-scroll secondary d-none" id="market-menu"></div>
+        </div>
+
+        <section id="overview-view">
         <section class="dashboard-header">
             <div>
                 <h1 class="mb-1">Operations Overview</h1>
@@ -150,6 +159,83 @@
                 </div>
             </div>
         </div>
+        </section>
+
+        <section id="market-view" class="d-none">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+                    <div>
+                        <h1 class="mb-1" id="market-title">Select a market</h1>
+                        <p class="text-muted mb-0" id="market-description">Use the slider above to drill into an exchange market.</p>
+                    </div>
+                    <button class="btn btn-outline-light btn-sm" id="back-to-overview">Back to overview</button>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-12 col-xl-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0">Configuration</h2>
+                        </div>
+                        <div class="card-body" id="market-config">
+                            <p class="text-muted mb-0">Select a market to view its configuration.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-xl-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0">Symbols</h2>
+                        </div>
+                        <div class="card-body" id="market-symbols">
+                            <p class="text-muted mb-0">Symbols collected for the selected market appear here.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-xl-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0">Channel Buffers</h2>
+                        </div>
+                        <div class="card-body" id="market-channels">
+                            <p class="text-muted mb-0">Buffer sizes become available when a market is selected.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0">Drop Metrics</h2>
+                    <span class="badge bg-warning text-dark" id="market-drop-total">0</span>
+                </div>
+                <div class="card-body" id="market-drops">
+                    <p class="text-muted mb-0">Awaiting market selection.</p>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h5 mb-0">Market Logs</h2>
+                    <span class="badge bg-info" id="market-logs-count">0</span>
+                </div>
+                <div class="card-body table-wrapper">
+                    <table class="table table-dark table-striped table-hover align-middle logs-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Timestamp</th>
+                                <th scope="col">Level</th>
+                                <th scope="col">Component</th>
+                                <th scope="col">Message</th>
+                                <th scope="col">Fields</th>
+                            </tr>
+                        </thead>
+                        <tbody id="market-logs-table"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" integrity="sha384-McpAkMSS6Z7dHLF0sWvZOtJLm51DkJKJbZUJ+EGiUZTZ20ins2v72Dg2IYjeo6V5" crossorigin="anonymous"></script>
@@ -163,6 +249,11 @@
             fobd_raw_buffer_length: { label: 'Deltas Raw', color: '#e85d75' },
             fobd_norm_buffer_length: { label: 'Deltas Normalised', color: '#9b59b6' },
             liq_raw_buffer_length: { label: 'Liquidations Raw', color: '#4dd2a5' },
+            liq_norm_buffer_length: { label: 'Liquidations Normalised', color: '#2ecc71' },
+            foi_raw_buffer_length: { label: 'Open Interest Raw', color: '#1abc9c' },
+            foi_norm_buffer_length: { label: 'Open Interest Normalised', color: '#16a085' },
+            pi_raw_buffer_length: { label: 'Premium Index Raw', color: '#e67e22' },
+            pi_norm_buffer_length: { label: 'Premium Index Normalised', color: '#d35400' },
         };
 
         const dropMetricMap = {
@@ -170,11 +261,26 @@
             delta_messages_dropped: 'delta',
             delta_norm_messages_dropped: 'delta_norm',
             liquidation_messages_dropped: 'liquidation',
+            open_interest_messages_dropped: 'open_interest',
+            premium_index_messages_dropped: 'premium_index',
+        };
+
+        const dropLabels = {
+            snapshot: 'Snapshot',
+            delta: 'Delta',
+            delta_norm: 'Delta Norm',
+            liquidation: 'Liquidation',
+            open_interest: 'Open Interest',
+            premium_index: 'Premium Index',
         };
 
         let channelChart;
         let resourceChart;
         const chartAvailable = typeof window.Chart !== 'undefined';
+        let exchangeMetadata = [];
+        let selectedExchange = null;
+        let selectedMarket = null;
+        let currentView = 'overview';
 
         function formatFields(fields) {
             if (!fields || Object.keys(fields).length === 0) {
@@ -231,18 +337,33 @@
             document.getElementById('summary-metrics').textContent = metrics.length;
         }
 
-        function updateLogsTable(logs) {
-            const body = document.querySelector('#logs-table tbody');
-            const rows = logs.map(log => ({
+        function buildLogRows(logs) {
+            return logs.map(log => ({
                 timestamp: new Date(log.timestamp).toLocaleString(),
                 level: `<span class="badge level-${log.level}">${log.level.toUpperCase()}</span>`,
                 component: log.component || '<span class="text-muted">—</span>',
                 message: `<span class="text-break">${log.message}</span>`,
                 fields: formatFields(log.fields),
             }));
-            updateTable(body, rows, ['timestamp', 'level', 'component', 'message', 'fields']);
+        }
+
+        function updateLogsTable(logs) {
+            const body = document.querySelector('#logs-table tbody');
+            updateTable(body, buildLogRows(logs), ['timestamp', 'level', 'component', 'message', 'fields']);
             document.getElementById('logs-count').textContent = logs.length;
             document.getElementById('summary-logs').textContent = logs.length;
+        }
+
+        function renderMarketLogs(logs) {
+            const body = document.getElementById('market-logs-table');
+            if (!body) {
+                return;
+            }
+            updateTable(body, buildLogRows(logs), ['timestamp', 'level', 'component', 'message', 'fields']);
+            const badge = document.getElementById('market-logs-count');
+            if (badge) {
+                badge.textContent = logs.length;
+            }
         }
 
         function showChartFallback(canvasId, fallbackId) {
@@ -442,7 +563,8 @@
         }
 
         function aggregateDropMetrics(metrics) {
-            const aggregates = { snapshot: {}, delta: {}, delta_norm: {}, liquidation: {} };
+            const aggregates = {};
+            Object.keys(dropLabels).forEach(key => { aggregates[key] = {}; });
             for (const metric of metrics) {
                 const category = dropMetricMap[metric.name];
                 if (!category) {
@@ -458,12 +580,8 @@
 
         function renderDropCards(aggregates) {
             const container = document.getElementById('drop-grid');
-            const exchanges = new Set([
-                ...Object.keys(aggregates.snapshot),
-                ...Object.keys(aggregates.delta),
-                ...Object.keys(aggregates.delta_norm),
-                ...Object.keys(aggregates.liquidation),
-            ]);
+            const exchanges = new Set();
+            Object.values(aggregates).forEach(map => Object.keys(map).forEach(name => exchanges.add(name)));
 
             if (exchanges.size === 0) {
                 container.innerHTML = '<div class="col-12"><p class="text-muted text-center mb-0">No dropped messages observed in the current retention window.</p></div>';
@@ -473,33 +591,21 @@
 
             let total = 0;
             const cards = Array.from(exchanges).sort().map(exchange => {
-                const snapshot = aggregates.snapshot[exchange] || 0;
-                const deltaRaw = aggregates.delta[exchange] || 0;
-                const deltaNorm = aggregates.delta_norm[exchange] || 0;
-                const liquidation = aggregates.liquidation[exchange] || 0;
-                total += snapshot + deltaRaw + deltaNorm + liquidation;
-
-                const deltaBlock = deltaNorm
-                    ? `<span class="mini-value">${deltaRaw + deltaNorm}</span><span class="mini-footnote">${deltaRaw} raw / ${deltaNorm} norm</span>`
-                    : `<span class="mini-value">${deltaRaw}</span>`;
-
+                const rows = Object.keys(dropLabels).map(category => {
+                    const value = aggregates[category][exchange] || 0;
+                    total += value;
+                    return `
+                        <div>
+                            <span class="mini-label">${dropLabels[category]}</span>
+                            <span class="mini-value">${value}</span>
+                        </div>`;
+                }).join('');
                 return `
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="mini-card">
                             <div class="mini-card-title text-uppercase">${exchange}</div>
                             <div class="mini-stats">
-                                <div>
-                                    <span class="mini-label">Snapshot</span>
-                                    <span class="mini-value">${snapshot}</span>
-                                </div>
-                                <div>
-                                    <span class="mini-label">Delta</span>
-                                    ${deltaBlock}
-                                </div>
-                                <div>
-                                    <span class="mini-label">Liquidation</span>
-                                    <span class="mini-value">${liquidation}</span>
-                                </div>
+                                ${rows}
                             </div>
                         </div>
                     </div>`;
@@ -513,19 +619,17 @@
             document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
         }
 
-        async function refresh() {
+        async function refreshOverview() {
             try {
                 const [metrics, logs, resources] = await Promise.all([
                     fetchMetrics(),
                     fetchLogs(),
                     fetchResources(),
                 ]);
-
                 updateMetricsTable(metrics);
                 updateLogsTable(logs);
                 updateChannelChart(metrics);
-                const aggregates = aggregateDropMetrics(metrics);
-                renderDropCards(aggregates);
+                renderDropCards(aggregateDropMetrics(metrics));
                 updateResourceChart(resources);
                 updateResourceSummary(resources);
                 updateLastRefresh();
@@ -534,12 +638,269 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        async function refreshMarketDetail(exchange, market, renderView = false) {
+            if (!exchange || !market) {
+                return;
+            }
+            try {
+                const detail = await fetchJSON(`/api/exchanges/${exchange}/${market}`);
+                if (renderView) {
+                    renderMarketDetail(detail);
+                } else {
+                    updateMarketPanels(detail);
+                }
+                updateLastRefresh();
+            } catch (error) {
+                console.error('Market refresh failed', error);
+            }
+        }
+
+        function renderMarketDetail(detail) {
+            currentView = 'market';
+            document.getElementById('overview-view').classList.add('d-none');
+            document.getElementById('market-view').classList.remove('d-none');
+            document.getElementById('market-menu').classList.remove('d-none');
+            updateMarketPanels(detail);
+        }
+
+        function updateMarketPanels(detail) {
+            if (!detail || !detail.market) {
+                return;
+            }
+            const titleEl = document.getElementById('market-title');
+            const descEl = document.getElementById('market-description');
+            if (titleEl) {
+                titleEl.textContent = `${detail.exchange.display_name} / ${detail.market.display_name}`;
+            }
+            if (descEl) {
+                descEl.textContent = detail.market.description || 'Live pipeline view for the selected market.';
+            }
+            renderConfigList(detail.market.config);
+            renderSymbolList(detail.market.symbols);
+            renderChannelStats(detail.channels);
+            renderMarketDrops(detail.drops);
+            renderMarketLogs(detail.logs || []);
+        }
+
+        function renderConfigList(config) {
+            const container = document.getElementById('market-config');
+            if (!container) {
+                return;
+            }
+            if (!config || Object.keys(config).length === 0) {
+                container.innerHTML = '<p class="text-muted mb-0">No explicit overrides configured for this market.</p>';
+                return;
+            }
+            const rows = Object.entries(config).map(([key, value]) => `
+                <div class="config-row">
+                    <span class="config-key">${key}</span>
+                    <span class="config-value"><code>${value}</code></span>
+                </div>`).join('');
+            container.innerHTML = rows;
+        }
+
+        function renderSymbolList(symbols) {
+            const container = document.getElementById('market-symbols');
+            if (!container) {
+                return;
+            }
+            if (!symbols || symbols.length === 0) {
+                container.innerHTML = '<p class="text-muted mb-0">No symbols are currently allocated to this market.</p>';
+                return;
+            }
+            container.innerHTML = symbols.map(symbol => `<span class="symbol-pill">${symbol}</span>`).join('');
+        }
+
+        function renderChannelStats(channelData) {
+            const container = document.getElementById('market-channels');
+            if (!container) {
+                return;
+            }
+            if (!channelData || Object.keys(channelData).length === 0) {
+                container.innerHTML = '<p class="text-muted mb-0">Awaiting channel metrics for this market.</p>';
+                return;
+            }
+            const rows = Object.entries(channelData).map(([metric, series]) => {
+                const label = (channelSeriesConfig[metric] && channelSeriesConfig[metric].label) || metric;
+                const latest = series.samples && series.samples.length > 0 ? series.samples[series.samples.length - 1].value : null;
+                const capacity = series.capacity ? `<span class="mini-footnote text-muted">Capacity ${series.capacity}</span>` : '<span class="mini-footnote text-muted">Capacity —</span>';
+                const value = Number.isFinite(latest) ? latest : '—';
+                return `
+                    <div class="channel-row">
+                        <div>
+                            <span class="channel-label">${label}</span>
+                            ${capacity}
+                        </div>
+                        <div class="channel-value">${value}</div>
+                    </div>`;
+            }).join('');
+            container.innerHTML = rows;
+        }
+
+        function renderMarketDrops(drops) {
+            const container = document.getElementById('market-drops');
+            if (!container) {
+                return;
+            }
+            if (!drops || Object.keys(drops).length === 0) {
+                container.innerHTML = '<p class="text-muted mb-0">No drop metrics recorded for this market.</p>';
+                document.getElementById('market-drop-total').textContent = '0';
+                return;
+            }
+            const rows = Object.keys(dropLabels).map(key => {
+                const value = drops[key] || 0;
+                return `
+                    <div class="drop-row">
+                        <span class="drop-label">${dropLabels[key]}</span>
+                        <span class="drop-value">${value}</span>
+                    </div>`;
+            }).join('');
+            const total = Object.values(drops).reduce((acc, val) => acc + Number(val || 0), 0);
+            document.getElementById('market-drop-total').textContent = total;
+            container.innerHTML = rows;
+        }
+
+        function findExchange(name) {
+            if (!name) {
+                return null;
+            }
+            return exchangeMetadata.find(ex => ex.name.toLowerCase() === name.toLowerCase()) || null;
+        }
+
+        function renderExchangeMenu() {
+            const container = document.getElementById('exchange-menu');
+            if (!container) {
+                return;
+            }
+            container.innerHTML = exchangeMetadata.map(ex => `
+                <button class="nav-pill" data-exchange="${ex.name}">${ex.display_name}</button>`).join('');
+            container.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const exchange = btn.dataset.exchange;
+                    selectExchange(exchange);
+                });
+            });
+        }
+
+        function selectExchange(name) {
+            const exchange = findExchange(name);
+            if (!exchange) {
+                return;
+            }
+            selectedExchange = exchange.name;
+            renderMarketMenu(exchange);
+            highlightPills();
+        }
+
+        function renderMarketMenu(exchange) {
+            const container = document.getElementById('market-menu');
+            if (!container) {
+                return;
+            }
+            if (!exchange || !exchange.markets || exchange.markets.length === 0) {
+                container.innerHTML = '<span class="text-muted small ps-2">No active markets.</span>';
+                container.classList.add('d-none');
+                return;
+            }
+            container.innerHTML = exchange.markets.map(market => `
+                <button class="nav-pill" data-market="${market.key}">${market.display_name}</button>`).join('');
+            container.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const marketKey = btn.dataset.market;
+                    window.location.hash = `${exchange.name}/${marketKey}`;
+                });
+            });
+            container.classList.remove('d-none');
+        }
+
+        function highlightPills() {
+            document.querySelectorAll('#exchange-menu .nav-pill').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.exchange === selectedExchange);
+            });
+            document.querySelectorAll('#market-menu .nav-pill').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.market === selectedMarket);
+            });
+            document.getElementById('overview-pill').classList.toggle('active', currentView === 'overview');
+        }
+
+        function showOverview() {
+            currentView = 'overview';
+            selectedMarket = null;
+            document.getElementById('overview-view').classList.remove('d-none');
+            document.getElementById('market-view').classList.add('d-none');
+            document.getElementById('market-menu').classList.add('d-none');
+            highlightPills();
+        }
+
+        async function navigateToMarket(exchangeName, marketKey, fromHash = false) {
+            const exchange = findExchange(exchangeName);
+            if (!exchange) {
+                return;
+            }
+            const market = exchange.markets.find(m => m.key === marketKey);
+            if (!market) {
+                return;
+            }
+            selectedExchange = exchange.name;
+            selectedMarket = market.key;
+            renderMarketMenu(exchange);
+            highlightPills();
+            if (!fromHash) {
+                window.location.hash = `${exchange.name}/${market.key}`;
+                return;
+            }
+            await refreshMarketDetail(exchange.name, market.key, true);
+        }
+
+        async function loadMetadata() {
+            try {
+                const data = await fetchJSON('/api/exchanges');
+                exchangeMetadata = data.exchanges || [];
+                renderExchangeMenu();
+            } catch (error) {
+                console.error('Failed to load exchange metadata', error);
+            }
+        }
+
+        function handleHashChange() {
+            const hash = window.location.hash.replace('#', '').trim();
+            if (!hash || hash === 'overview') {
+                showOverview();
+                return;
+            }
+            const [exchange, market] = hash.split('/');
+            if (!exchange || !market) {
+                showOverview();
+                return;
+            }
+            selectExchange(exchange);
+            navigateToMarket(exchange, market, true);
+        }
+
+        async function refresh() {
+            if (currentView === 'market' && selectedExchange && selectedMarket) {
+                await refreshMarketDetail(selectedExchange, selectedMarket, false);
+            } else {
+                await refreshOverview();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadMetadata();
             initialiseCharts();
+            document.getElementById('overview-pill').addEventListener('click', () => {
+                window.location.hash = 'overview';
+            });
+            document.getElementById('back-to-overview').addEventListener('click', () => {
+                window.location.hash = 'overview';
+            });
+            window.addEventListener('hashchange', handleHashChange);
+            handleHashChange();
             refresh();
             setInterval(refresh, Math.max(refreshInterval, 1000));
         });
     </script>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>
 </html>

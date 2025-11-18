@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"testing"
+	"time"
 
 	"cryptoflow/config"
 	"cryptoflow/logger"
@@ -31,10 +32,21 @@ func TestNormalizeAddress(t *testing.T) {
 }
 
 func TestNewServerNormalizesConfiguredAddress(t *testing.T) {
-	cfg := config.DashboardConfig{Enabled: true, Address: ":9000"}
+	appCfg := &config.Config{
+		Dashboard: config.DashboardConfig{
+			Enabled:         true,
+			Address:         ":9000",
+			RefreshInterval: time.Second,
+			MetricsHistory:  5,
+			LogHistory:      5,
+		},
+		Storage: config.StorageConfig{
+			S3: config.S3Config{Enabled: false},
+		},
+	}
 	log := logger.Logger()
 
-	srv, err := NewServer(cfg, log)
+	srv, err := NewServer(appCfg, log)
 	if err != nil {
 		t.Fatalf("NewServer returned error: %v", err)
 	}
