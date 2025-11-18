@@ -137,25 +137,30 @@ func main() {
 	}
 
 	binanceFOBSReaders := make([]*binance.Binance_FOBS_Reader, 0, len(activeShards))
-	bybitFOBSReaders := make([]*bybitreader.Bybit_FOBS_Reader, 0, len(activeShards))
-	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(activeShards))
-	okxFOBSReaders := make([]*okxreader.Okx_FOBS_Reader, 0, len(activeShards))
 	binanceFOBDReaders := make([]*binance.Binance_FOBD_Reader, 0, len(activeShards))
-	bybitFOBDReaders := make([]*bybitreader.Bybit_FOBD_Reader, 0, len(activeShards))
-	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(activeShards))
-	okxFOBDReaders := make([]*okxreader.Okx_FOBD_Reader, 0, len(activeShards))
 	binanceLiqReaders := make([]*binance.Binance_LIQ_Reader, 0, len(activeShards))
-	bybitLiqReaders := make([]*bybitreader.Bybit_LIQ_Reader, 0, len(activeShards))
-	kucoinLiqReaders := make([]*kucoin.Kucoin_LIQ_Reader, 0, len(activeShards))
-	okxLiqReaders := make([]*okxreader.OKX_LIQ_Reader, 0, len(activeShards))
 	binanceFOIReaders := make([]*binance.Binance_FOI_Reader, 0, len(activeShards))
-	bybitFOIReaders := make([]*bybitreader.Bybit_FOI_Reader, 0, len(activeShards))
-	kucoinFOIReaders := make([]*kucoin.Kucoin_FOI_Reader, 0, len(activeShards))
-	okxFOIReaders := make([]*okxreader.Okx_FOI_Reader, 0, len(activeShards))
 	binancePIReaders := make([]*binance.Binance_PI_Reader, 0, len(activeShards))
+	binanceFPIReaders := make([]*binance.Binance_FPI_Reader, 0, len(activeShards))
+
+	bybitFOBSReaders := make([]*bybitreader.Bybit_FOBS_Reader, 0, len(activeShards))
+	bybitFOBDReaders := make([]*bybitreader.Bybit_FOBD_Reader, 0, len(activeShards))
+	bybitLiqReaders := make([]*bybitreader.Bybit_LIQ_Reader, 0, len(activeShards))
+	bybitFOIReaders := make([]*bybitreader.Bybit_FOI_Reader, 0, len(activeShards))
 	bybitPIReaders := make([]*bybitreader.Bybit_PI_Reader, 0, len(activeShards))
-	kucoinPIReaders := make([]*kucoin.Kucoin_PI_Reader, 0, len(activeShards))
+	bybitFPIReaders := make([]*bybitreader.Bybit_FPI_Reader, 0, len(activeShards))
+
+	okxFOBSReaders := make([]*okxreader.Okx_FOBS_Reader, 0, len(activeShards))
+	okxFOBDReaders := make([]*okxreader.Okx_FOBD_Reader, 0, len(activeShards))
+	okxLiqReaders := make([]*okxreader.OKX_LIQ_Reader, 0, len(activeShards))
+	okxFOIReaders := make([]*okxreader.Okx_FOI_Reader, 0, len(activeShards))
 	okxPIReaders := make([]*okxreader.Okx_PI_Reader, 0, len(activeShards))
+	okxFPIReaders := make([]*okxreader.Okx_FPI_Reader, 0, len(activeShards))
+
+	kucoinFOBSReaders := make([]*kucoin.Kucoin_FOBS_Reader, 0, len(activeShards))
+	kucoinFOBDReaders := make([]*kucoin.Kucoin_FOBD_Reader, 0, len(activeShards))
+	kucoinPIReaders := make([]*kucoin.Kucoin_PI_Reader, 0, len(activeShards))
+	kucoinFPIReaders := make([]*kucoin.Kucoin_FPI_Reader, 0, len(activeShards))
 
 	binanceSymbolSet := make(map[string]struct{})
 	bybitSymbolSet := make(map[string]struct{})
@@ -167,45 +172,55 @@ func main() {
 		sc := *cfg
 		sc.Source.Binance.Future.Orderbook.Snapshots.Symbols = shard.BinanceSymbols
 		sc.Source.Binance.Future.Orderbook.Delta.Symbols = shard.BinanceSymbols
+		sc.Source.Binance.Future.Liquidation.Symbols = shard.BinanceSymbols
 		sc.Source.Binance.Future.OpenInterest.Symbols = shard.BinanceSymbols
 		sc.Source.Binance.Future.PremiumIndex.Symbols = shard.BinanceSymbols
+		sc.Source.Binance.Future.FPI.Symbols = shard.BinanceSymbols
+
 		sc.Source.Bybit.Future.Orderbook.Snapshots.Symbols = shard.BybitSymbols
 		sc.Source.Bybit.Future.Orderbook.Delta.Symbols = shard.BybitSymbols
+		sc.Source.Bybit.Future.Liquidation.Symbols = shard.BybitSymbols
 		sc.Source.Bybit.Future.OpenInterest.Symbols = shard.BybitSymbols
 		sc.Source.Bybit.Future.PremiumIndex.Symbols = shard.BybitSymbols
-		sc.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = shard.KucoinSymbols
-		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
-		sc.Source.Kucoin.Future.OpenInterest.Symbols = shard.KucoinSymbols
-		sc.Source.Kucoin.Future.PremiumIndex.Symbols = shard.KucoinSymbols
+		sc.Source.Bybit.Future.FPI.Symbols = shard.BybitSymbols
+
 		sc.Source.Okx.Future.Orderbook.Snapshots.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
 		sc.Source.Okx.Future.Orderbook.Delta.Symbols = shard.OkxSymbols.SwapOrderbookDelta
+		sc.Source.Okx.Future.Liquidation.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
 		sc.Source.Okx.Future.OpenInterest.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
 		sc.Source.Okx.Future.PremiumIndex.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
-		sc.Source.Binance.Future.Liquidation.Symbols = shard.BinanceSymbols
-		sc.Source.Bybit.Future.Liquidation.Symbols = shard.BybitSymbols
-		sc.Source.Kucoin.Future.Liquidation.Symbols = shard.KucoinSymbols
-		sc.Source.Okx.Future.Liquidation.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
+		sc.Source.Okx.Future.FPI.Symbols = shard.OkxSymbols.SwapOrderbookSnapshot
+
+		sc.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = shard.KucoinSymbols
+		sc.Source.Kucoin.Future.Orderbook.Delta.Symbols = shard.KucoinSymbols
+		sc.Source.Kucoin.Future.PremiumIndex.Symbols = shard.KucoinSymbols
+		sc.Source.Kucoin.Future.FPI.Symbols = shard.KucoinSymbols
 
 		binanceFOBSReaders = append(binanceFOBSReaders, binance.Binance_FOBS_NewReader(&sc, channels.FOBS, shard.BinanceSymbols, shard.IP))
-		bybitFOBSReaders = append(bybitFOBSReaders, bybitreader.Bybit_FOBS_NewReader(&sc, channels.FOBS, shard.BybitSymbols, shard.IP))
-		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS, shard.KucoinSymbols, shard.IP))
-		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		binanceFOBDReaders = append(binanceFOBDReaders, binance.Binance_FOBD_NewReader(&sc, channels.FOBD, shard.BinanceSymbols, shard.IP))
-		bybitFOBDReaders = append(bybitFOBDReaders, bybitreader.Bybit_FOBD_NewReader(&sc, channels.FOBD, shard.BybitSymbols, shard.IP))
-		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
-		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols.SwapOrderbookDelta, shard.IP))
 		binanceLiqReaders = append(binanceLiqReaders, binance.Binance_LIQ_NewReader(&sc, channels.Liq, shard.BinanceSymbols, shard.IP))
-		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols, shard.IP))
-		kucoinLiqReaders = append(kucoinLiqReaders, kucoin.Kucoin_LIQ_NewReader(&sc, channels.Liq, shard.KucoinSymbols))
-		okxLiqReaders = append(okxLiqReaders, okxreader.OKX_LIQ_NewReader(&sc, channels.Liq))
 		binanceFOIReaders = append(binanceFOIReaders, binance.Binance_FOI_NewReader(&sc, channels.FOI, shard.BinanceSymbols, shard.IP))
-		bybitFOIReaders = append(bybitFOIReaders, bybitreader.Bybit_FOI_NewReader(&sc, channels.FOI, shard.BybitSymbols, shard.IP))
-		kucoinFOIReaders = append(kucoinFOIReaders, kucoin.Kucoin_FOI_NewReader(&sc, channels.FOI, shard.KucoinSymbols))
-		okxFOIReaders = append(okxFOIReaders, okxreader.Okx_FOI_NewReader(&sc, channels.FOI, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		binancePIReaders = append(binancePIReaders, binance.Binance_PI_NewReader(&sc, channels.PI, shard.BinanceSymbols, shard.IP))
+		binanceFPIReaders = append(binanceFPIReaders, binance.Binance_FPI_NewReader(&sc, channels.FPI, shard.BinanceSymbols, shard.IP))
+
+		bybitFOBSReaders = append(bybitFOBSReaders, bybitreader.Bybit_FOBS_NewReader(&sc, channels.FOBS, shard.BybitSymbols, shard.IP))
+		bybitFOBDReaders = append(bybitFOBDReaders, bybitreader.Bybit_FOBD_NewReader(&sc, channels.FOBD, shard.BybitSymbols, shard.IP))
+		bybitLiqReaders = append(bybitLiqReaders, bybitreader.Bybit_LIQ_NewReader(&sc, channels.Liq, shard.BybitSymbols, shard.IP))
+		bybitFOIReaders = append(bybitFOIReaders, bybitreader.Bybit_FOI_NewReader(&sc, channels.FOI, shard.BybitSymbols, shard.IP))
 		bybitPIReaders = append(bybitPIReaders, bybitreader.Bybit_PI_NewReader(&sc, channels.PI, shard.BybitSymbols))
-		kucoinPIReaders = append(kucoinPIReaders, kucoin.Kucoin_PI_NewReader(&sc, channels.PI, shard.KucoinSymbols))
+		bybitFPIReaders = append(bybitFPIReaders, bybitreader.Bybit_FPI_NewReader(&sc, channels.FPI, shard.BybitSymbols, shard.IP))
+
+		okxFOBSReaders = append(okxFOBSReaders, okxreader.Okx_FOBS_NewReader(&sc, channels.FOBS, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
+		okxFOBDReaders = append(okxFOBDReaders, okxreader.Okx_FOBD_NewReader(&sc, channels.FOBD, shard.OkxSymbols.SwapOrderbookDelta, shard.IP))
+		okxLiqReaders = append(okxLiqReaders, okxreader.OKX_LIQ_NewReader(&sc, channels.Liq))
+		okxFOIReaders = append(okxFOIReaders, okxreader.Okx_FOI_NewReader(&sc, channels.FOI, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
 		okxPIReaders = append(okxPIReaders, okxreader.Okx_PI_NewReader(&sc, channels.PI, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
+		okxFPIReaders = append(okxFPIReaders, okxreader.Okx_FPI_NewReader(&sc, channels.FPI, shard.OkxSymbols.SwapOrderbookSnapshot, shard.IP))
+
+		kucoinFOBSReaders = append(kucoinFOBSReaders, kucoin.Kucoin_FOBS_NewReader(&sc, channels.FOBS, shard.KucoinSymbols, shard.IP))
+		kucoinFOBDReaders = append(kucoinFOBDReaders, kucoin.Kucoin_FOBD_NewReader(&sc, channels.FOBD, shard.KucoinSymbols, shard.IP))
+		kucoinPIReaders = append(kucoinPIReaders, kucoin.Kucoin_PI_NewReader(&sc, channels.PI, shard.KucoinSymbols))
+		kucoinFPIReaders = append(kucoinFPIReaders, kucoin.Kucoin_FPI_NewReader(&sc, channels.FPI, shard.KucoinSymbols))
 
 		for _, s := range shard.BinanceSymbols {
 			binanceSymbolSet[s] = struct{}{}
@@ -252,28 +267,31 @@ func main() {
 	cfg.Source.Binance.Future.Liquidation.Symbols = binanceAll
 	cfg.Source.Binance.Future.OpenInterest.Symbols = binanceAll
 	cfg.Source.Binance.Future.PremiumIndex.Symbols = binanceAll
+	cfg.Source.Binance.Future.FPI.Symbols = binanceAll
 
 	cfg.Source.Bybit.Future.Orderbook.Snapshots.Symbols = bybitAll
 	cfg.Source.Bybit.Future.Orderbook.Delta.Symbols = bybitAll
 	cfg.Source.Bybit.Future.Liquidation.Symbols = bybitAll
 	cfg.Source.Bybit.Future.OpenInterest.Symbols = bybitAll
 	cfg.Source.Bybit.Future.PremiumIndex.Symbols = bybitAll
+	cfg.Source.Bybit.Future.FPI.Symbols = bybitAll
 
 	cfg.Source.Kucoin.Future.Orderbook.Snapshots.Symbols = kucoinAll
 	cfg.Source.Kucoin.Future.Orderbook.Delta.Symbols = kucoinAll
-	cfg.Source.Kucoin.Future.Liquidation.Symbols = kucoinAll
-	cfg.Source.Kucoin.Future.OpenInterest.Symbols = kucoinAll
 	cfg.Source.Kucoin.Future.PremiumIndex.Symbols = kucoinAll
+	cfg.Source.Kucoin.Future.FPI.Symbols = kucoinAll
 
 	cfg.Source.Okx.Future.Orderbook.Snapshots.Symbols = okxAll
 	cfg.Source.Okx.Future.Orderbook.Delta.Symbols = okxAll
 	cfg.Source.Okx.Future.Liquidation.Symbols = okxLiqAll
 	cfg.Source.Okx.Future.OpenInterest.Symbols = okxAll
 	cfg.Source.Okx.Future.PremiumIndex.Symbols = okxAll
+	cfg.Source.Okx.Future.FPI.Symbols = okxAll
 
 	norm_FOBS_reader := processor.NewFlattener(cfg, channels.FOBS)
 	norm_FOBD_reader := processor.NewDeltaProcessor(cfg, channels.FOBD)
 	foiProcessor := processor.NewFOIProcessor(cfg, channels.FOI)
+	fpiProcessor := processor.NewFPIProcessor(cfg, channels.FPI)
 	piProcessor := processor.NewPIProcessor(cfg, channels.PI)
 	liqProcessor := processor.NewLiquidationProcessor(cfg, channels.Liq)
 
@@ -281,6 +299,7 @@ func main() {
 	var deltaWriter *writer.DeltaWriter
 	var liqWriter *writer.LiquidationWriter
 	var foiWriter *writer.FOIWriter
+	var fpiWriter *writer.FPIWriter
 	var piWriter *writer.PIWriter
 
 	if cfg.Storage.S3.Enabled {
@@ -302,6 +321,15 @@ func main() {
 		}
 		if err := foiWriter.Start(ctx); err != nil {
 			log.WithError(err).Error("failed to start FOI writer")
+			os.Exit(1)
+		}
+		fpiWriter, err = writer.NewFPIWriter(cfg, channels.FPI.Norm)
+		if err != nil {
+			log.WithError(err).Error("failed to create FPI writer")
+			os.Exit(1)
+		}
+		if err := fpiWriter.Start(ctx); err != nil {
+			log.WithError(err).Error("failed to start FPI writer")
 			os.Exit(1)
 		}
 		liqWriter, err = writer.NewLiquidationWriter(cfg, channels.Liq.Norm)
@@ -333,7 +361,10 @@ func main() {
 		go func(reader *binance.Binance_FOBS_Reader) {
 			defer wg.Done()
 			if err := reader.Binance_FOBS_Start(ctx); err != nil {
-				log.WithError(err).Warn("binance reader failed to start")
+				reportStartErr(log, err,
+					"binance reader failed to start",
+					"binance reader disabled via configuration",
+					logger.Fields{"component": "binance_fobs_reader"})
 			}
 		}(r)
 	}
@@ -343,7 +374,10 @@ func main() {
 		go func(reader *bybitreader.Bybit_FOBS_Reader) {
 			defer wg.Done()
 			if err := reader.Bybit_FOBS_Start(ctx); err != nil {
-				log.WithError(err).Warn("bybit reader failed to start")
+				reportStartErr(log, err,
+					"bybit reader failed to start",
+					"bybit reader disabled via configuration",
+					logger.Fields{"component": "bybit_fobs_reader"})
 			}
 		}(r)
 	}
@@ -353,7 +387,10 @@ func main() {
 		go func(reader *kucoin.Kucoin_FOBS_Reader) {
 			defer wg.Done()
 			if err := reader.Kucoin_FOBS_Start(ctx); err != nil {
-				log.WithError(err).Warn("kucoin reader failed to start")
+				reportStartErr(log, err,
+					"kucoin reader failed to start",
+					"kucoin reader disabled via configuration",
+					logger.Fields{"component": "kucoin_fobs_reader"})
 			}
 		}(r)
 	}
@@ -363,7 +400,10 @@ func main() {
 		go func(reader *okxreader.Okx_FOBS_Reader) {
 			defer wg.Done()
 			if err := reader.Okx_FOBS_Start(ctx); err != nil {
-				log.WithError(err).Warn("okx reader failed to start")
+				reportStartErr(log, err,
+					"okx reader failed to start",
+					"okx reader disabled via configuration",
+					logger.Fields{"component": "okx_fobs_reader"})
 			}
 		}(r)
 	}
@@ -373,7 +413,10 @@ func main() {
 		go func(reader *binance.Binance_LIQ_Reader) {
 			defer wg.Done()
 			if err := reader.Binance_LIQ_Start(ctx); err != nil {
-				log.WithError(err).Warn("binance liquidation reader failed to start")
+				reportStartErr(log, err,
+					"binance liquidation reader failed to start",
+					"binance liquidation reader disabled via configuration",
+					logger.Fields{"component": "binance_liq_reader"})
 			}
 		}(r)
 	}
@@ -383,17 +426,10 @@ func main() {
 		go func(reader *bybitreader.Bybit_LIQ_Reader) {
 			defer wg.Done()
 			if err := reader.Bybit_LIQ_Start(ctx); err != nil {
-				log.WithError(err).Warn("bybit liquidation reader failed to start")
-			}
-		}(r)
-	}
-
-	for _, r := range kucoinLiqReaders {
-		wg.Add(1)
-		go func(reader *kucoin.Kucoin_LIQ_Reader) {
-			defer wg.Done()
-			if err := reader.Kucoin_LIQ_Start(ctx); err != nil {
-				log.WithError(err).Warn("kucoin liquidation reader failed to start")
+				reportStartErr(log, err,
+					"bybit liquidation reader failed to start",
+					"bybit liquidation reader disabled via configuration",
+					logger.Fields{"component": "bybit_liq_reader"})
 			}
 		}(r)
 	}
@@ -403,7 +439,10 @@ func main() {
 		go func(reader *okxreader.OKX_LIQ_Reader) {
 			defer wg.Done()
 			if err := reader.OKX_LIQ_Start(ctx); err != nil {
-				log.WithError(err).Warn("okx liquidation reader failed to start")
+				reportStartErr(log, err,
+					"okx liquidation reader failed to start",
+					"okx liquidation reader disabled via configuration",
+					logger.Fields{"component": "okx_liq_reader"})
 			}
 		}(r)
 	}
@@ -413,7 +452,10 @@ func main() {
 		go func(reader *binance.Binance_FOI_Reader) {
 			defer wg.Done()
 			if err := reader.Binance_FOI_Start(ctx); err != nil {
-				log.WithError(err).Warn("binance FOI reader failed to start")
+				reportStartErr(log, err,
+					"binance FOI reader failed to start",
+					"binance FOI reader disabled via configuration",
+					logger.Fields{"component": "binance_foi_reader"})
 			}
 		}(r)
 	}
@@ -423,17 +465,10 @@ func main() {
 		go func(reader *bybitreader.Bybit_FOI_Reader) {
 			defer wg.Done()
 			if err := reader.Bybit_FOI_Start(ctx); err != nil {
-				log.WithError(err).Warn("bybit FOI reader failed to start")
-			}
-		}(r)
-	}
-
-	for _, r := range kucoinFOIReaders {
-		wg.Add(1)
-		go func(reader *kucoin.Kucoin_FOI_Reader) {
-			defer wg.Done()
-			if err := reader.Kucoin_FOI_Start(ctx); err != nil {
-				log.WithError(err).Warn("kucoin FOI reader failed to start")
+				reportStartErr(log, err,
+					"bybit FOI reader failed to start",
+					"bybit FOI reader disabled via configuration",
+					logger.Fields{"component": "bybit_foi_reader"})
 			}
 		}(r)
 	}
@@ -443,7 +478,10 @@ func main() {
 		go func(reader *okxreader.Okx_FOI_Reader) {
 			defer wg.Done()
 			if err := reader.Okx_FOI_Start(ctx); err != nil {
-				log.WithError(err).Warn("okx FOI reader failed to start")
+				reportStartErr(log, err,
+					"okx FOI reader failed to start",
+					"okx FOI reader disabled via configuration",
+					logger.Fields{"component": "okx_foi_reader"})
 			}
 		}(r)
 	}
@@ -453,7 +491,10 @@ func main() {
 		go func(reader *binance.Binance_PI_Reader) {
 			defer wg.Done()
 			if err := reader.Binance_PI_Start(ctx); err != nil {
-				log.WithError(err).Warn("binance premium-index reader failed to start")
+				reportStartErr(log, err,
+					"binance premium-index reader failed to start",
+					"binance premium-index reader disabled via configuration",
+					logger.Fields{"component": "binance_pi_reader"})
 			}
 		}(r)
 	}
@@ -463,7 +504,10 @@ func main() {
 		go func(reader *bybitreader.Bybit_PI_Reader) {
 			defer wg.Done()
 			if err := reader.Bybit_PI_Start(ctx); err != nil {
-				log.WithError(err).Warn("bybit premium-index reader failed to start")
+				reportStartErr(log, err,
+					"bybit premium-index reader failed to start",
+					"bybit premium-index reader disabled via configuration",
+					logger.Fields{"component": "bybit_pi_reader"})
 			}
 		}(r)
 	}
@@ -473,7 +517,10 @@ func main() {
 		go func(reader *kucoin.Kucoin_PI_Reader) {
 			defer wg.Done()
 			if err := reader.Kucoin_PI_Start(ctx); err != nil {
-				log.WithError(err).Warn("kucoin premium-index reader failed to start")
+				reportStartErr(log, err,
+					"kucoin premium-index reader failed to start",
+					"kucoin premium-index reader disabled via configuration",
+					logger.Fields{"component": "kucoin_pi_reader"})
 			}
 		}(r)
 	}
@@ -483,7 +530,50 @@ func main() {
 		go func(reader *okxreader.Okx_PI_Reader) {
 			defer wg.Done()
 			if err := reader.Okx_PI_Start(ctx); err != nil {
-				log.WithError(err).Warn("okx premium-index reader failed to start")
+				reportStartErr(log, err,
+					"okx premium-index reader failed to start",
+					"okx premium-index reader disabled via configuration",
+					logger.Fields{"component": "okx_pi_reader"})
+			}
+		}(r)
+	}
+
+	for _, r := range binanceFPIReaders {
+		wg.Add(1)
+		go func(reader *binance.Binance_FPI_Reader) {
+			defer wg.Done()
+			if err := reader.Binance_FPI_Start(ctx); err != nil {
+				log.WithError(err).Warn("binance FPI reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range bybitFPIReaders {
+		wg.Add(1)
+		go func(reader *bybitreader.Bybit_FPI_Reader) {
+			defer wg.Done()
+			if err := reader.Bybit_FPI_Start(ctx); err != nil {
+				log.WithError(err).Warn("bybit FPI reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range kucoinFPIReaders {
+		wg.Add(1)
+		go func(reader *kucoin.Kucoin_FPI_Reader) {
+			defer wg.Done()
+			if err := reader.Kucoin_FPI_Start(ctx); err != nil {
+				log.WithError(err).Warn("kucoin FPI reader failed to start")
+			}
+		}(r)
+	}
+
+	for _, r := range okxFPIReaders {
+		wg.Add(1)
+		go func(reader *okxreader.Okx_FPI_Reader) {
+			defer wg.Done()
+			if err := reader.Okx_FPI_Start(ctx); err != nil {
+				log.WithError(err).Warn("okx FPI reader failed to start")
 			}
 		}(r)
 	}
@@ -501,6 +591,14 @@ func main() {
 		defer wg.Done()
 		if err := foiProcessor.Start(ctx); err != nil {
 			log.WithError(err).Warn("foi processor failed to start")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := fpiProcessor.Start(ctx); err != nil {
+			log.WithError(err).Warn("fpi processor failed to start")
 		}
 	}()
 
@@ -525,7 +623,10 @@ func main() {
 		go func(reader *binance.Binance_FOBD_Reader) {
 			defer wg.Done()
 			if err := reader.Binance_FOBD_Start(ctx); err != nil {
-				log.WithError(err).Warn("delta reader failed to start")
+				reportStartErr(log, err,
+					"delta reader failed to start",
+					"binance delta reader disabled via configuration",
+					logger.Fields{"component": "binance_delta_reader"})
 			}
 		}(r)
 	}
@@ -535,7 +636,10 @@ func main() {
 		go func(reader *bybitreader.Bybit_FOBD_Reader) {
 			defer wg.Done()
 			if err := reader.Bybit_FOBD_Start(ctx); err != nil {
-				log.WithError(err).Warn("bybit delta reader failed to start")
+				reportStartErr(log, err,
+					"bybit delta reader failed to start",
+					"bybit delta reader disabled via configuration",
+					logger.Fields{"component": "bybit_delta_reader"})
 			}
 		}(r)
 	}
@@ -545,7 +649,10 @@ func main() {
 		go func(reader *kucoin.Kucoin_FOBD_Reader) {
 			defer wg.Done()
 			if err := reader.Kucoin_FOBD_Start(ctx); err != nil {
-				log.WithError(err).Warn("kucoin delta reader failed to start")
+				reportStartErr(log, err,
+					"kucoin delta reader failed to start",
+					"kucoin delta reader disabled via configuration",
+					logger.Fields{"component": "kucoin_delta_reader"})
 			}
 		}(r)
 	}
@@ -555,7 +662,10 @@ func main() {
 		go func(reader *okxreader.Okx_FOBD_Reader) {
 			defer wg.Done()
 			if err := reader.Okx_FOBD_Start(ctx); err != nil {
-				log.WithError(err).Warn("okx delta reader failed to start")
+				reportStartErr(log, err,
+					"okx delta reader failed to start",
+					"okx delta reader disabled via configuration",
+					logger.Fields{"component": "okx_delta_reader"})
 			}
 		}(r)
 	}
@@ -615,6 +725,10 @@ func main() {
 		log.Info("stopping open-interest writer")
 		foiWriter.Stop()
 	}
+	if fpiWriter != nil {
+		log.Info("stopping FPI writer")
+		fpiWriter.Stop()
+	}
 	if piWriter != nil {
 		log.Info("stopping premium-index writer")
 		piWriter.Stop()
@@ -628,6 +742,9 @@ func main() {
 
 	log.Info("stopping foi processor")
 	foiProcessor.Stop()
+
+	log.Info("stopping fpi processor")
+	fpiProcessor.Stop()
 
 	log.Info("stopping pi processor")
 	piProcessor.Stop()
@@ -685,11 +802,6 @@ func main() {
 		r.Bybit_LIQ_Stop()
 	}
 
-	log.Info("stopping kucoin liquidation readers")
-	for _, r := range kucoinLiqReaders {
-		r.Kucoin_LIQ_Stop()
-	}
-
 	log.Info("stopping okx liquidation readers")
 	for _, r := range okxLiqReaders {
 		r.OKX_LIQ_Stop()
@@ -703,11 +815,6 @@ func main() {
 	log.Info("stopping bybit open-interest readers")
 	for _, r := range bybitFOIReaders {
 		r.Bybit_FOI_Stop()
-	}
-
-	log.Info("stopping kucoin open-interest readers")
-	for _, r := range kucoinFOIReaders {
-		r.Kucoin_FOI_Stop()
 	}
 
 	log.Info("stopping okx open-interest readers")
@@ -735,6 +842,26 @@ func main() {
 		r.Okx_PI_Stop()
 	}
 
+	log.Info("stopping binance FPI readers")
+	for _, r := range binanceFPIReaders {
+		r.Binance_FPI_Stop()
+	}
+
+	log.Info("stopping bybit FPI readers")
+	for _, r := range bybitFPIReaders {
+		r.Bybit_FPI_Stop()
+	}
+
+	log.Info("stopping kucoin FPI readers")
+	for _, r := range kucoinFPIReaders {
+		r.Kucoin_FPI_Stop()
+	}
+
+	log.Info("stopping okx FPI readers")
+	for _, r := range okxFPIReaders {
+		r.Okx_FPI_Stop()
+	}
+
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -749,6 +876,18 @@ func main() {
 	}
 
 	log.Info("cryptoflow stopped")
+}
+
+func reportStartErr(entry *logger.Log, err error, warnMsg, infoMsg string, fields logger.Fields) {
+	if err == nil {
+		return
+	}
+	logEntry := entry.WithFields(fields)
+	if strings.Contains(strings.ToLower(err.Error()), "disabled") {
+		logEntry.Info(infoMsg)
+		return
+	}
+	logEntry.WithError(err).Warn(warnMsg)
 }
 
 func localIPv4Addresses() ([]string, error) {

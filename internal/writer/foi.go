@@ -370,6 +370,11 @@ func (w *foiWriter) addNorm(env models.NormFOI) {
 
 	case models.ExchangeBybit:
 		if env.Bybit == nil || env.Bybit.Symbol == "" {
+			if w.log.IsLevelEnabled(logrus.DebugLevel) {
+				w.log.WithComponent("foi_s3_writer").WithFields(logger.Fields{
+					"exchange": env.Exchange,
+				}).Debug("skipping FOI message missing Bybit symbol")
+			}
 			return
 		}
 		symbol := env.Bybit.Symbol
@@ -380,6 +385,11 @@ func (w *foiWriter) addNorm(env models.NormFOI) {
 
 	case models.ExchangeOKX:
 		if env.OKX == nil {
+			if w.log.IsLevelEnabled(logrus.DebugLevel) {
+				w.log.WithComponent("foi_s3_writer").WithFields(logger.Fields{
+					"exchange": env.Exchange,
+				}).Debug("skipping FOI message missing OKX payload")
+			}
 			return
 		}
 		// by convention, use instId as "symbol" partition
@@ -391,7 +401,11 @@ func (w *foiWriter) addNorm(env models.NormFOI) {
 		w.mu.Unlock()
 
 	default:
-		// ignore others
+		if w.log.IsLevelEnabled(logrus.DebugLevel) {
+			w.log.WithComponent("foi_s3_writer").WithFields(logger.Fields{
+				"exchange": env.Exchange,
+			}).Debug("received FOI entry for unsupported exchange; skipping")
+		}
 	}
 }
 

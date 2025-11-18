@@ -35,6 +35,7 @@ const (
 	marketLiquidation       = "liquidation"
 	marketOpenInterest      = "future-openinterest"
 	marketPremiumIndex      = "future-premium-index"
+	marketFPI               = "future-fpi"
 )
 
 var marketDisplayName = map[string]string{
@@ -43,6 +44,7 @@ var marketDisplayName = map[string]string{
 	marketLiquidation:       "Liquidations",
 	marketOpenInterest:      "Open Interest",
 	marketPremiumIndex:      "Premium Index",
+	marketFPI:               "Fair Price Index",
 }
 
 var marketDescriptions = map[string]string{
@@ -51,6 +53,7 @@ var marketDescriptions = map[string]string{
 	marketLiquidation:       "Realtime liquidation feed for leveraged contracts.",
 	marketOpenInterest:      "Open interest snapshots for futures instruments.",
 	marketPremiumIndex:      "Fair funding premium index stream.",
+	marketFPI:               "Flattened premium index stream persisted as Parquet batches.",
 }
 
 var marketChannelMap = map[string][]string{
@@ -59,6 +62,7 @@ var marketChannelMap = map[string][]string{
 	marketLiquidation:       {"liq_raw_buffer_length", "liq_norm_buffer_length"},
 	marketOpenInterest:      {"foi_raw_buffer_length", "foi_norm_buffer_length"},
 	marketPremiumIndex:      {"pi_raw_buffer_length", "pi_norm_buffer_length"},
+	marketFPI:               {"fpi_raw_buffer_length", "fpi_norm_buffer_length"},
 }
 
 func buildExchangeMetadata(cfg *config.Config) []ExchangeMetadata {
@@ -140,6 +144,20 @@ func buildBinanceMarkets(src config.BinanceSourceConfig) []MarketMetadata {
 			structToConfigMap(src.Future.PremiumIndex, "symbols"),
 		))
 	}
+	if src.Future.FPI.Enabled {
+		markets = append(markets, newMarketMetadata(
+			marketFPI,
+			src.Future.FPI.Symbols,
+			structToConfigMap(src.Future.FPI, "symbols"),
+		))
+	}
+	if src.Future.FPI.Enabled {
+		markets = append(markets, newMarketMetadata(
+			marketFPI,
+			src.Future.FPI.Symbols,
+			structToConfigMap(src.Future.FPI, "symbols"),
+		))
+	}
 	return markets
 }
 
@@ -180,6 +198,13 @@ func buildBybitMarkets(src config.BybitSourceConfig) []MarketMetadata {
 			structToConfigMap(src.Future.PremiumIndex, "symbols"),
 		))
 	}
+	if src.Future.FPI.Enabled {
+		markets = append(markets, newMarketMetadata(
+			marketFPI,
+			src.Future.FPI.Symbols,
+			structToConfigMap(src.Future.FPI, "symbols"),
+		))
+	}
 	return markets
 }
 
@@ -218,6 +243,13 @@ func buildKucoinMarkets(src config.KucoinSourceConfig) []MarketMetadata {
 			marketPremiumIndex,
 			src.Future.PremiumIndex.Symbols,
 			structToConfigMap(src.Future.PremiumIndex, "symbols"),
+		))
+	}
+	if src.Future.FPI.Enabled {
+		markets = append(markets, newMarketMetadata(
+			marketFPI,
+			src.Future.FPI.Symbols,
+			structToConfigMap(src.Future.FPI, "symbols"),
 		))
 	}
 	return markets

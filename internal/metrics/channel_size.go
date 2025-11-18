@@ -83,6 +83,16 @@ func StartChannelSizeMetrics(ctx context.Context, channels *channel.Channels, in
 						"capacity": cap(channels.PI.Norm),
 					})
 				}
+				if channels.FPI != nil {
+					EmitMetric(log, component, "fpi_raw_buffer_length", len(channels.FPI.Raw), "gauge", logger.Fields{
+						"buffer":   "fpi_raw",
+						"capacity": cap(channels.FPI.Raw),
+					})
+					EmitMetric(log, component, "fpi_norm_buffer_length", len(channels.FPI.Norm), "gauge", logger.Fields{
+						"buffer":   "fpi_norm",
+						"capacity": cap(channels.FPI.Norm),
+					})
+				}
 			}
 		}
 	}()

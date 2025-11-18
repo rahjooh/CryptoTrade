@@ -252,6 +252,13 @@ func (r *Bybit_FOI_Reader) fetchFOI(symbol string, foiCfg appconfig.OpenInterest
 	}
 	req = req.WithContext(r.ctx)
 
+	if r.log.IsLevelEnabled(logrus.DebugLevel) {
+		log.WithFields(logger.Fields{
+			"url":    u.String(),
+			"symbol": symbol,
+		}).Debug("issuing Bybit FOI HTTP request")
+	}
+
 	start := time.Now()
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -260,6 +267,13 @@ func (r *Bybit_FOI_Reader) fetchFOI(symbol string, foiCfg appconfig.OpenInterest
 	}
 	duration := time.Since(start)
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		log.WithFields(logger.Fields{
+			"http_status": resp.StatusCode,
+			"symbol":      symbol,
+		}).Warn("Bybit FOI endpoint returned non-success status")
+	}
 
 	log.WithFields(logger.Fields{
 		"symbol":         symbol,

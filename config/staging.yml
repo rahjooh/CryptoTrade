@@ -72,11 +72,11 @@ source:
         connection: rest
         url: https://fapi.binance.com/fapi/v1/openInterest
         interval_ms: 1000
-      premium_index:
+      fpi:
         enabled: false
         connection: websocket
-        url: wss://fstream.binance.com/ws
-        stream_interval: 1s
+        url: wss://fstream.binance.com/stream
+        stream_interval: 3s
         reconnect_delay: 5s
       funding_rate:
         enabled: false
@@ -129,12 +129,12 @@ source:
         category: linear
         reconnect_delay: 5s
         interval_ms: 300000   # 5min
-      premium_index:
+      fpi:
         enabled: false
-        connection: websocket
-        url: wss://stream.bybit.com/v5/public/linear
+        connection: rest
+        url: https://api.bybit.com/v5/market/tickers
+        interval_ms: 1000
         category: linear
-        reconnect_delay: 5s
       funding_rate:
         enabled: false
         connection: rest
@@ -184,7 +184,7 @@ source:
         url: wss://ws.okx.com:8443/ws/v5/public
         inst_type: SWAP
         reconnect_delay: 5s
-      premium_index:
+      fpi:
         enabled: false
         connection: websocket
         url: wss://ws.okx.com:8443/ws/v5/public
@@ -229,17 +229,11 @@ source:
           interval_ms: 100
           read_buffer_bytes: 4194304
           read_message_buffer: 4096
-      open_interest:
-        enabled: false
-        connection: websocket
-        url: wss://api-futures.kucoin.com/endpoint
-        reconnect_delay: 5s
-      premium_index:
-        enabled: false
+      fpi:
+        enabled: true
         connection: rest
-        url: https://api-futures.kucoin.com/api/v1/premium/query
-        interval_minutes: 1
-        reconnect_delay: 5s
+        url: https://api-futures.kucoin.com/api/v1/mark-price
+        interval_ms: 60000
 
 
   coinbase:
@@ -319,6 +313,7 @@ writer:
     snapshot_flush_interval: "3m"
     delta_flush_interval: "3m"
     foi_flush_interval: "1m"
+    fpi_flush_interval: "1m"
     pi_flush_interval: "1m"
     liq_flush_interval: "10m"
     memory_threshold: 0.8

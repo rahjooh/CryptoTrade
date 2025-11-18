@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -38,12 +37,16 @@ import (
 //   - emitting normalized FOI messages into foi.norm
 //
 // This mirrors the role of `Processor` in your liquidation pipeline.
-type FOIWorker struct{}
+type FOIWorker struct {
+	log *logger.Log
+}
 
 // NewFOIWorker constructs a new FOIWorker. Currently, no configuration is
 // required; this function exists primarily for symmetry and future extension.
 func NewFOIWorker() *FOIWorker {
-	return &FOIWorker{}
+	return &FOIWorker{
+		log: logger.GetLogger(),
+	}
 }
 
 // Run is the main FOI processing loop.
@@ -65,15 +68,16 @@ func (w *FOIWorker) Run(
 	foiRawCh <-chan models.RawFOI,
 	foiNormCh chan<- models.NormFOI,
 ) {
+	workerLog := w.log.WithComponent("foi_worker")
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[foi-processor] context canceled, stopping")
+			workerLog.Info("context canceled, worker stopping")
 			return
 
 		case raw, ok := <-foiRawCh:
 			if !ok {
-				log.Printf("[foi-processor] foi.raw closed, stopping")
+				workerLog.Info("foi.raw channel closed, worker stopping")
 				return
 			}
 
@@ -82,7 +86,7 @@ func (w *FOIWorker) Run(
 				// Binance FOI: /fapi/v1/openInterest
 				env, err := w.flattenBinance(raw)
 				if err != nil {
-					log.Printf("[foi-processor] binance flatten error: %v", err)
+					workerLog.WithError(err).Warn("binance flatten error")
 					continue
 				}
 				select {
@@ -96,7 +100,7 @@ func (w *FOIWorker) Run(
 				// Bybit FOI: /v5/market/open-interest
 				envs, err := w.flattenBybit(raw)
 				if err != nil {
-					log.Printf("[foi-processor] bybit flatten error: %v", err)
+					workerLog.WithError(err).Warn("bybit flatten error")
 					continue
 				}
 				for _, env := range envs {
@@ -111,7 +115,7 @@ func (w *FOIWorker) Run(
 			case models.ExchangeOKX:
 				envs, err := w.flattenOKX(raw)
 				if err != nil {
-					log.Printf("[foi-processor] okx flatten error: %v", err)
+					workerLog.WithError(err).Warn("okx flatten error")
 					continue
 				}
 				for _, env := range envs {
@@ -124,7 +128,9 @@ func (w *FOIWorker) Run(
 				}
 
 			default:
-				// Unknown or unsupported exchange: ignore silently for now.
+				workerLog.WithFields(logger.Fields{
+					"exchange": raw.Exchange,
+				}).Debug("received FOI payload for unsupported exchange; skipping")
 			}
 		}
 	}

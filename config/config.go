@@ -138,6 +138,7 @@ type BufferConfig struct {
 	SnapshotFlushInterval time.Duration `yaml:"snapshot_flush_interval"`
 	DeltaFlushInterval    time.Duration `yaml:"delta_flush_interval"`
 	OpenInterestInterval  time.Duration `yaml:"foi_flush_interval"`
+	FPIFlushInterval      time.Duration `yaml:"fpi_flush_interval"`
 	MemoryThreshold       float64       `yaml:"memory_threshold"`
 }
 
@@ -201,6 +202,7 @@ type BinanceFutureConfig struct {
 	Liquidation  BinanceLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest BinanceOpenInterestConfig    `yaml:"open_interest"`
 	PremiumIndex PremiumIndexConfig           `yaml:"premium_index"`
+	FPI          PremiumIndexConfig           `yaml:"fpi"`
 }
 
 type BybitFutureConfig struct {
@@ -208,6 +210,7 @@ type BybitFutureConfig struct {
 	Liquidation  BybitLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig         `yaml:"open_interest"`
 	PremiumIndex PremiumIndexConfig         `yaml:"premium_index"`
+	FPI          PremiumIndexConfig         `yaml:"fpi"`
 }
 
 type KucoinFutureConfig struct {
@@ -215,6 +218,7 @@ type KucoinFutureConfig struct {
 	Liquidation  KucoinLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig          `yaml:"open_interest"`
 	PremiumIndex PremiumIndexConfig          `yaml:"premium_index"`
+	FPI          PremiumIndexConfig          `yaml:"fpi"`
 }
 
 type OkxFutureConfig struct {
@@ -222,6 +226,7 @@ type OkxFutureConfig struct {
 	Liquidation  OkxLiquidationConfig     `yaml:"liquidation"`
 	OpenInterest OpenInterestConfig       `yaml:"open_interest"`
 	PremiumIndex PremiumIndexConfig       `yaml:"premium_index"`
+	FPI          PremiumIndexConfig       `yaml:"fpi"`
 }
 
 type BinanceFutureOrderbookConfig struct {

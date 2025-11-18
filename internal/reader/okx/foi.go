@@ -156,10 +156,18 @@ func (r *Okx_FOI_Reader) streamFOI() {
 		reconnectDelay = 5 * time.Second
 	}
 
+	attempt := 0
+
 	for {
 		if r.ctx.Err() != nil {
 			return
 		}
+
+		attempt++
+		log.WithFields(logger.Fields{
+			"attempt": attempt,
+			"url":     baseURL,
+		}).Info("connecting to OKX FOI websocket")
 
 		conn, _, err := websocket.DefaultDialer.DialContext(r.ctx, baseURL, nil)
 		if err != nil {
@@ -192,6 +200,12 @@ func (r *Okx_FOI_Reader) streamFOI() {
 				Channel: "open-interest",
 				InstID:  inst,
 			})
+		}
+
+		if r.log.IsLevelEnabled(logrus.DebugLevel) {
+			log.WithFields(logger.Fields{
+				"subscription_args": subMsg.Args,
+			}).Debug("sending OKX FOI subscribe message")
 		}
 
 		if err := conn.WriteJSON(subMsg); err != nil {
@@ -251,6 +265,7 @@ func (r *Okx_FOI_Reader) streamFOI() {
 		select {
 		case <-time.After(reconnectDelay):
 		case <-r.ctx.Done():
+			log.Info("context canceled; stopping OKX FOI stream")
 			return
 		}
 	}
